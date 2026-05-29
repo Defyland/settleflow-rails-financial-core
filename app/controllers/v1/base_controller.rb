@@ -1,0 +1,46 @@
+module V1
+  class BaseController < ApplicationController
+    before_action :authenticate_organization!
+    after_action :write_audit_log
+
+    attr_reader :current_organization
+
+    private
+
+    def authenticate_organization!
+      api_key = request.headers["X-Api-Key"].to_s
+      organization = Organization.authenticate_api_key(api_key)
+      raise Errors::AuthenticationError if organization.blank?
+
+      Current.organization = organization
+      Current.api_key_digest = Organization.digest_api_key(api_key)
+      @current_organization = organization
+    end
+
+    def write_audit_log
+      return if current_organization.blank?
+
+      current_organization.audit_logs.create!(
+        actor_type: "api_key",
+        action: "#{request.request_method} #{request.path}",
+        subject_type: controller_name,
+        request_id: request.request_id,
+        correlation_id: Current.correlation_id,
+        ip_address: request.remote_ip,
+        user_agent: request.user_agent,
+        metadata: {
+          status: response.status,
+          params: request.filtered_parameters.except("controller", "action")
+        }
+      )
+    end
+
+    def metadata_param
+      raw_metadata = params[:metadata]
+      return {} if raw_metadata.blank?
+      return raw_metadata.to_unsafe_h if raw_metadata.respond_to?(:to_unsafe_h)
+
+      raw_metadata
+    end
+  end
+end

@@ -1,0 +1,19 @@
+class Wallet < ApplicationRecord
+  belongs_to :organization
+  belongs_to :customer
+  has_many :ledger_accounts, dependent: :restrict_with_exception
+  has_one :balance_projection, dependent: :restrict_with_exception
+  has_many :fundings, dependent: :restrict_with_exception
+  has_many :pix_payments, dependent: :restrict_with_exception
+  has_many :source_transfers, class_name: "Transfer", foreign_key: :source_wallet_id, dependent: :restrict_with_exception, inverse_of: :source_wallet
+  has_many :destination_transfers, class_name: "Transfer", foreign_key: :destination_wallet_id, dependent: :restrict_with_exception, inverse_of: :destination_wallet
+
+  enum :status, { active: "active", blocked: "blocked", closed: "closed" }
+
+  validates :external_id, :currency, presence: true
+  validates :external_id, uniqueness: { scope: :organization_id }
+
+  def liability_account
+    ledger_accounts.find_by!(account_type: "liability", normal_balance: "credit", currency:)
+  end
+end
