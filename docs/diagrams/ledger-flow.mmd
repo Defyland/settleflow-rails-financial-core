@@ -1,0 +1,17 @@
+sequenceDiagram
+  participant Client
+  participant API
+  participant Service
+  participant Ledger
+  participant DB
+  participant Job
+
+  Client->>API: POST /v1/transfers
+  API->>Service: Transfers::Create
+  Service->>DB: lock source balance projection
+  Service->>Ledger: post balanced journal
+  Ledger->>DB: create journal + lines
+  Ledger->>DB: update projections
+  Service->>DB: create outbox event
+  Service-->>API: transfer response
+  DB-->>Job: enqueue outbox publish

@@ -1,0 +1,8 @@
+flowchart TB
+  Client["Fintech backend client"] --> API["SettleFlow Rails API"]
+  API --> Postgres["PostgreSQL"]
+  API --> Queue["Solid Queue"]
+  Queue --> Jobs["Outbox and settlement jobs"]
+  Jobs --> Postgres
+  API --> Metrics["Prometheus / Grafana"]
+  API --> Traces["OpenTelemetry collector"]

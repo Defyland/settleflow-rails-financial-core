@@ -1,0 +1,979 @@
+openapi: 3.0.3
+info:
+  title: SettleFlow Financial Core API
+  version: 1.0.0
+  description: Tenant-aware financial core with wallets, double-entry ledger, Pix lifecycle, settlement, reconciliation, idempotency, and observability.
+  license:
+    name: MIT
+servers:
+  - url: http://localhost:3000
+security:
+  - ApiKeyAuth: []
+paths:
+  /up:
+    get:
+      operationId: getHealth
+      security: []
+      summary: Boot health check.
+      responses:
+        "200":
+          description: Application booted.
+  /ready:
+    get:
+      operationId: getReadiness
+      security: []
+      summary: Database readiness check.
+      responses:
+        "200":
+          description: Ready.
+          content:
+            application/json:
+              schema:
+                type: object
+  /metrics:
+    get:
+      operationId: getMetrics
+      security: []
+      summary: Prometheus metrics.
+      responses:
+        "200":
+          description: Prometheus text exposition.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /v1/customers:
+    get:
+      operationId: listCustomers
+      summary: List customers.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Customer list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerCollection"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createCustomer
+      summary: Create a customer.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCustomerRequest"
+            examples:
+              cpf:
+                value:
+                  external_id: customer-001
+                  legal_name: Maria Silva
+                  document_kind: cpf
+                  document_number: "11144477735"
+                  metadata:
+                    segment: retail
+      responses:
+        "201":
+          description: Customer created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerResponse"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /v1/customers/{id}:
+    get:
+      operationId: getCustomer
+      summary: Get a customer by public ID.
+      parameters:
+        - $ref: "#/components/parameters/PublicId"
+      responses:
+        "200":
+          description: Customer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/wallets:
+    get:
+      operationId: listWallets
+      summary: List wallets.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Wallet list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletCollection"
+    post:
+      operationId: createWallet
+      summary: Open a wallet for a customer.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWalletRequest"
+      responses:
+        "201":
+          description: Wallet created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /v1/wallets/{id}:
+    get:
+      operationId: getWallet
+      summary: Get a wallet.
+      parameters:
+        - $ref: "#/components/parameters/PublicId"
+      responses:
+        "200":
+          description: Wallet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletResponse"
+  /v1/wallets/{id}/balance:
+    get:
+      operationId: getWalletBalance
+      summary: Get projected wallet balance.
+      parameters:
+        - $ref: "#/components/parameters/PublicId"
+      responses:
+        "200":
+          description: Balance projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BalanceResponse"
+  /v1/wallets/{id}/statement:
+    get:
+      operationId: getWalletStatement
+      summary: Get wallet statement ledger lines.
+      parameters:
+        - $ref: "#/components/parameters/PublicId"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Wallet statement.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LedgerLineCollection"
+  /v1/fundings:
+    get:
+      operationId: listFundings
+      summary: List wallet funding commands.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Funding list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FundingCollection"
+    post:
+      operationId: createFunding
+      summary: Fund a wallet from platform cash.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFundingRequest"
+      responses:
+        "201":
+          description: Funding posted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FundingResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /v1/fundings/{id}:
+    get:
+      operationId: getFunding
+      summary: Get a funding command.
+      parameters:
+        - $ref: "#/components/parameters/PublicId"
+      responses:
+        "200":
+          description: Funding.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FundingResponse"
+  /v1/transfers:
+    get:
+      operationId: listTransfers
+      summary: List internal transfers.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Transfer list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferCollection"
+    post:
+      operationId: createTransfer
+      summary: Move money between wallets with a balanced journal entry.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTransferRequest"
+      responses:
+        "201":
+          description: Transfer posted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /v1/transfers/{id}:
+    get:
+      operationId: getTransfer
+      summary: Get transfer.
+      parameters:
+        - $ref: "#/components/parameters/PublicId"
+      responses:
+        "200":
+          description: Transfer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferResponse"
+  /v1/pix_payments:
+    get:
+      operationId: listPixPayments
+      summary: List Pix payments.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Pix payment list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PixPaymentCollection"
+    post:
+      operationId: createPixPayment
+      summary: Create a Pix payment.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePixPaymentRequest"
+      responses:
+        "201":
+          description: Pix payment created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PixPaymentResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /v1/pix_payments/{id}:
+    get:
+      operationId: getPixPayment
+      summary: Get Pix payment.
+      parameters:
+        - $ref: "#/components/parameters/PublicId"
+      responses:
+        "200":
+          description: Pix payment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PixPaymentResponse"
+  /v1/pix_payments/{id}/settle:
+    post:
+      operationId: settlePixPayment
+      summary: Settle an approved Pix payment.
+      parameters:
+        - $ref: "#/components/parameters/PublicId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Pix payment settled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PixPaymentResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /v1/ledger_entries:
+    get:
+      operationId: listLedgerEntries
+      summary: List journal entries.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Journal entries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JournalEntryCollection"
+  /v1/ledger_entries/{id}:
+    get:
+      operationId: getLedgerEntry
+      summary: Get journal entry.
+      parameters:
+        - $ref: "#/components/parameters/PublicId"
+      responses:
+        "200":
+          description: Journal entry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JournalEntryResponse"
+  /v1/reconciliation_runs:
+    get:
+      operationId: listReconciliationRuns
+      summary: List reconciliation runs.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Reconciliation run list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReconciliationRunCollection"
+    post:
+      operationId: createReconciliationRun
+      summary: Compare provider balance with platform cash ledger.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReconciliationRunRequest"
+      responses:
+        "201":
+          description: Reconciliation run created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReconciliationRunResponse"
+  /v1/reconciliation_runs/{id}:
+    get:
+      operationId: getReconciliationRun
+      summary: Get reconciliation run.
+      parameters:
+        - $ref: "#/components/parameters/PublicId"
+      responses:
+        "200":
+          description: Reconciliation run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReconciliationRunResponse"
+  /v1/outbox_events:
+    get:
+      operationId: listOutboxEvents
+      summary: List transactional outbox events.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, published, dead_lettered]
+      responses:
+        "200":
+          description: Outbox events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutboxEventCollection"
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+  parameters:
+    PublicId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+        maxLength: 255
+    CorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      schema:
+        type: string
+  responses:
+    Unauthorized:
+      description: Missing or invalid API key.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found or belongs to another tenant.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ValidationError:
+      description: Validation or business-rule failure.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    IdempotencyConflict:
+      description: Idempotency key conflict.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    MoneyCents:
+      type: integer
+      format: int64
+      minimum: 1
+    Metadata:
+      type: object
+      additionalProperties: true
+    PageMeta:
+      type: object
+      required: [limit, returned]
+      properties:
+        limit:
+          type: integer
+        returned:
+          type: integer
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details, request_id, correlation_id]
+          properties:
+            code:
+              type: string
+              example: validation_failed
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+            request_id:
+              type: string
+            correlation_id:
+              type: string
+    CreateCustomerRequest:
+      type: object
+      required: [external_id, legal_name, document_kind, document_number]
+      properties:
+        external_id:
+          type: string
+        legal_name:
+          type: string
+        document_kind:
+          type: string
+          enum: [cpf, cnpj, tax_id]
+        document_number:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+    Customer:
+      type: object
+      required: [id, external_id, legal_name, document_kind, document_number, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        legal_name:
+          type: string
+        document_kind:
+          type: string
+        document_number:
+          type: string
+        status:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        created_at:
+          type: string
+          format: date-time
+    CustomerResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Customer"
+    CustomerCollection:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Customer"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    Balance:
+      type: object
+      properties:
+        available_cents:
+          type: integer
+          format: int64
+        pending_cents:
+          type: integer
+          format: int64
+        blocked_cents:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        version:
+          type: integer
+        updated_at:
+          type: string
+          format: date-time
+    BalanceResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Balance"
+    CreateWalletRequest:
+      type: object
+      required: [customer_id, external_id]
+      properties:
+        customer_id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        currency:
+          type: string
+          default: BRL
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+    Wallet:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        customer_id:
+          type: string
+          format: uuid
+        currency:
+          type: string
+        status:
+          type: string
+        balance:
+          $ref: "#/components/schemas/Balance"
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        created_at:
+          type: string
+          format: date-time
+    WalletResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Wallet"
+    WalletCollection:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Wallet"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    CreateFundingRequest:
+      type: object
+      required: [wallet_id, external_id, amount_cents]
+      properties:
+        wallet_id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        amount_cents:
+          $ref: "#/components/schemas/MoneyCents"
+        currency:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+    Funding:
+      allOf:
+        - $ref: "#/components/schemas/FinancialCommand"
+        - type: object
+          properties:
+            wallet_id:
+              type: string
+              format: uuid
+    FundingResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Funding"
+    FundingCollection:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Funding"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    CreateTransferRequest:
+      type: object
+      required: [source_wallet_id, destination_wallet_id, external_id, amount_cents]
+      properties:
+        source_wallet_id:
+          type: string
+          format: uuid
+        destination_wallet_id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        amount_cents:
+          $ref: "#/components/schemas/MoneyCents"
+        currency:
+          type: string
+        memo:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+    Transfer:
+      allOf:
+        - $ref: "#/components/schemas/FinancialCommand"
+        - type: object
+          properties:
+            source_wallet_id:
+              type: string
+              format: uuid
+            destination_wallet_id:
+              type: string
+              format: uuid
+            memo:
+              type: string
+    TransferResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Transfer"
+    TransferCollection:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Transfer"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    CreatePixPaymentRequest:
+      type: object
+      required: [wallet_id, external_id, pix_key, receiver_name, amount_cents]
+      properties:
+        wallet_id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        pix_key:
+          type: string
+        receiver_name:
+          type: string
+        amount_cents:
+          $ref: "#/components/schemas/MoneyCents"
+        currency:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+    PixPayment:
+      allOf:
+        - $ref: "#/components/schemas/FinancialCommand"
+        - type: object
+          properties:
+            wallet_id:
+              type: string
+              format: uuid
+            settlement_journal_entry_id:
+              type: string
+              format: uuid
+              nullable: true
+            pix_key:
+              type: string
+            receiver_name:
+              type: string
+            risk_score:
+              type: integer
+            failure_code:
+              type: string
+              nullable: true
+    PixPaymentResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/PixPayment"
+    PixPaymentCollection:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PixPayment"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    FinancialCommand:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        journal_entry_id:
+          type: string
+          format: uuid
+          nullable: true
+        amount_cents:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        status:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        created_at:
+          type: string
+          format: date-time
+    LedgerLine:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        journal_entry_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+        account_code:
+          type: string
+        direction:
+          type: string
+          enum: [debit, credit]
+        amount_cents:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+    LedgerLineCollection:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/LedgerLine"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    JournalEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+        status:
+          type: string
+        reference_type:
+          type: string
+        reference_id:
+          type: string
+          nullable: true
+        correlation_id:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/LedgerLine"
+    JournalEntryResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/JournalEntry"
+    JournalEntryCollection:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/JournalEntry"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    CreateReconciliationRunRequest:
+      type: object
+      required: [provider, statement_date, provider_balance_cents]
+      properties:
+        provider:
+          type: string
+        statement_date:
+          type: string
+          format: date
+        provider_balance_cents:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+    ReconciliationRun:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider:
+          type: string
+        statement_date:
+          type: string
+          format: date
+        provider_balance_cents:
+          type: integer
+          format: int64
+        ledger_balance_cents:
+          type: integer
+          format: int64
+        discrepancy_cents:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [matched, discrepant]
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        created_at:
+          type: string
+          format: date-time
+    ReconciliationRunResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/ReconciliationRun"
+    ReconciliationRunCollection:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReconciliationRun"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    OutboxEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        aggregate_type:
+          type: string
+        aggregate_id:
+          type: integer
+        event_type:
+          type: string
+        status:
+          type: string
+          enum: [pending, published, dead_lettered]
+        correlation_id:
+          type: string
+        attempts:
+          type: integer
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_error:
+          type: string
+          nullable: true
+        payload:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+    OutboxEventCollection:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OutboxEvent"
+        meta:
+          $ref: "#/components/schemas/PageMeta"

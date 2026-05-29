@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: settleflow
+      POSTGRES_PASSWORD: settleflow
+      POSTGRES_DB: settleflow_rails_financial_core_development
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U settleflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    environment:
+      RAILS_ENV: development
+      DATABASE_URL: postgres://settleflow:settleflow@db:5432/settleflow_rails_financial_core_development
+      SETTLEFLOW_DEMO_API_KEY: settleflow_dev_key_change_me
+      RAILS_LOG_LEVEL: info
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["./bin/rails", "server", "-b", "0.0.0.0"]
+
+volumes:
+  postgres-data:
