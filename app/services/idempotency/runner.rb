@@ -45,7 +45,7 @@ module Idempotency
 
     def find_or_create_record
       record = organization.idempotency_keys.find_or_initialize_by(key:)
-      return [record, false] if record.persisted?
+      return [ record, false ] if record.persisted?
 
       record.assign_attributes(
         key:,
@@ -55,9 +55,9 @@ module Idempotency
         locked_at: Time.current
       )
       record.save!
-      [record, true]
+      [ record, true ]
     rescue ActiveRecord::RecordNotUnique
-      [organization.idempotency_keys.find_by!(key:), false]
+      [ organization.idempotency_keys.find_by!(key:), false ]
     end
 
     def validate_reuse!(record)

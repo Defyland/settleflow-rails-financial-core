@@ -29,8 +29,8 @@ class CreateFinancialCore < ActiveRecord::Migration[8.1]
       t.timestamps
     end
     add_index :customers, :public_id, unique: true
-    add_index :customers, [:organization_id, :external_id], unique: true
-    add_index :customers, [:organization_id, :document_number], unique: true
+    add_index :customers, [ :organization_id, :external_id ], unique: true
+    add_index :customers, [ :organization_id, :document_number ], unique: true
 
     create_table :wallets do |t|
       t.uuid :public_id, null: false, default: -> { "gen_random_uuid()" }
@@ -45,7 +45,7 @@ class CreateFinancialCore < ActiveRecord::Migration[8.1]
       t.timestamps
     end
     add_index :wallets, :public_id, unique: true
-    add_index :wallets, [:organization_id, :external_id], unique: true
+    add_index :wallets, [ :organization_id, :external_id ], unique: true
 
     create_table :ledger_accounts do |t|
       t.uuid :public_id, null: false, default: -> { "gen_random_uuid()" }
@@ -61,7 +61,7 @@ class CreateFinancialCore < ActiveRecord::Migration[8.1]
       t.timestamps
     end
     add_index :ledger_accounts, :public_id, unique: true
-    add_index :ledger_accounts, [:organization_id, :code], unique: true
+    add_index :ledger_accounts, [ :organization_id, :code ], unique: true
     add_check_constraint :ledger_accounts, "account_type IN ('asset', 'liability', 'revenue', 'expense', 'equity')", name: "ledger_accounts_account_type_check"
     add_check_constraint :ledger_accounts, "normal_balance IN ('debit', 'credit')", name: "ledger_accounts_normal_balance_check"
 
@@ -80,9 +80,9 @@ class CreateFinancialCore < ActiveRecord::Migration[8.1]
       t.timestamps
     end
     add_index :journal_entries, :public_id, unique: true
-    add_index :journal_entries, [:organization_id, :idempotency_key], unique: true, where: "idempotency_key IS NOT NULL"
-    add_index :journal_entries, [:reference_type, :reference_id]
-    add_index :journal_entries, [:organization_id, :event_type]
+    add_index :journal_entries, [ :organization_id, :idempotency_key ], unique: true, where: "idempotency_key IS NOT NULL"
+    add_index :journal_entries, [ :reference_type, :reference_id ]
+    add_index :journal_entries, [ :organization_id, :event_type ]
 
     create_table :ledger_lines do |t|
       t.uuid :public_id, null: false, default: -> { "gen_random_uuid()" }
@@ -97,8 +97,8 @@ class CreateFinancialCore < ActiveRecord::Migration[8.1]
       t.timestamps
     end
     add_index :ledger_lines, :public_id, unique: true
-    add_index :ledger_lines, [:organization_id, :ledger_account_id]
-    add_index :ledger_lines, [:organization_id, :created_at]
+    add_index :ledger_lines, [ :organization_id, :ledger_account_id ]
+    add_index :ledger_lines, [ :organization_id, :created_at ]
     add_check_constraint :ledger_lines, "direction IN ('debit', 'credit')", name: "ledger_lines_direction_check"
     add_check_constraint :ledger_lines, "amount_cents > 0", name: "ledger_lines_amount_positive_check"
 
@@ -115,7 +115,7 @@ class CreateFinancialCore < ActiveRecord::Migration[8.1]
       t.timestamps
     end
     add_index :balance_projections, :public_id, unique: true
-    add_index :balance_projections, [:organization_id, :wallet_id, :currency], unique: true, name: "idx_balance_projection_wallet_currency"
+    add_index :balance_projections, [ :organization_id, :wallet_id, :currency ], unique: true, name: "idx_balance_projection_wallet_currency"
 
     create_table :fundings do |t|
       t.uuid :public_id, null: false, default: -> { "gen_random_uuid()" }
@@ -133,8 +133,8 @@ class CreateFinancialCore < ActiveRecord::Migration[8.1]
       t.timestamps
     end
     add_index :fundings, :public_id, unique: true
-    add_index :fundings, [:organization_id, :external_id], unique: true
-    add_index :fundings, [:organization_id, :idempotency_key], unique: true, where: "idempotency_key IS NOT NULL"
+    add_index :fundings, [ :organization_id, :external_id ], unique: true
+    add_index :fundings, [ :organization_id, :idempotency_key ], unique: true, where: "idempotency_key IS NOT NULL"
     add_check_constraint :fundings, "amount_cents > 0", name: "fundings_amount_positive_check"
 
     create_table :transfers do |t|
@@ -156,8 +156,8 @@ class CreateFinancialCore < ActiveRecord::Migration[8.1]
       t.timestamps
     end
     add_index :transfers, :public_id, unique: true
-    add_index :transfers, [:organization_id, :external_id], unique: true
-    add_index :transfers, [:organization_id, :idempotency_key], unique: true, where: "idempotency_key IS NOT NULL"
+    add_index :transfers, [ :organization_id, :external_id ], unique: true
+    add_index :transfers, [ :organization_id, :idempotency_key ], unique: true, where: "idempotency_key IS NOT NULL"
     add_check_constraint :transfers, "amount_cents > 0", name: "transfers_amount_positive_check"
 
     create_table :pix_payments do |t|
@@ -181,8 +181,8 @@ class CreateFinancialCore < ActiveRecord::Migration[8.1]
       t.timestamps
     end
     add_index :pix_payments, :public_id, unique: true
-    add_index :pix_payments, [:organization_id, :external_id], unique: true
-    add_index :pix_payments, [:organization_id, :idempotency_key], unique: true, where: "idempotency_key IS NOT NULL"
+    add_index :pix_payments, [ :organization_id, :external_id ], unique: true
+    add_index :pix_payments, [ :organization_id, :idempotency_key ], unique: true, where: "idempotency_key IS NOT NULL"
     add_check_constraint :pix_payments, "amount_cents > 0", name: "pix_payments_amount_positive_check"
 
     create_table :reconciliation_runs do |t|
@@ -200,7 +200,7 @@ class CreateFinancialCore < ActiveRecord::Migration[8.1]
       t.timestamps
     end
     add_index :reconciliation_runs, :public_id, unique: true
-    add_index :reconciliation_runs, [:organization_id, :provider, :statement_date], unique: true, name: "idx_reconciliation_provider_day"
+    add_index :reconciliation_runs, [ :organization_id, :provider, :statement_date ], unique: true, name: "idx_reconciliation_provider_day"
 
     create_table :outbox_events do |t|
       t.uuid :public_id, null: false, default: -> { "gen_random_uuid()" }
@@ -219,8 +219,8 @@ class CreateFinancialCore < ActiveRecord::Migration[8.1]
       t.timestamps
     end
     add_index :outbox_events, :public_id, unique: true
-    add_index :outbox_events, [:status, :created_at]
-    add_index :outbox_events, [:aggregate_type, :aggregate_id]
+    add_index :outbox_events, [ :status, :created_at ]
+    add_index :outbox_events, [ :aggregate_type, :aggregate_id ]
 
     create_table :idempotency_keys do |t|
       t.uuid :public_id, null: false, default: -> { "gen_random_uuid()" }
@@ -237,7 +237,7 @@ class CreateFinancialCore < ActiveRecord::Migration[8.1]
       t.timestamps
     end
     add_index :idempotency_keys, :public_id, unique: true
-    add_index :idempotency_keys, [:organization_id, :key], unique: true
+    add_index :idempotency_keys, [ :organization_id, :key ], unique: true
 
     create_table :audit_logs do |t|
       t.uuid :public_id, null: false, default: -> { "gen_random_uuid()" }
@@ -256,7 +256,7 @@ class CreateFinancialCore < ActiveRecord::Migration[8.1]
       t.timestamps
     end
     add_index :audit_logs, :public_id, unique: true
-    add_index :audit_logs, [:organization_id, :created_at]
-    add_index :audit_logs, [:subject_type, :subject_id]
+    add_index :audit_logs, [ :organization_id, :created_at ]
+    add_index :audit_logs, [ :subject_type, :subject_id ]
   end
 end

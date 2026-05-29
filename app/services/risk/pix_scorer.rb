@@ -15,7 +15,7 @@ module Risk
       score += 65 if amount_cents >= 500_000
       score += 35 if pix_key.match?(/blocked|fraud|chargeback/i)
       score += 15 if metadata.fetch("new_device", false)
-      [score, 100].min
+      [ score, 100 ].min
     end
 
     private

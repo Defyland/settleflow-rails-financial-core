@@ -9,7 +9,7 @@ SETTLEFLOW_HTTP_REQUESTS = registry.get(:settleflow_http_requests_total) ||
     Prometheus::Client::Counter.new(
       :settleflow_http_requests_total,
       docstring: "Total HTTP requests served by SettleFlow",
-      labels: [:method, :path, :status]
+      labels: [ :method, :path, :status ]
     )
   )
 
@@ -18,8 +18,8 @@ SETTLEFLOW_HTTP_DURATION = registry.get(:settleflow_http_request_duration_second
     Prometheus::Client::Histogram.new(
       :settleflow_http_request_duration_seconds,
       docstring: "HTTP request duration in seconds",
-      labels: [:method, :path],
-      buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5]
+      labels: [ :method, :path ],
+      buckets: [ 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5 ]
     )
   )
 
