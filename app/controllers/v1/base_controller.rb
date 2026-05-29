@@ -1,7 +1,7 @@
 module V1
   class BaseController < ApplicationController
     before_action :authenticate_organization!
-    after_action :write_audit_log
+    around_action :audit_request
 
     attr_reader :current_organization
 
@@ -15,6 +15,12 @@ module V1
       Current.organization = organization
       Current.api_key_digest = Organization.digest_api_key(api_key)
       @current_organization = organization
+    end
+
+    def audit_request
+      yield
+    ensure
+      write_audit_log
     end
 
     def write_audit_log

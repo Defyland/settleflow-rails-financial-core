@@ -20,7 +20,7 @@
 /tmp/pids/*
 !/tmp/pids/
 !/tmp/pids/.keep
+/coverage/
 
 # Ignore key files for decrypting credentials and more.
 /config/*.key
-

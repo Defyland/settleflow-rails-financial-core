@@ -1,7 +1,7 @@
 module Idempotency
   class Runner
-    def self.call(...)
-      new(...).call
+    def self.call(**kwargs, &block)
+      new(**kwargs).call(&block)
     end
 
     def initialize(organization:, key:, request_method:, request_path:, request_hash:)
@@ -12,8 +12,8 @@ module Idempotency
       @request_hash = request_hash
     end
 
-    def call
-      return yield if key.blank?
+    def call(&block)
+      return block.call if key.blank?
 
       record, created = find_or_create_record
       unless created
@@ -31,7 +31,7 @@ module Idempotency
         validate_reuse!(record)
       end
 
-      response = yield
+      response = block.call
       record.update!(status: "succeeded", response_status: response.status, response_body: response.body)
       Idempotency::Response.new(status: response.status, body: response.body, replayed: false)
     rescue StandardError
@@ -44,13 +44,17 @@ module Idempotency
     attr_reader :organization, :key, :request_method, :request_path, :request_hash
 
     def find_or_create_record
-      record = organization.idempotency_keys.create!(
+      record = organization.idempotency_keys.find_or_initialize_by(key:)
+      return [record, false] if record.persisted?
+
+      record.assign_attributes(
         key:,
         request_method:,
         request_path:,
         request_hash:,
         locked_at: Time.current
       )
+      record.save!
       [record, true]
     rescue ActiveRecord::RecordNotUnique
       [organization.idempotency_keys.find_by!(key:), false]

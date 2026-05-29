@@ -15,7 +15,8 @@ class ApplicationController < ActionController::API
     response.set_header("X-Correlation-ID", Current.correlation_id)
   end
 
-  def render_success(body, status: :ok)
+  def render_success(body = nil, status: :ok, **body_kwargs)
+    body = body_kwargs if body.nil?
     render json: body, status:
   end
 
@@ -69,6 +70,8 @@ class ApplicationController < ActionController::API
   end
 
   def render_application_error(error)
+    write_error_audit_log(error)
+
     render json: {
       error: {
         code: error.code,
@@ -78,5 +81,24 @@ class ApplicationController < ActionController::API
         correlation_id: Current.correlation_id
       }
     }, status: error.http_status
+  end
+
+  def write_error_audit_log(error)
+    return if Current.organization.blank?
+
+    Current.organization.audit_logs.create!(
+      actor_type: "api_key",
+      action: "#{request.request_method} #{request.path}",
+      subject_type: params[:controller] || "unknown",
+      request_id: request.request_id,
+      correlation_id: Current.correlation_id,
+      ip_address: request.remote_ip,
+      user_agent: request.user_agent,
+      metadata: {
+        status: Rack::Utils.status_code(error.http_status),
+        error_code: error.code,
+        params: request.filtered_parameters.except("controller", "action")
+      }
+    )
   end
 end
