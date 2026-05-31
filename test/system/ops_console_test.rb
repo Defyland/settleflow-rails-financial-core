@@ -63,8 +63,9 @@ class OpsConsoleTest < ApplicationSystemTestCase
     click_link "Pix review"
     assert_text "Manual Review Receiver"
 
-    find(:link, @pending_pix_payment.public_id.to_s.first(8), href: ops_pix_payment_path(@pending_pix_payment.public_id)).click
-    assert_current_path ops_pix_payment_path(@pending_pix_payment.public_id), ignore_query: true, wait: 10
+    assert_selector :link, @pending_pix_payment.public_id.to_s.first(8), href: ops_pix_payment_path(@pending_pix_payment.public_id)
+    visit ops_pix_payment_path(@pending_pix_payment.public_id)
+    assert_current_path ops_pix_payment_path(@pending_pix_payment.public_id), ignore_query: true
     assert_text "RISK SCORE"
 
     click_button "Reject"
