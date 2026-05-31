@@ -1,12 +1,18 @@
 require "rack/attack"
 
 class Rack::Attack
+  def self.api_key_throttle_discriminator(raw_api_key)
+    return if raw_api_key.blank?
+
+    OpenSSL::HMAC.hexdigest("SHA256", Rails.application.secret_key_base, raw_api_key.to_s)
+  end
+
   throttle("api/ip", limit: ENV.fetch("RATE_LIMIT_PER_MINUTE", 120).to_i, period: 60.seconds) do |request|
     request.ip if request.path.start_with?("/v1")
   end
 
   throttle("api/key", limit: ENV.fetch("RATE_LIMIT_PER_API_KEY_PER_MINUTE", 240).to_i, period: 60.seconds) do |request|
-    request.get_header("HTTP_X_API_KEY").presence if request.path.start_with?("/v1")
+    api_key_throttle_discriminator(request.get_header("HTTP_X_API_KEY")) if request.path.start_with?("/v1")
   end
 
   self.throttled_responder = lambda do |request|
