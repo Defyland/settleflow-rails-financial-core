@@ -42,4 +42,21 @@ class LedgerJournalPosterTest < ActiveSupport::TestCase
 
     assert_empty JournalEntry.where(event_type: "test.bad_entry")
   end
+
+  test "prevents mutation and deletion of posted ledger records" do
+    journal = Ledger::JournalPoster.call(
+      organization: @organization,
+      event_type: "test.immutable_entry",
+      lines: [
+        { account: @source_wallet.liability_account, direction: "debit", amount_cents: 2_500, currency: "BRL" },
+        { account: @destination_wallet.liability_account, direction: "credit", amount_cents: 2_500, currency: "BRL" }
+      ]
+    )
+    line = journal.ledger_lines.first
+
+    assert_raises(ActiveRecord::ReadOnlyRecord) { journal.update!(metadata: { corrected: true }) }
+    assert_raises(ActiveRecord::ReadOnlyRecord) { journal.destroy! }
+    assert_raises(ActiveRecord::ReadOnlyRecord) { line.update!(amount_cents: 1_000) }
+    assert_raises(ActiveRecord::ReadOnlyRecord) { line.destroy! }
+  end
 end
