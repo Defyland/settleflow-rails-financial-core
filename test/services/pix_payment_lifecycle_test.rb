@@ -42,6 +42,24 @@ class PixPaymentLifecycleTest < ActiveSupport::TestCase
     assert_equal 0, Ledger::AccountLocator.pix_clearing(organization: @organization, currency: "BRL").balance_cents
   end
 
+  test "does not settle from a stale approved instance after another worker settled it" do
+    pix_payment = create_pix_payment(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "pix-stale-settle",
+      pix_key: "stale-settle@example.com",
+      amount_cents: 3_000
+    )
+    stale_pix_payment = PixPayment.find(pix_payment.id)
+
+    PixPayments::Settle.call(organization: @organization, pix_payment:)
+
+    assert_raises(Errors::ValidationError) do
+      PixPayments::Settle.call(organization: @organization, pix_payment: stale_pix_payment)
+    end
+    assert_equal 1, @organization.journal_entries.where(reference: pix_payment, event_type: "pix.payment.settled").count
+  end
+
   test "reverses settled payments through a compensating journal entry" do
     pix_payment = create_pix_payment(
       organization: @organization,
@@ -66,6 +84,25 @@ class PixPaymentLifecycleTest < ActiveSupport::TestCase
     assert_equal 20_000, Ledger::AccountLocator.platform_cash(organization: @organization, currency: "BRL").balance_cents
     assert_equal "pix.payment.reversed", OutboxEvent.last.event_type
     assert_equal "reverse-corr", OutboxEvent.last.correlation_id
+  end
+
+  test "does not reverse from a stale settled instance after another worker reversed it" do
+    pix_payment = create_pix_payment(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "pix-stale-reverse",
+      pix_key: "stale-reverse@example.com",
+      amount_cents: 3_000
+    )
+    PixPayments::Settle.call(organization: @organization, pix_payment:)
+    stale_pix_payment = PixPayment.find(pix_payment.id)
+
+    PixPayments::Reverse.call(organization: @organization, pix_payment:, reason: "provider_returned")
+
+    assert_raises(Errors::ValidationError) do
+      PixPayments::Reverse.call(organization: @organization, pix_payment: stale_pix_payment, reason: "provider_returned")
+    end
+    assert_equal 1, @organization.journal_entries.where(reference: pix_payment, event_type: "pix.payment.reversed").count
   end
 
   test "does not reverse payments that have not settled" do

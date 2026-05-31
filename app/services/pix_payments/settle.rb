@@ -12,10 +12,11 @@ module PixPayments
 
     def call
       raise Errors::ValidationError.new("Pix payment belongs to another organization") if pix_payment.organization_id != organization.id
-      raise Errors::ValidationError.new("Pix payment must be approved before settlement", details: { status: pix_payment.status }) unless pix_payment.approved?
 
       ActiveRecord::Base.transaction do
         pix_payment.lock!
+        raise Errors::ValidationError.new("Pix payment must be approved before settlement", details: { status: pix_payment.status }) unless pix_payment.approved?
+
         Accounts::BootstrapOrganizationLedger.call(organization:, currency: pix_payment.currency)
         journal_entry = Ledger::JournalPoster.call(
           organization:,

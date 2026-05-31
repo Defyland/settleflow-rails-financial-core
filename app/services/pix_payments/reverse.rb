@@ -13,10 +13,11 @@ module PixPayments
 
     def call
       raise Errors::ValidationError.new("Pix payment belongs to another organization") if pix_payment.organization_id != organization.id
-      raise Errors::ValidationError.new("Only settled Pix payments can be reversed", details: { status: pix_payment.status }) unless pix_payment.settled?
 
       ActiveRecord::Base.transaction do
         pix_payment.lock!
+        raise Errors::ValidationError.new("Only settled Pix payments can be reversed", details: { status: pix_payment.status }) unless pix_payment.settled?
+
         Accounts::BootstrapOrganizationLedger.call(organization:, currency: pix_payment.currency)
         journal_entry = Ledger::JournalPoster.call(
           organization:,
