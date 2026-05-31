@@ -52,6 +52,46 @@ class OutboxPublishJobTest < ActiveJob::TestCase
     assert_includes enqueued_jobs.map { |job| job[:job] }, OutboxPublishJob
   end
 
+  test "does not publish an event currently claimed by another worker" do
+    organization = create_organization
+    wallet = create_wallet(organization:)
+    publisher = RecordingOutboxPublisher.new
+    Rails.application.config.x.outbox.publisher = publisher
+    event = OutboxEvents::Emit.call(
+      organization:,
+      aggregate: wallet,
+      event_type: "wallet.created",
+      payload: { wallet_id: wallet.public_id }
+    )
+    event.update!(status: "publishing", last_attempted_at: Time.current)
+
+    OutboxPublishJob.perform_now(event.id)
+
+    assert_empty publisher.envelopes
+    assert event.reload.publishing?
+    assert_equal 0, event.attempts
+  end
+
+  test "reclaims stale publishing events" do
+    organization = create_organization
+    wallet = create_wallet(organization:)
+    publisher = RecordingOutboxPublisher.new
+    Rails.application.config.x.outbox.publisher = publisher
+    event = OutboxEvents::Emit.call(
+      organization:,
+      aggregate: wallet,
+      event_type: "wallet.created",
+      payload: { wallet_id: wallet.public_id }
+    )
+    event.update!(status: "publishing", last_attempted_at: 30.minutes.ago)
+
+    OutboxPublishJob.perform_now(event.id)
+
+    assert_equal 1, publisher.envelopes.size
+    assert event.reload.published?
+    assert_equal 1, event.attempts
+  end
+
   test "dead letters after the retry budget is exhausted" do
     organization = create_organization
     wallet = create_wallet(organization:)

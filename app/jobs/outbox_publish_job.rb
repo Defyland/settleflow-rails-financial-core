@@ -5,7 +5,7 @@ class OutboxPublishJob < ApplicationJob
 
   def perform(outbox_event_id)
     event = OutboxEvent.find(outbox_event_id)
-    return unless event.publishable?
+    return unless event.claim_for_publish!
 
     envelope = Outbox::Publisher.envelope_for(event)
     delivery_result = Outbox::Publisher.publisher.publish(envelope)
