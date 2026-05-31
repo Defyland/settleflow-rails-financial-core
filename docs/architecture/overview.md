@@ -7,7 +7,7 @@
 3. v1 controllers authenticate `X-Api-Key` and assign `Current.organization`.
 4. Ops controllers authenticate Rails sessions and assign `Current.user` through `Current.session`.
 5. Mutating API endpoints run through `Idempotency::Runner`; operator actions write explicit audit records.
-6. Service objects open database transactions, validate state, post journal entries, update projections, and emit outbox events.
+6. Service objects open database transactions, lock mutable financial rows, validate current state, post journal entries, update projections, and emit outbox events.
 7. ActiveJob workers publish outbox events or settle approved Pix payments.
 
 ## Core boundaries
@@ -40,7 +40,8 @@ flowchart LR
 
 ## Transaction boundaries
 
-- Funding, transfer, Pix creation, Pix settlement, and reconciliation each run in a single database transaction.
+- Funding, transfer, Pix creation, Pix settlement, Pix reversal, and reconciliation each run in a single database transaction.
 - Wallet projections are locked before debits to prevent concurrent overdrafts.
 - Journal entries are validated for balanced debit/credit totals before persistence.
+- Posted journal entries and ledger lines reject update and delete attempts through read-only guards.
 - Outbox rows are created in the same transaction as ledger mutations.

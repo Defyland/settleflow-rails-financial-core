@@ -8,11 +8,11 @@ This guide documents the points a senior Rails interviewer should validate in Se
 
 Financial balances must be explainable from immutable accounting facts. SettleFlow records money movement as balanced journal entries and ledger lines. Wallet balances are read projections derived from those ledger accounts, not mutable business truth stored directly on the wallet row.
 
-This lets the system answer audit questions such as "why is this balance what it is?", rebuild projections after bugs, and prove that every financial mutation is balanced before state changes are exposed to users.
+This lets the system answer audit questions such as "why is this balance what it is?", rebuild projections after bugs, and prove that every financial mutation is balanced before state changes are exposed to users. Posted journal entries and ledger lines reject update and delete attempts through Active Record read-only guards.
 
 ### Counterpoint to challenge
 
-Derived projections can become stale or inconsistent if the transaction boundary is weak. A senior candidate should acknowledge that projections improve reads, but only when they are updated atomically with the journal entry or can be rebuilt deterministically.
+Derived projections can become stale or inconsistent if the transaction boundary is weak. A senior candidate should acknowledge that projections improve reads, but only when they are updated atomically with the journal entry or can be rebuilt deterministically. The current append-only guard protects normal application writes; a stricter regulated deployment would add database triggers, narrower database roles, or append-only audit replication.
 
 ### Why this repository does not go further
 
@@ -76,7 +76,7 @@ The repository demonstrates tenant-scoped idempotent command handling inside Pos
 
 ### What the candidate should explain
 
-SettleFlow writes domain state and outbox events in the same database transaction. Active Job/Solid Queue then publishes outbox events asynchronously through a configured adapter. Failed publishing attempts remain pending with a scheduled retry; exhausted events move to `dead_lettered` with error evidence. Successful delivery stores publisher, destination, message ID, and payload hash.
+SettleFlow writes domain state and outbox events in the same database transaction. Active Job/Solid Queue then claims publishable events with a `publishing` lease and publishes through a configured adapter. Freshly claimed rows are skipped by concurrent workers; stale publishing leases can be reclaimed. Failed publishing attempts remain pending with a scheduled retry; exhausted events move to `dead_lettered` with error evidence. Successful delivery stores publisher, destination, message ID, and payload hash.
 
 This avoids the classic bug where financial state commits but the event is lost.
 
@@ -121,7 +121,7 @@ The goal is a focused financial core and operations console. Adding distributed 
 
 ### What the candidate should explain
 
-SettleFlow separates API tenant access from human operator access. API requests are organization-scoped through API credentials with prefixes, HMAC digests, scopes, revocation, expiry, and last-used tracking. Browser operations use Rails sessions and operator roles. Mutating operator actions are capability-gated through a policy object and audited with actor, request, correlation, IP, user agent, subject, and metadata.
+SettleFlow separates API tenant access from human operator access. API requests are organization-scoped through API credentials with prefixes, HMAC digests, scopes, revocation, expiry, and last-used tracking. API throttling uses HMAC-digested discriminators instead of raw credentials. Browser operations use Rails sessions and operator roles. Mutating operator actions are capability-gated through a policy object and audited with actor, request, correlation, IP, user agent, subject, and metadata.
 
 Tenant isolation is enforced by scoping API queries through the current organization and by validating cross-organization service calls.
 
@@ -167,6 +167,6 @@ This is a portfolio repository, not a regulated production rollout. It avoids fa
 
 ## What was resolved in this repository
 
-- Ledger invariants, projection updates, atomic idempotency, stale idempotency lock recovery, outbox adapter delivery/retry/dead-letter behavior, API credential scope/revocation, RBAC denial, Pix rejection, Pix reversal, reconciliation evidence, and tenant-bound service checks are covered by automated tests.
+- Ledger invariants, append-only ledger guards, projection updates, atomic idempotency, stale idempotency lock recovery, outbox claim/retry/dead-letter behavior, HTTP publisher signatures/timeouts, API credential scope/revocation, RBAC denial, Pix stale-state revalidation, Pix rejection, Pix reversal, reconciliation evidence, and tenant-bound service checks are covered by automated tests.
 - OpenAPI, ADRs, runbooks, diagrams, benchmark notes, CI, Docker, security scans, and Rails 8 deployment defaults are present.
 - The remaining gaps are documented as intentional production follow-ups rather than hidden omissions.

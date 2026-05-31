@@ -8,6 +8,7 @@ SettleFlow needs a Rails API, operator surface, PostgreSQL, Solid Queue workers,
 - PostgreSQL-backed ledger, projections, sessions, and outbox events.
 - Health, readiness, metrics, structured logs, and OpenTelemetry hooks.
 - CI and benchmark coverage for the financial workflow slice.
+- Runtime pins through `.ruby-version` and `.tool-versions` for repeatable local review.
 
 ## Deferred platform work
 

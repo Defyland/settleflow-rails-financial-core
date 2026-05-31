@@ -26,7 +26,7 @@ Many fintech demos store mutable balances directly on an account row. That hides
 - Funding, internal transfer, Pix approval/review/rejection, Pix settlement, Pix reversal, and reconciliation flows.
 - Authenticated `/ops` backoffice for dashboard KPIs, paginated wallet statements, Pix manual review, ledger drill-downs, reconciliation, outbox retry, and audit inspection.
 - Role-based operator capabilities for read-only, operator, and admin workflows.
-- Transactional outbox with pluggable log/HTTP publishers, delivery metadata, payload hashes, retry backoff, next-attempt visibility, and dead-letter evidence.
+- Transactional outbox with pluggable log/HTTP publishers, claim leases, delivery metadata, payload hashes, retry backoff, next-attempt visibility, and dead-letter evidence.
 - Audit logs, request IDs, correlation IDs, Prometheus metrics, readiness checks, and OpenTelemetry wiring.
 - Minitest coverage across models, services, requests, authorization, failure scenarios, jobs, ledger invariants, Rails auth, and the Hotwire operator surface.
 
@@ -74,7 +74,7 @@ SettleFlow uses a transactional outbox table and ActiveJob jobs. Financial servi
 
 ## 10. Database design
 
-The schema uses foreign keys, unique constraints per tenant, check constraints for ledger directions and account types, positive amount checks, UUID public IDs, and optimistic locking on wallets/projections. Money is stored as integer cents. Ledger entries are the source of truth; projections are derived read models.
+The schema uses foreign keys, unique constraints per tenant, check constraints for ledger directions and account types, positive amount checks, UUID public IDs, and optimistic locking on wallets/projections. Money is stored as integer cents. Ledger entries are the source of truth; projections are derived read models. Posted journal entries and ledger lines are append-only through Active Record read-only guards.
 
 ## 11. Testing strategy
 
@@ -107,7 +107,7 @@ k6 scenarios are in [benchmarks/k6-financial-workflow.js](benchmarks/k6-financia
 - All v1 endpoints require `X-Api-Key`.
 - Human operators authenticate through Rails sessions backed by `bcrypt` password hashes.
 - Tenant isolation is enforced by scoping every query through `current_organization`.
-- Rack::Attack throttles by IP and API key.
+- Rack::Attack throttles by IP and HMAC-digested API-key discriminators.
 - Idempotency prevents duplicate financial commands.
 - Inputs are validated at service/model/database layers.
 - Secrets are supplied through environment variables.
@@ -134,6 +134,8 @@ bundle install
 bin/rails db:create db:migrate db:seed
 bin/rails server
 ```
+
+Ruby is pinned in both `.ruby-version` and `.tool-versions`. The repo also pins local Node.js and ripgrep versions for contributors using asdf-compatible tooling.
 
 Default seed creates a demo organization. Development API key:
 

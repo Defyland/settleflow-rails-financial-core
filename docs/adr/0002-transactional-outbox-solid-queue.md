@@ -10,11 +10,12 @@ Financial workflows emit integration events after ledger changes. Publishing dir
 
 ## Decision
 
-Services write `OutboxEvent` rows in the same transaction as ledger mutations. `OutboxPublishJob` publishes pending rows asynchronously. Solid Queue provides the local production-grade ActiveJob backend, while the outbox table preserves replay and dead-letter state.
+Services write `OutboxEvent` rows in the same transaction as ledger mutations. `OutboxPublishJob` claims publishable rows with a short lease, publishes them asynchronously through a log or HTTP adapter, and marks them published only after adapter acknowledgement. Solid Queue provides the local production-grade ActiveJob backend, while the outbox table preserves replay and dead-letter state.
 
 ## Consequences
 
 - Event creation is atomic with financial state changes.
 - Publishing can be retried independently.
-- A future RabbitMQ or Redpanda adapter can replace the simulated publisher without changing domain services.
-- Operators need runbooks for pending and dead-lettered events.
+- Concurrent workers skip rows already claimed by another worker; stale publishing leases can be reclaimed.
+- A future RabbitMQ or Redpanda adapter can replace the built-in log/HTTP publishers without changing domain services.
+- Operators need runbooks for pending, publishing, and dead-lettered events.

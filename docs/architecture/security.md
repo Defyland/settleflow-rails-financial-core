@@ -24,10 +24,10 @@ Primary risks:
 - Mutating endpoints support idempotency records keyed by organization. Financial command effects and idempotency response persistence share the same database transaction, and stale processing locks can be retried.
 - Wallet projections use optimistic locking and row locks for debit checks.
 - Database constraints enforce unique tenant references and positive amounts.
-- `Rack::Attack` throttles by IP and API key.
+- `Rack::Attack` throttles by IP and HMAC-digested API-key discriminators so raw credentials are not reused as cache keys.
 - Audit logs capture request status and filtered params.
 - Structured logs include request and correlation IDs.
-- Outbox events prevent event loss after ledger commits.
+- Outbox events prevent event loss after ledger commits, use claim leases to avoid concurrent duplicate publishing, and record delivery metadata after adapter acknowledgement.
 
 ## Authorization matrix
 
@@ -56,3 +56,6 @@ Use environment variables for production secrets:
 - `RATE_LIMIT_PER_MINUTE`
 - `RATE_LIMIT_PER_API_KEY_PER_MINUTE`
 - `OUTBOX_WEBHOOK_URL`
+- `OUTBOX_WEBHOOK_SECRET`
+- `OUTBOX_HTTP_OPEN_TIMEOUT`
+- `OUTBOX_HTTP_READ_TIMEOUT`

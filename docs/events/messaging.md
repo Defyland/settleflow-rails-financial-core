@@ -1,6 +1,6 @@
 # Messaging and Outbox Architecture
 
-SettleFlow uses a transactional outbox and ActiveJob. Publisher delivery is adapter-based: the default adapter writes a canonical event envelope to structured logs, and `OUTBOX_WEBHOOK_URL` enables an HTTP publisher that posts the same envelope with the outbox public ID as the downstream idempotency key. This keeps the repository self-contained while preserving the seam needed for RabbitMQ, Redpanda, Pub/Sub, or webhook delivery.
+SettleFlow uses a transactional outbox and ActiveJob. Publisher delivery is adapter-based: the default adapter writes a canonical event envelope to structured logs, and `OUTBOX_WEBHOOK_URL` enables an HTTP publisher that posts the same envelope with the outbox public ID as the downstream idempotency key. The HTTP publisher has bounded open/read timeouts and can sign payloads with `OUTBOX_WEBHOOK_SECRET`. This keeps the repository self-contained while preserving the seam needed for RabbitMQ, Redpanda, Pub/Sub, or webhook delivery.
 
 For public versioned financial event contracts, see [docs/events/README.md](README.md). Internal outbox event names may differ from the public contract taxonomy; publishers should map internal domain events to the versioned public schema before exposing them to external consumers.
 
@@ -27,8 +27,6 @@ Current adapters:
 
 Future RabbitMQ mapping:
 
-Future RabbitMQ mapping:
-
 - exchange: `settleflow.events`
 - queue: `settleflow.events.financial`
 - retry queue: `settleflow.events.retry`
@@ -41,6 +39,9 @@ Future RabbitMQ mapping:
 - `OutboxEvent.public_id` is the message ID.
 - `correlation_id` is copied from request context.
 - Consumers must use message ID for idempotency.
+- Workers claim events by moving them to `publishing` before adapter calls.
+- Concurrent workers skip fresh `publishing` rows.
+- Stale `publishing` leases can be reclaimed after the configured timeout.
 - Publishing increments `attempts` only after the configured adapter is called.
 - Successful publication stores publisher name, destination, downstream message ID, and a SHA-256 hash of the canonical envelope.
 - Failed publication records `error_class`, `last_error`, `last_attempted_at`, and a `next_attempt_at` backoff timestamp.
