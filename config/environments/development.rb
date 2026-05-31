@@ -25,6 +25,11 @@ Rails.application.configure do
 
   # Change to :null_store to avoid any caching.
   config.cache_store = :memory_store
+  config.active_storage.service = :local
+  config.action_mailer.default_url_options = {
+    host: ENV.fetch("APP_HOST", "localhost"),
+    port: ENV.fetch("APP_PORT", 3000)
+  }
 
   # Print deprecation notices to the Rails logger.
   config.active_support.deprecation = :log

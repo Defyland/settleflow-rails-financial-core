@@ -5,11 +5,19 @@ class OutboxPublishJob < ApplicationJob
 
   def perform(outbox_event_id)
     event = OutboxEvent.find(outbox_event_id)
-    return unless event.pending?
+    return unless event.publishable?
 
     event.publish!
-  rescue StandardError => e
-    event&.dead_letter!(e)
+  rescue ActiveRecord::RecordNotFound
     raise
+  rescue StandardError => e
+    event&.mark_publish_failed!(e)
+    OutboxPublishJob.set(wait_until: event.next_attempt_at).perform_later(event.id) if event&.pending?
+    Rails.logger.error(
+      event: "outbox.publish_failed",
+      outbox_event_id: event&.id,
+      error_class: e.class.name,
+      error_message: e.message
+    )
   end
 end

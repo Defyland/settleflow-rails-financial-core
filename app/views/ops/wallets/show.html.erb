@@ -1,0 +1,56 @@
+<header class="page-header">
+  <div>
+    <h1>Wallet <%= @wallet.external_id %></h1>
+    <p><%= @wallet.customer.legal_name %> · <%= @wallet.organization.slug %></p>
+  </div>
+  <button class="copy-button" data-controller="copy" data-copy-text-value="<%= @wallet.public_id %>" data-action="copy#copy">Copy ID</button>
+</header>
+
+<section class="metric-grid">
+  <div class="metric">
+    <span>Available</span>
+    <strong><%= money_cents(@wallet.balance_projection.available_cents, @wallet.currency) %></strong>
+  </div>
+  <div class="metric">
+    <span>Pending</span>
+    <strong><%= money_cents(@wallet.balance_projection.pending_cents, @wallet.currency) %></strong>
+  </div>
+  <div class="metric">
+    <span>Blocked</span>
+    <strong><%= money_cents(@wallet.balance_projection.blocked_cents, @wallet.currency) %></strong>
+  </div>
+  <div class="metric">
+    <span>Status</span>
+    <strong><%= @wallet.status.humanize %></strong>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel__header">
+    <h2>Statement</h2>
+  </div>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Entry</th>
+        <th>Event</th>
+        <th>Account</th>
+        <th>Direction</th>
+        <th>Amount</th>
+        <th>Occurred</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @ledger_lines.each do |line| %>
+        <tr>
+          <td><%= link_to compact_id(line.journal_entry), ops_ledger_entry_path(line.journal_entry.public_id) %></td>
+          <td><%= line.journal_entry.event_type %></td>
+          <td><%= line.ledger_account.code %></td>
+          <td><%= line.direction %></td>
+          <td><%= money_cents(line.amount_cents, line.currency) %></td>
+          <td><%= line.created_at.to_fs(:short) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</section>

@@ -6,11 +6,14 @@ gem "rails", "~> 8.1.3"
 gem "pg", "~> 1.1"
 # Use the Puma web server [https://github.com/puma/puma]
 gem "puma", ">= 5.0"
-# Build JSON APIs with ease [https://github.com/rails/jbuilder]
-# gem "jbuilder"
+# Use the modern Rails asset and Hotwire defaults
+gem "importmap-rails"
+gem "propshaft"
+gem "stimulus-rails"
+gem "turbo-rails"
 
 # Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
-# gem "bcrypt", "~> 3.1.7"
+gem "bcrypt", "~> 3.1"
 
 # Windows does not include zoneinfo files, so bundle the tzinfo-data gem
 gem "tzinfo-data", platforms: %i[ windows jruby ]
@@ -22,6 +25,10 @@ gem "solid_cable"
 
 # Reduces boot times through caching; required in config/boot.rb
 gem "bootsnap", require: false
+
+# Rails 8 deployment/runtime defaults
+gem "kamal", require: false
+gem "thruster", require: false
 
 # Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin Ajax possible
 # gem "rack-cors"
@@ -48,9 +55,7 @@ group :development, :test do
 end
 
 group :test do
-  gem "factory_bot_rails"
-  gem "faker"
-  gem "rspec-rails"
-  gem "shoulda-matchers"
+  gem "capybara"
+  gem "selenium-webdriver"
   gem "simplecov", require: false
 end

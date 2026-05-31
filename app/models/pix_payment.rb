@@ -3,6 +3,7 @@ class PixPayment < ApplicationRecord
   belongs_to :wallet
   belongs_to :journal_entry, optional: true
   belongs_to :settlement_journal_entry, class_name: "JournalEntry", optional: true
+  belongs_to :reversal_journal_entry, class_name: "JournalEntry", optional: true
 
   enum :status, {
     created: "created",
@@ -10,7 +11,8 @@ class PixPayment < ApplicationRecord
     approved: "approved",
     rejected: "rejected",
     settled: "settled",
-    failed: "failed"
+    failed: "failed",
+    reversed: "reversed"
   }
 
   validates :external_id, :pix_key, :receiver_name, :amount_cents, :currency, presence: true

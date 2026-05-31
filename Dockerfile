@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # check=error=true
 
-ARG RUBY_VERSION=3.3.6
+ARG RUBY_VERSION=3.4.2
 FROM docker.io/library/ruby:$RUBY_VERSION AS base
 
 WORKDIR /rails
@@ -9,7 +9,9 @@ WORKDIR /rails
 ENV RAILS_ENV="production" \
     BUNDLE_DEPLOYMENT="1" \
     BUNDLE_PATH="/usr/local/bundle" \
-    BUNDLE_WITHOUT="development"
+    BUNDLE_WITHOUT="development:test" \
+    THRUSTER_HTTP_PORT="3000" \
+    THRUSTER_TARGET_PORT="3001"
 
 FROM base AS build
 
@@ -23,6 +25,7 @@ RUN bundle install && \
 COPY . .
 
 RUN bundle exec bootsnap precompile -j 1 app/ lib/
+RUN SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile
 
 FROM base
 
@@ -36,4 +39,4 @@ COPY --chown=rails:rails --from=build /rails /rails
 ENTRYPOINT ["/rails/bin/docker-entrypoint"]
 
 EXPOSE 3000
-CMD ["./bin/rails", "server"]
+CMD ["bundle", "exec", "thrust", "./bin/rails", "server"]

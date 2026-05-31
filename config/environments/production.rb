@@ -41,7 +41,12 @@ Rails.application.configure do
   config.active_support.report_deprecations = false
 
   # Replace the default in-process memory cache store with a durable alternative.
-  # config.cache_store = :mem_cache_store
+  config.cache_store = :solid_cache_store
+  config.active_storage.service = :local
+  config.action_mailer.default_url_options = {
+    host: ENV.fetch("APP_HOST", "settleflow.example.com"),
+    protocol: "https"
+  }
 
   # Replace the default in-process and non-durable queuing backend for Active Job.
   config.active_job.queue_adapter = :solid_queue

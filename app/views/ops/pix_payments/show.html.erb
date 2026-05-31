@@ -1,0 +1,66 @@
+<header class="page-header">
+  <div>
+    <h1>Pix <%= @pix_payment.external_id %></h1>
+    <p><%= @pix_payment.receiver_name %> · <%= @pix_payment.pix_key %></p>
+  </div>
+  <div class="actions">
+    <% if @pix_payment.approved? && can?(:settle_pix_payment) %>
+      <%= button_to "Settle", settle_ops_pix_payment_path(@pix_payment.public_id), method: :post, class: "button" %>
+    <% end %>
+    <% if @pix_payment.pending_review? && can?(:reject_pix_payment) %>
+      <%= button_to "Reject", reject_ops_pix_payment_path(@pix_payment.public_id), method: :post, params: { reason: "operator_rejected" }, class: "button button--danger" %>
+    <% end %>
+    <% if @pix_payment.settled? && can?(:reverse_pix_payment) %>
+      <%= button_to "Reverse", reverse_ops_pix_payment_path(@pix_payment.public_id), method: :post, params: { reason: "operator_reversal" }, class: "button button--danger" %>
+    <% end %>
+    <button class="copy-button" data-controller="copy" data-copy-text-value="<%= @pix_payment.public_id %>" data-action="copy#copy">Copy ID</button>
+  </div>
+</header>
+
+<section class="metric-grid">
+  <div class="metric">
+    <span>Amount</span>
+    <strong><%= money_cents(@pix_payment.amount_cents, @pix_payment.currency) %></strong>
+  </div>
+  <div class="metric">
+    <span>Status</span>
+    <strong><%= @pix_payment.status.humanize %></strong>
+  </div>
+  <div class="metric">
+    <span>Risk score</span>
+    <strong><%= @pix_payment.risk_score %></strong>
+  </div>
+  <div class="metric">
+    <span>Failure code</span>
+    <strong><%= @pix_payment.failure_code || "none" %></strong>
+  </div>
+  <div class="metric">
+    <span>Reversal reason</span>
+    <strong><%= @pix_payment.reversal_reason || "none" %></strong>
+  </div>
+</section>
+
+<section class="grid-two">
+  <div class="panel">
+    <div class="panel__header">
+      <h2>Payment</h2>
+    </div>
+    <table class="table">
+      <tbody>
+        <tr><th>Organization</th><td><%= @pix_payment.organization.slug %></td></tr>
+        <tr><th>Wallet</th><td><%= link_to @pix_payment.wallet.external_id, ops_wallet_path(@pix_payment.wallet.public_id) %></td></tr>
+        <tr><th>Created</th><td><%= @pix_payment.created_at.to_fs(:long) %></td></tr>
+        <tr><th>Journal</th><td><%= @pix_payment.journal_entry ? link_to(compact_id(@pix_payment.journal_entry), ops_ledger_entry_path(@pix_payment.journal_entry.public_id)) : "none" %></td></tr>
+        <tr><th>Settlement</th><td><%= @pix_payment.settlement_journal_entry ? link_to(compact_id(@pix_payment.settlement_journal_entry), ops_ledger_entry_path(@pix_payment.settlement_journal_entry.public_id)) : "none" %></td></tr>
+        <tr><th>Reversal</th><td><%= @pix_payment.reversal_journal_entry ? link_to(compact_id(@pix_payment.reversal_journal_entry), ops_ledger_entry_path(@pix_payment.reversal_journal_entry.public_id)) : "none" %></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <div class="panel__header">
+      <h2>Metadata</h2>
+    </div>
+    <pre><%= JSON.pretty_generate(@pix_payment.metadata) %></pre>
+  </div>
+</section>

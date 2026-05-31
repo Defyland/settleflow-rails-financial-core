@@ -21,6 +21,6 @@ This repository follows the initiative-wide standards below.
 - settlement, payout, refund, MED, and reconciliation flows with explicit accounting reversals
 - large report exports and analytics boundaries that remain compatible with future ClickHouse usage
 
-## Phase 0 boundary
+## Current implementation boundary
 
-This repository intentionally stops before scaffolding Rails, the ledger engine, streaming infrastructure, settlement workers, or reconciliation importers. The goal of this phase is only to lock scope and standards.
+The repository now includes the Rails 8 application, financial ledger engine, API surface, transactional outbox, settlement workers, reconciliation flow, observability endpoints, and an authenticated Hotwire operations console. Remaining roadmap items are product extensions, not baseline gaps.

@@ -2,8 +2,10 @@
 set -euo pipefail
 
 bin/rails db:test:prepare
-bundle exec rspec
+COVERAGE=1 bin/rails test
+bin/rails test:system
 bin/rubocop
 bin/brakeman --no-pager
 bin/bundler-audit
 ruby -e "require 'yaml'; YAML.load_file('openapi.yaml'); puts 'openapi.yaml parsed'"
+ruby -rjson -e 'Dir["docs/events/*.v1.json"].sort.each { |path| schema = JSON.parse(File.read(path)); expected = File.basename(path, ".v1.json"); actual = schema.dig("properties", "event_type", "const"); abort("#{path}: event_type #{actual.inspect} does not match #{expected}") unless actual == expected; required_payload = schema.dig("properties", "payload", "required").to_a; abort("#{path}: payload traceability is not specified") if required_payload.empty?; puts "#{path} parsed" }'

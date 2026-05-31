@@ -1,0 +1,49 @@
+<header class="page-header">
+  <div>
+    <h1>Outbox events</h1>
+    <p>Transactional events awaiting publish, already published, or dead-lettered.</p>
+  </div>
+  <%= form_with url: ops_outbox_events_path, method: :get, class: "filters" do |form| %>
+    <%= form.search_field :q, value: @query, placeholder: "Search events" %>
+    <%= form.select :status, OutboxEvent.statuses.keys.map { |status| [status.humanize, status] }, { include_blank: "All statuses", selected: @status }, onchange: "this.form.requestSubmit()" %>
+    <%= form.submit "Search", class: "button button--secondary" %>
+  <% end %>
+</header>
+
+<section class="panel">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Event</th>
+        <th>Aggregate</th>
+        <th>Status</th>
+        <th>Attempts</th>
+        <th>Next attempt</th>
+        <th>Error</th>
+        <th>Created</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @outbox_events.each do |event| %>
+        <tr>
+          <td><%= compact_id(event) %></td>
+          <td><%= event.event_type %></td>
+          <td><%= event.aggregate_type %>#<%= event.aggregate_id %></td>
+          <td><%= status_badge(event.status) %></td>
+          <td><%= event.attempts %></td>
+          <td><%= event.next_attempt_at ? event.next_attempt_at.to_fs(:short) : "now" %></td>
+          <td><%= event.error_class || "none" %></td>
+          <td><%= event.created_at.to_fs(:short) %></td>
+          <td>
+            <% if !event.published? && can?(:retry_outbox_event) %>
+              <%= button_to "Retry", retry_ops_outbox_event_path(event.public_id), method: :post, class: "button button--secondary" %>
+            <% end %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+  <%= render "ops/shared/pagination" %>
+</section>

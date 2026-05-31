@@ -1,0 +1,36 @@
+<header class="page-header">
+  <div>
+    <h1>Ledger entry <%= compact_id(@journal_entry) %></h1>
+    <p><%= @journal_entry.event_type %> · <%= @journal_entry.organization.slug %></p>
+  </div>
+  <button class="copy-button" data-controller="copy" data-copy-text-value="<%= @journal_entry.public_id %>" data-action="copy#copy">Copy ID</button>
+</header>
+
+<section class="panel">
+  <div class="panel__header">
+    <h2>Lines</h2>
+    <span><%= status_badge(@journal_entry.status) %></span>
+  </div>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Account</th>
+        <th>Type</th>
+        <th>Direction</th>
+        <th>Amount</th>
+        <th>Currency</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @journal_entry.ledger_lines.each do |line| %>
+        <tr>
+          <td><%= line.ledger_account.code %></td>
+          <td><%= line.ledger_account.account_type %></td>
+          <td><%= line.direction %></td>
+          <td><%= money_cents(line.amount_cents, line.currency) %></td>
+          <td><%= line.currency %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</section>

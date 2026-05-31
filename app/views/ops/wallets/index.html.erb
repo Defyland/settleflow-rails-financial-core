@@ -1,0 +1,38 @@
+<header class="page-header">
+  <div>
+    <h1>Wallets</h1>
+    <p>Projected balances backed by liability ledger accounts.</p>
+  </div>
+  <%= form_with url: ops_wallets_path, method: :get, class: "filters" do |form| %>
+    <%= form.search_field :q, value: @query, placeholder: "Search wallets" %>
+    <%= form.submit "Search", class: "button button--secondary" %>
+  <% end %>
+</header>
+
+<section class="panel">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>External</th>
+        <th>Customer</th>
+        <th>Status</th>
+        <th>Available</th>
+        <th>Currency</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @wallets.each do |wallet| %>
+        <tr>
+          <td><%= link_to compact_id(wallet), ops_wallet_path(wallet.public_id) %></td>
+          <td><%= wallet.external_id %></td>
+          <td><%= wallet.customer.legal_name %></td>
+          <td><%= status_badge(wallet.status) %></td>
+          <td><%= money_cents(wallet.balance_projection.available_cents, wallet.currency) %></td>
+          <td><%= wallet.currency %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+  <%= render "ops/shared/pagination" %>
+</section>

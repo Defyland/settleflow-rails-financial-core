@@ -88,8 +88,10 @@ production:
   primary: &primary_production
     <<: *default
     database: settleflow_rails_financial_core_production
-    username: settleflow_rails_financial_core
+    username: <%= ENV.fetch("POSTGRES_USER", "settleflow_rails_financial_core") %>
     password: <%= ENV["SETTLEFLOW_RAILS_FINANCIAL_CORE_DATABASE_PASSWORD"] %>
+    host: <%= ENV.fetch("POSTGRES_HOST", "127.0.0.1") %>
+    port: <%= ENV.fetch("POSTGRES_PORT", 5432) %>
   cache:
     <<: *primary_production
     database: settleflow_rails_financial_core_production_cache

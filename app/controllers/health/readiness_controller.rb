@@ -1,5 +1,5 @@
 module Health
-  class ReadinessController < ApplicationController
+  class ReadinessController < ApiController
     def show
       ActiveRecord::Base.connection.execute("SELECT 1")
       render_success({ status: "ready", checks: { database: "ok" } })

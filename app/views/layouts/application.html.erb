@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>SettleFlow Ops</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+    <%= stylesheet_link_tag "application", "data-turbo-track": "reload" %>
+    <%= javascript_importmap_tags %>
+  </head>
+
+  <body>
+    <div class="shell">
+      <% if authenticated? %>
+        <aside class="sidebar">
+          <%= link_to "SettleFlow", ops_root_path, class: "brand" %>
+          <nav class="nav">
+            <%= link_to "Dashboard", ops_root_path %>
+            <%= link_to "Wallets", ops_wallets_path %>
+            <%= link_to "Pix review", ops_pix_payments_path(status: "pending_review") %>
+            <%= link_to "Ledger", ops_ledger_entries_path %>
+            <%= link_to "Reconciliation", ops_reconciliation_runs_path %>
+            <%= link_to "Outbox", ops_outbox_events_path %>
+            <%= link_to "Audit", ops_audit_logs_path %>
+          </nav>
+          <div class="operator">
+            <span><%= Current.user&.email_address %></span>
+            <span><%= Current.user&.role&.humanize %></span>
+            <%= button_to "Sign out", session_path, method: :delete, class: "link-button" %>
+          </div>
+        </aside>
+      <% end %>
+
+      <main class="content">
+        <% if flash[:alert].present? %>
+          <div class="flash flash--alert"><%= flash[:alert] %></div>
+        <% end %>
+        <% if flash[:notice].present? %>
+          <div class="flash flash--notice"><%= flash[:notice] %></div>
+        <% end %>
+
+        <%= yield %>
+      </main>
+    </div>
+  </body>
+</html>

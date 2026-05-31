@@ -1,0 +1,52 @@
+service: settleflow-financial-core
+
+image: ghcr.io/your-org/settleflow-financial-core
+
+servers:
+  web:
+    hosts:
+      - 203.0.113.10
+    options:
+      add-host: host.docker.internal:host-gateway
+  job:
+    hosts:
+      - 203.0.113.10
+    cmd: bin/jobs
+
+proxy:
+  ssl: true
+  host: settleflow.example.com
+  app_port: 3000
+  healthcheck:
+    path: /up
+
+registry:
+  server: ghcr.io
+  username: your-org
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+env:
+  clear:
+    RAILS_LOG_LEVEL: info
+    RAILS_SERVE_STATIC_FILES: true
+    SOLID_QUEUE_IN_PUMA: false
+    APP_HOST: settleflow.example.com
+    POSTGRES_HOST: host.docker.internal
+    POSTGRES_PORT: 5432
+    POSTGRES_USER: settleflow_rails_financial_core
+    SETTLEFLOW_OPERATOR_ROLE: admin
+  secret:
+    - RAILS_MASTER_KEY
+    - SETTLEFLOW_RAILS_FINANCIAL_CORE_DATABASE_PASSWORD
+    - SETTLEFLOW_OPERATOR_EMAIL
+    - SETTLEFLOW_OPERATOR_PASSWORD
+
+volumes:
+  - settleflow_storage:/rails/storage
+
+builder:
+  arch: arm64
+
+ssh:
+  user: deploy

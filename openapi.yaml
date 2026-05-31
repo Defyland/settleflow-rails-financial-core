@@ -756,6 +756,10 @@ components:
               type: string
               format: uuid
               nullable: true
+            reversal_journal_entry_id:
+              type: string
+              format: uuid
+              nullable: true
             pix_key:
               type: string
             receiver_name:
@@ -764,6 +768,13 @@ components:
               type: integer
             failure_code:
               type: string
+              nullable: true
+            reversal_reason:
+              type: string
+              nullable: true
+            reversed_at:
+              type: string
+              format: date-time
               nullable: true
     PixPaymentResponse:
       type: object
@@ -958,6 +969,21 @@ components:
         published_at:
           type: string
           format: date-time
+          nullable: true
+        next_attempt_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_attempted_at:
+          type: string
+          format: date-time
+          nullable: true
+        dead_lettered_at:
+          type: string
+          format: date-time
+          nullable: true
+        error_class:
+          type: string
           nullable: true
         last_error:
           type: string

@@ -33,8 +33,10 @@ jobs:
           bundler-cache: true
       - name: Prepare database
         run: bin/rails db:test:prepare
-      - name: Run tests with coverage
-        run: bundle exec rspec
+      - name: Run Minitest with coverage
+        run: COVERAGE=1 bin/rails test
+      - name: Run system tests
+        run: bin/rails test:system
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:
@@ -74,6 +76,15 @@ jobs:
           node-version: 22
       - name: Validate OpenAPI
         run: npx --yes @redocly/cli lint openapi.yaml
+
+  event-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ruby/setup-ruby@v1
+      - name: Validate financial event contracts
+        run: |
+          ruby -rjson -e 'Dir["docs/events/*.v1.json"].sort.each { |path| schema = JSON.parse(File.read(path)); expected = File.basename(path, ".v1.json"); actual = schema.dig("properties", "event_type", "const"); abort("#{path}: event_type #{actual.inspect} does not match #{expected}") unless actual == expected; required_payload = schema.dig("properties", "payload", "required").to_a; abort("#{path}: payload traceability is not specified") if required_payload.empty?; puts "#{path} parsed" }'
 
   docker:
     runs-on: ubuntu-latest

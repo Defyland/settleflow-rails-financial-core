@@ -1,0 +1,39 @@
+<header class="page-header">
+  <div>
+    <h1>Reconciliation</h1>
+    <p>Provider balances compared with platform cash ledger balances.</p>
+  </div>
+  <%= form_with url: ops_reconciliation_runs_path, method: :get, class: "filters" do |form| %>
+    <%= form.search_field :q, value: @query, placeholder: "Search runs" %>
+    <%= form.select :status, ReconciliationRun.statuses.keys.map { |status| [status.humanize, status] }, { include_blank: "All statuses", selected: @status }, onchange: "this.form.requestSubmit()" %>
+    <%= form.submit "Search", class: "button button--secondary" %>
+  <% end %>
+</header>
+
+<section class="panel">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Provider</th>
+        <th>Status</th>
+        <th>Provider balance</th>
+        <th>Ledger balance</th>
+        <th>Difference</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @runs.each do |run| %>
+        <tr>
+          <td><%= link_to run.statement_date.iso8601, ops_reconciliation_run_path(run.public_id) %></td>
+          <td><%= run.provider %></td>
+          <td><%= status_badge(run.status) %></td>
+          <td><%= money_cents(run.provider_balance_cents) %></td>
+          <td><%= money_cents(run.ledger_balance_cents) %></td>
+          <td><%= money_cents(run.discrepancy_cents) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+  <%= render "ops/shared/pagination" %>
+</section>

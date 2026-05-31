@@ -1,0 +1,41 @@
+<header class="page-header">
+  <div>
+    <h1>Pix payments</h1>
+    <p>Risk decisions, review queue, approvals, and settlement status.</p>
+  </div>
+  <%= form_with url: ops_pix_payments_path, method: :get, class: "filters" do |form| %>
+    <%= form.search_field :q, value: @query, placeholder: "Search Pix" %>
+    <%= form.select :status, PixPayment.statuses.keys.map { |status| [status.humanize, status] }, { include_blank: "All statuses", selected: @status }, onchange: "this.form.requestSubmit()" %>
+    <%= form.submit "Search", class: "button button--secondary" %>
+  <% end %>
+</header>
+
+<section class="panel">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>External</th>
+        <th>Wallet</th>
+        <th>Status</th>
+        <th>Risk</th>
+        <th>Amount</th>
+        <th>Receiver</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @pix_payments.each do |payment| %>
+        <tr>
+          <td><%= link_to compact_id(payment), ops_pix_payment_path(payment.public_id) %></td>
+          <td><%= payment.external_id %></td>
+          <td><%= link_to compact_id(payment.wallet), ops_wallet_path(payment.wallet.public_id) %></td>
+          <td><%= status_badge(payment.status) %></td>
+          <td><%= payment.risk_score %></td>
+          <td><%= money_cents(payment.amount_cents, payment.currency) %></td>
+          <td><%= payment.receiver_name %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+  <%= render "ops/shared/pagination" %>
+</section>

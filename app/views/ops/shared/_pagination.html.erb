@@ -1,0 +1,16 @@
+<% if pagination.present? %>
+  <nav class="pagination">
+    <span>
+      Showing page <%= pagination.fetch(:page) %> of <%= pagination.fetch(:total_pages) %>
+      · <%= number_with_delimiter(pagination.fetch(:total)) %> records
+    </span>
+    <div>
+      <% if pagination.fetch(:page) > 1 %>
+        <%= link_to "Previous", url_for(request.query_parameters.merge(page: pagination.fetch(:page) - 1)), class: "button button--secondary" %>
+      <% end %>
+      <% if pagination.fetch(:page) < pagination.fetch(:total_pages) %>
+        <%= link_to "Next", url_for(request.query_parameters.merge(page: pagination.fetch(:page) + 1)), class: "button button--secondary" %>
+      <% end %>
+    </div>
+  </nav>
+<% end %>

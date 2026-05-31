@@ -10,10 +10,38 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_29_102000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_29_170200) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
+
+  create_table "active_storage_attachments", force: :cascade do |t|
+    t.bigint "blob_id", null: false
+    t.datetime "created_at", null: false
+    t.string "name", null: false
+    t.bigint "record_id", null: false
+    t.string "record_type", null: false
+    t.index ["blob_id"], name: "index_active_storage_attachments_on_blob_id"
+    t.index ["record_type", "record_id", "name", "blob_id"], name: "index_active_storage_attachments_uniqueness", unique: true
+  end
+
+  create_table "active_storage_blobs", force: :cascade do |t|
+    t.bigint "byte_size", null: false
+    t.string "checksum"
+    t.string "content_type"
+    t.datetime "created_at", null: false
+    t.string "filename", null: false
+    t.string "key", null: false
+    t.text "metadata"
+    t.string "service_name", null: false
+    t.index ["key"], name: "index_active_storage_blobs_on_key", unique: true
+  end
+
+  create_table "active_storage_variant_records", force: :cascade do |t|
+    t.bigint "blob_id", null: false
+    t.string "variation_digest", null: false
+    t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
+  end
 
   create_table "audit_logs", force: :cascade do |t|
     t.string "action", null: false
@@ -192,9 +220,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_29_102000) do
     t.integer "attempts", default: 0, null: false
     t.string "correlation_id"
     t.datetime "created_at", null: false
+    t.datetime "dead_lettered_at"
+    t.string "error_class"
     t.string "event_type", null: false
     t.string "idempotency_key"
+    t.datetime "last_attempted_at"
     t.string "last_error"
+    t.datetime "next_attempt_at"
     t.bigint "organization_id", null: false
     t.jsonb "payload", default: {}, null: false
     t.uuid "public_id", default: -> { "gen_random_uuid()" }, null: false
@@ -205,6 +237,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_29_102000) do
     t.index ["organization_id"], name: "index_outbox_events_on_organization_id"
     t.index ["public_id"], name: "index_outbox_events_on_public_id", unique: true
     t.index ["status", "created_at"], name: "index_outbox_events_on_status_and_created_at"
+    t.index ["status", "next_attempt_at"], name: "idx_outbox_status_next_attempt"
   end
 
   create_table "pix_payments", force: :cascade do |t|
@@ -221,6 +254,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_29_102000) do
     t.string "pix_key", null: false
     t.uuid "public_id", default: -> { "gen_random_uuid()" }, null: false
     t.string "receiver_name", null: false
+    t.bigint "reversal_journal_entry_id"
+    t.string "reversal_reason"
+    t.datetime "reversed_at"
     t.integer "risk_score", default: 0, null: false
     t.bigint "settlement_journal_entry_id"
     t.string "status", default: "created", null: false
@@ -231,9 +267,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_29_102000) do
     t.index ["organization_id", "idempotency_key"], name: "index_pix_payments_on_organization_id_and_idempotency_key", unique: true, where: "(idempotency_key IS NOT NULL)"
     t.index ["organization_id"], name: "index_pix_payments_on_organization_id"
     t.index ["public_id"], name: "index_pix_payments_on_public_id", unique: true
+    t.index ["reversal_journal_entry_id"], name: "index_pix_payments_on_reversal_journal_entry_id"
     t.index ["settlement_journal_entry_id"], name: "index_pix_payments_on_settlement_journal_entry_id"
     t.index ["wallet_id"], name: "index_pix_payments_on_wallet_id"
     t.check_constraint "amount_cents > 0", name: "pix_payments_amount_positive_check"
+    t.check_constraint "status::text = ANY (ARRAY['created'::character varying, 'pending_review'::character varying, 'approved'::character varying, 'rejected'::character varying, 'settled'::character varying, 'failed'::character varying, 'reversed'::character varying]::text[])", name: "pix_payments_status_check"
   end
 
   create_table "reconciliation_runs", force: :cascade do |t|
@@ -252,6 +290,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_29_102000) do
     t.index ["organization_id", "provider", "statement_date"], name: "idx_reconciliation_provider_day", unique: true
     t.index ["organization_id"], name: "index_reconciliation_runs_on_organization_id"
     t.index ["public_id"], name: "index_reconciliation_runs_on_public_id", unique: true
+  end
+
+  create_table "sessions", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "ip_address"
+    t.datetime "updated_at", null: false
+    t.string "user_agent"
+    t.bigint "user_id", null: false
+    t.index ["user_id"], name: "index_sessions_on_user_id"
   end
 
   create_table "transfers", force: :cascade do |t|
@@ -281,6 +328,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_29_102000) do
     t.check_constraint "amount_cents > 0", name: "transfers_amount_positive_check"
   end
 
+  create_table "users", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "email_address", null: false
+    t.string "password_digest", null: false
+    t.string "role", default: "operator", null: false
+    t.datetime "updated_at", null: false
+    t.index ["email_address"], name: "index_users_on_email_address", unique: true
+    t.index ["role"], name: "index_users_on_role"
+    t.check_constraint "role::text = ANY (ARRAY['viewer'::character varying, 'operator'::character varying, 'admin'::character varying]::text[])", name: "users_role_check"
+  end
+
   create_table "wallets", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "currency", default: "BRL", null: false
@@ -298,6 +356,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_29_102000) do
     t.index ["public_id"], name: "index_wallets_on_public_id", unique: true
   end
 
+  add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "audit_logs", "organizations"
   add_foreign_key "balance_projections", "organizations"
   add_foreign_key "balance_projections", "wallets"
@@ -314,10 +374,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_29_102000) do
   add_foreign_key "ledger_lines", "organizations"
   add_foreign_key "outbox_events", "organizations"
   add_foreign_key "pix_payments", "journal_entries"
+  add_foreign_key "pix_payments", "journal_entries", column: "reversal_journal_entry_id"
   add_foreign_key "pix_payments", "journal_entries", column: "settlement_journal_entry_id"
   add_foreign_key "pix_payments", "organizations"
   add_foreign_key "pix_payments", "wallets"
   add_foreign_key "reconciliation_runs", "organizations"
+  add_foreign_key "sessions", "users"
   add_foreign_key "transfers", "journal_entries"
   add_foreign_key "transfers", "organizations"
   add_foreign_key "transfers", "wallets", column: "destination_wallet_id"

@@ -1,0 +1,33 @@
+<header class="page-header">
+  <div>
+    <h1>Reconciliation <%= @run.statement_date.iso8601 %></h1>
+    <p><%= @run.provider %> · <%= @run.organization.slug %></p>
+  </div>
+  <button class="copy-button" data-controller="copy" data-copy-text-value="<%= @run.public_id %>" data-action="copy#copy">Copy ID</button>
+</header>
+
+<section class="metric-grid">
+  <div class="metric">
+    <span>Provider balance</span>
+    <strong><%= money_cents(@run.provider_balance_cents) %></strong>
+  </div>
+  <div class="metric">
+    <span>Ledger balance</span>
+    <strong><%= money_cents(@run.ledger_balance_cents) %></strong>
+  </div>
+  <div class="metric">
+    <span>Discrepancy</span>
+    <strong><%= money_cents(@run.discrepancy_cents) %></strong>
+  </div>
+  <div class="metric">
+    <span>Status</span>
+    <strong><%= @run.status.humanize %></strong>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel__header">
+    <h2>Metadata</h2>
+  </div>
+  <pre><%= JSON.pretty_generate(@run.metadata) %></pre>
+</section>

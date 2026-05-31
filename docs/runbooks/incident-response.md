@@ -10,11 +10,11 @@
 
 ## Pending outbox events
 
-1. Query `outbox_events` where `status = 'pending'`.
+1. Open `/ops/outbox_events?status=pending` and sort by `next_attempt_at`.
 2. Start workers with `bin/jobs` or `bin/rails solid_queue:start`.
-3. Re-run `OutboxPublishJob` for stuck rows.
-4. If events fail repeatedly, move them to `dead_lettered` and preserve `last_error`.
-5. Replay after fixing the downstream publisher.
+3. Inspect `attempts`, `error_class`, `last_error`, and `last_attempted_at`.
+4. Retry manually only after confirming the downstream publisher is healthy.
+5. Preserve `dead_lettered` events as incident evidence; do not delete rows to hide failed delivery.
 
 ## Reconciliation discrepancy
 
@@ -23,6 +23,14 @@
 3. Inspect journal entries for the statement date.
 4. Verify Pix settlements and funding entries.
 5. Post a correcting journal entry only after root cause is documented.
+
+## Pix reversal
+
+1. Confirm the Pix payment is `settled`; pending or approved payments use rejection/cancellation paths, not reversal.
+2. Verify provider evidence that money returned or must be restored to the customer wallet.
+3. Use an admin operator in `/ops/pix_payments/:id` to reverse with a reason.
+4. Confirm the reversal journal entry is balanced and the wallet projection increased by the Pix amount.
+5. Preserve the audit log, `pix.payment.reversed` outbox event, and reconciliation evidence for the incident record.
 
 ## Duplicate command or idempotency conflict
 

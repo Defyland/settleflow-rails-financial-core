@@ -1,0 +1,109 @@
+<header class="page-header">
+  <div>
+    <h1>Financial operations</h1>
+    <p>Ledger health, Pix decisions, outbox pressure, and reconciliation exceptions.</p>
+  </div>
+  <%= link_to "Review Pix", ops_pix_payments_path(status: "pending_review"), class: "button" %>
+</header>
+
+<section class="metric-grid">
+  <div class="metric">
+    <span>Wallets</span>
+    <strong><%= number_with_delimiter(@wallets_count) %></strong>
+  </div>
+  <div class="metric">
+    <span>Available balance</span>
+    <strong><%= money_cents(@available_cents) %></strong>
+  </div>
+  <div class="metric">
+    <span>Pix pending review</span>
+    <strong><%= number_with_delimiter(@pending_review_count) %></strong>
+  </div>
+  <div class="metric">
+    <span>Outbox attention</span>
+    <strong><%= number_with_delimiter(@outbox_attention_count) %></strong>
+  </div>
+</section>
+
+<section class="grid-two">
+  <div class="panel">
+    <div class="panel__header">
+      <h2>Recent Pix payments</h2>
+      <%= link_to "All Pix", ops_pix_payments_path %>
+    </div>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Org</th>
+          <th>Status</th>
+          <th>Amount</th>
+          <th>Risk</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @recent_pix_payments.each do |payment| %>
+          <tr>
+            <td><%= link_to compact_id(payment), ops_pix_payment_path(payment.public_id) %></td>
+            <td><%= payment.organization.slug %></td>
+            <td><%= status_badge(payment.status) %></td>
+            <td><%= money_cents(payment.amount_cents, payment.currency) %></td>
+            <td><%= payment.risk_score %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <div class="panel__header">
+      <h2>Reconciliation exceptions</h2>
+      <%= link_to "All runs", ops_reconciliation_runs_path %>
+    </div>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Provider</th>
+          <th>Difference</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @discrepant_reconciliations.each do |run| %>
+          <tr>
+            <td><%= link_to run.statement_date.iso8601, ops_reconciliation_run_path(run.public_id) %></td>
+            <td><%= run.provider %></td>
+            <td><%= money_cents(run.discrepancy_cents) %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel__header">
+    <h2>Latest ledger entries</h2>
+    <%= link_to "Open ledger", ops_ledger_entries_path %>
+  </div>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Event</th>
+        <th>Organization</th>
+        <th>Occurred</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @recent_journal_entries.each do |entry| %>
+        <tr>
+          <td><%= link_to compact_id(entry), ops_ledger_entry_path(entry.public_id) %></td>
+          <td><%= entry.event_type %></td>
+          <td><%= entry.organization.slug %></td>
+          <td><%= time_ago_in_words(entry.occurred_at) %> ago</td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</section>

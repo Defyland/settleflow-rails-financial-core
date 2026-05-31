@@ -1,0 +1,11 @@
+<section class="auth-panel">
+  <h1>Update password</h1>
+
+  <%= form_with url: password_path(params[:token]), method: :put do |form| %>
+    <%= form.label :password, "New password", class: "sr-only" %>
+    <%= form.password_field :password, required: true, autocomplete: "new-password", placeholder: "New password", maxlength: 72 %>
+    <%= form.label :password_confirmation, "Confirm password", class: "sr-only" %>
+    <%= form.password_field :password_confirmation, required: true, autocomplete: "new-password", placeholder: "Confirm password", maxlength: 72 %>
+    <%= form.submit "Save password" %>
+  <% end %>
+</section>

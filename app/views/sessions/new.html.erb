@@ -1,0 +1,14 @@
+<section class="auth-panel">
+  <h1>Operator sign in</h1>
+  <p>Access the SettleFlow financial operations console.</p>
+
+  <%= form_with url: session_path do |form| %>
+    <%= form.label :email_address, "Email address", class: "sr-only" %>
+    <%= form.email_field :email_address, required: true, autofocus: true, autocomplete: "username", placeholder: "operator@example.com", value: params[:email_address] %>
+    <%= form.label :password, "Password", class: "sr-only" %>
+    <%= form.password_field :password, required: true, autocomplete: "current-password", placeholder: "Password", maxlength: 72 %>
+    <%= form.submit "Sign in" %>
+  <% end %>
+
+  <p><%= link_to "Forgot password?", new_password_path %></p>
+</section>

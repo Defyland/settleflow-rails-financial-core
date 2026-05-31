@@ -1,0 +1,166 @@
+require "test_helper"
+
+class OpsConsoleRequestTest < ActionDispatch::IntegrationTest
+  setup do
+    @operator = User.create!(email_address: "operator-#{SecureRandom.hex(4)}@example.com", password: "password", role: "admin")
+    @organization = create_organization
+    @wallet = create_wallet(organization: @organization)
+    @funding = fund_wallet(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "ops-funding",
+      amount_cents: 1_000_000
+    )
+    @approved_pix_payment = create_pix_payment(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "ops-pix-approved",
+      pix_key: "supplier@example.com",
+      amount_cents: 25_000
+    )
+    @pending_pix_payment = create_pix_payment(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "ops-pix-review",
+      pix_key: "review@example.com",
+      amount_cents: 600_000
+    )
+    @reconciliation_run = Reconciliation::Run.call(
+      organization: @organization,
+      provider: "ops-bank",
+      statement_date: Date.current,
+      provider_balance_cents: 975_000
+    )
+  end
+
+  test "redirects unauthenticated operators to the sign-in page" do
+    get ops_root_path
+
+    assert_redirected_to new_session_path
+  end
+
+  test "renders the operational dashboards and detail pages" do
+    sign_in
+
+    get ops_root_path
+    assert_response :ok
+    assert_includes response.body, "Financial operations"
+
+    get ops_wallets_path(q: @wallet.external_id)
+    assert_includes response.body, @wallet.external_id
+    assert_includes response.body, "records"
+
+    get ops_wallet_path(@wallet.public_id)
+    assert_includes response.body, "Statement"
+
+    get ops_pix_payments_path(status: "pending_review")
+    assert_includes response.body, "Receiver"
+
+    get ops_pix_payment_path(@pending_pix_payment.public_id)
+    assert_includes response.body, "Risk score"
+
+    get ops_outbox_events_path(status: "pending")
+    assert_includes response.body, "Outbox events"
+
+    get ops_reconciliation_runs_path(status: "discrepant")
+    assert_includes response.body, "Reconciliation"
+
+    get ops_reconciliation_run_path(@reconciliation_run.public_id)
+    assert_includes response.body, "ops-bank"
+
+    get ops_ledger_entries_path
+    assert_includes response.body, "wallet.funded"
+
+    get ops_ledger_entry_path(@funding.journal_entry.public_id)
+    assert_includes response.body, "Lines"
+
+    get ops_audit_logs_path
+    assert_includes response.body, "Audit logs"
+  end
+
+  test "performs admin operator actions with audit records" do
+    sign_in
+
+    post settle_ops_pix_payment_path(@approved_pix_payment.public_id)
+    assert_redirected_to ops_pix_payment_path(@approved_pix_payment.public_id)
+    assert @approved_pix_payment.reload.settled?
+    assert AuditLog.exists?(actor_type: "user", actor_id: @operator.id, action: "ops.pix_payment.settle")
+
+    post reverse_ops_pix_payment_path(@approved_pix_payment.public_id), params: { reason: "operator_reversal" }
+    assert_redirected_to ops_pix_payment_path(@approved_pix_payment.public_id)
+    assert @approved_pix_payment.reload.reversed?
+    assert @approved_pix_payment.reversal_journal_entry.balanced?
+    assert AuditLog.exists?(actor_type: "user", actor_id: @operator.id, action: "ops.pix_payment.reverse")
+
+    post reject_ops_pix_payment_path(@pending_pix_payment.public_id), params: { reason: "operator_rejected" }
+    assert_redirected_to ops_pix_payment_path(@pending_pix_payment.public_id)
+    assert @pending_pix_payment.reload.rejected?
+    assert AuditLog.exists?(actor_type: "user", actor_id: @operator.id, action: "ops.pix_payment.reject")
+
+    event = OutboxEvent.pending.first
+    post retry_ops_outbox_event_path(event.public_id)
+    assert_redirected_to ops_outbox_events_path(status: "pending")
+    assert_includes enqueued_jobs.map { |job| job[:job] }, OutboxPublishJob
+    assert AuditLog.exists?(actor_type: "user", actor_id: @operator.id, action: "ops.outbox.retry")
+  end
+
+  test "blocks viewers from mutating financial operations" do
+    @operator.update!(role: "viewer")
+    sign_in
+
+    post settle_ops_pix_payment_path(@approved_pix_payment.public_id)
+
+    assert_redirected_to ops_root_path
+    assert @approved_pix_payment.reload.approved?
+    assert AuditLog.exists?(actor_type: "user", actor_id: @operator.id, action: "ops.authorization.denied")
+  end
+
+  test "allows operators to reject Pix reviews and retry outbox but blocks admin-only actions" do
+    @operator.update!(role: "operator")
+    settled_pix_payment = create_pix_payment(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "ops-pix-settled-for-operator",
+      pix_key: "operator-settled@example.com",
+      amount_cents: 10_000
+    )
+    PixPayments::Settle.call(organization: @organization, pix_payment: settled_pix_payment)
+    event = OutboxEvent.pending.first
+    sign_in
+
+    post settle_ops_pix_payment_path(@approved_pix_payment.public_id)
+    assert_redirected_to ops_root_path
+    assert @approved_pix_payment.reload.approved?
+    assert AuditLog.exists?(
+      actor_type: "user",
+      actor_id: @operator.id,
+      action: "ops.authorization.denied",
+      metadata: { capability: "settle_pix_payment" }
+    )
+
+    post reverse_ops_pix_payment_path(settled_pix_payment.public_id), params: { reason: "operator_reversal" }
+    assert_redirected_to ops_root_path
+    assert settled_pix_payment.reload.settled?
+    assert AuditLog.exists?(
+      actor_type: "user",
+      actor_id: @operator.id,
+      action: "ops.authorization.denied",
+      metadata: { capability: "reverse_pix_payment" }
+    )
+
+    post reject_ops_pix_payment_path(@pending_pix_payment.public_id), params: { reason: "operator_rejected" }
+    assert_redirected_to ops_pix_payment_path(@pending_pix_payment.public_id)
+    assert @pending_pix_payment.reload.rejected?
+
+    post retry_ops_outbox_event_path(event.public_id)
+    assert_redirected_to ops_outbox_events_path(status: "pending")
+    assert_includes enqueued_jobs.map { |job| job[:job] }, OutboxPublishJob
+  end
+
+  private
+
+  def sign_in
+    post session_path, params: { email_address: @operator.email_address, password: "password" }
+    assert_redirected_to root_path
+  end
+end

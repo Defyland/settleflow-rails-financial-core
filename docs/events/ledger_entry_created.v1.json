@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Defyland/settleflow-rails-financial-core/docs/events/ledger_entry_created.v1.json",
+  "title": "ledger_entry_created v1",
+  "type": "object",
+  "required": ["event_id", "event_type", "schema_version", "occurred_at", "producer", "organization_id", "correlation_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "event_type": { "type": "string", "const": "ledger_entry_created" },
+    "schema_version": { "type": "integer", "const": 1 },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "producer": { "type": "string", "const": "settleflow" },
+    "organization_id": { "type": "string" },
+    "wallet_id": { "type": ["string", "null"] },
+    "correlation_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["journal_entry_id", "event_name", "currency", "total_debit_cents", "total_credit_cents", "ledger_lines"],
+      "properties": {
+        "journal_entry_id": { "type": "string" },
+        "event_name": { "type": "string" },
+        "reference_type": { "type": ["string", "null"] },
+        "reference_id": { "type": ["string", "null"] },
+        "currency": { "type": "string" },
+        "total_debit_cents": { "type": "integer", "minimum": 1 },
+        "total_credit_cents": { "type": "integer", "minimum": 1 },
+        "idempotency_key": { "type": ["string", "null"] },
+        "ledger_lines": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "required": ["ledger_account_id", "direction", "amount_cents", "currency"],
+            "properties": {
+              "ledger_account_id": { "type": "string" },
+              "direction": { "type": "string", "enum": ["debit", "credit"] },
+              "amount_cents": { "type": "integer", "minimum": 1 },
+              "currency": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

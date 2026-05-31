@@ -1,5 +1,5 @@
 module V1
-  class BaseController < ApplicationController
+  class BaseController < ApiController
     before_action :authenticate_organization!
     around_action :audit_request
 

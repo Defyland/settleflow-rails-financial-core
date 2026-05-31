@@ -1,0 +1,38 @@
+<header class="page-header">
+  <div>
+    <h1>Ledger entries</h1>
+    <p>Immutable journal entries and balanced debit/credit lines.</p>
+  </div>
+  <%= form_with url: ops_ledger_entries_path, method: :get, class: "filters" do |form| %>
+    <%= form.search_field :q, value: @query, placeholder: "Search ledger" %>
+    <%= form.submit "Search", class: "button button--secondary" %>
+  <% end %>
+</header>
+
+<section class="panel">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Event</th>
+        <th>Status</th>
+        <th>Organization</th>
+        <th>Lines</th>
+        <th>Occurred</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @journal_entries.each do |entry| %>
+        <tr>
+          <td><%= link_to compact_id(entry), ops_ledger_entry_path(entry.public_id) %></td>
+          <td><%= entry.event_type %></td>
+          <td><%= status_badge(entry.status) %></td>
+          <td><%= entry.organization.slug %></td>
+          <td><%= entry.ledger_lines.size %></td>
+          <td><%= entry.occurred_at.to_fs(:short) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+  <%= render "ops/shared/pagination" %>
+</section>
