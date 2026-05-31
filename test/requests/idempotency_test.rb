@@ -41,4 +41,86 @@ class IdempotencyTest < ActionDispatch::IntegrationTest
     assert_response :conflict
     assert_equal "idempotency_conflict", json_body.dig("error", "code")
   end
+
+  test "rolls back command effects when idempotency response persistence fails" do
+    original_update = IdempotencyKey.instance_method(:update!)
+    IdempotencyKey.define_method(:update!) do |*args, **kwargs, &block|
+      attributes = args.first || kwargs
+      raise "idempotency store unavailable" if attributes[:status] == "succeeded"
+
+      original_update.bind_call(self, *args, **kwargs, &block)
+    end
+
+    assert_raises(RuntimeError) do
+      Idempotency::Runner.call(
+        organization: @organization,
+        key: "idem-atomicity-001",
+        request_method: "POST",
+        request_path: "/v1/customers",
+        request_hash: "stable-hash"
+      ) do
+        customer = @organization.customers.create!(
+          external_id: "atomicity-customer",
+          legal_name: "Atomicity Customer",
+          document_kind: "cpf",
+          document_number: "44455566677",
+          metadata: {}
+        )
+        Idempotency::Response.new(status: 201, body: { data: { id: customer.public_id } }, replayed: false)
+      end
+    end
+
+    assert_not @organization.customers.exists?(external_id: "atomicity-customer")
+  ensure
+    IdempotencyKey.define_method(:update!) do |*args, **kwargs, &block|
+      original_update.bind_call(self, *args, **kwargs, &block)
+    end
+  end
+
+  test "allows retry after a stale processing lock" do
+    @organization.idempotency_keys.create!(
+      key: "idem-stale-processing",
+      request_method: "POST",
+      request_path: "/v1/customers",
+      request_hash: "same-hash",
+      status: "processing",
+      locked_at: 30.minutes.ago
+    )
+
+    response = Idempotency::Runner.call(
+      organization: @organization,
+      key: "idem-stale-processing",
+      request_method: "POST",
+      request_path: "/v1/customers",
+      request_hash: "same-hash"
+    ) do
+      Idempotency::Response.new(status: 201, body: { data: { id: "retried" } }, replayed: false)
+    end
+
+    assert_equal 201, response.status
+    assert_equal "succeeded", @organization.idempotency_keys.find_by!(key: "idem-stale-processing").status
+  end
+
+  test "rejects retry while a fresh request is still processing" do
+    @organization.idempotency_keys.create!(
+      key: "idem-active-processing",
+      request_method: "POST",
+      request_path: "/v1/customers",
+      request_hash: "same-hash",
+      status: "processing",
+      locked_at: Time.current
+    )
+
+    assert_raises(Errors::IdempotencyConflict) do
+      Idempotency::Runner.call(
+        organization: @organization,
+        key: "idem-active-processing",
+        request_method: "POST",
+        request_path: "/v1/customers",
+        request_hash: "same-hash"
+      ) do
+        Idempotency::Response.new(status: 201, body: {}, replayed: false)
+      end
+    end
+  end
 end

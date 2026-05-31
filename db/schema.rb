@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_29_170200) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_31_001100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -41,6 +41,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_29_170200) do
     t.bigint "blob_id", null: false
     t.string "variation_digest", null: false
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
+  end
+
+  create_table "api_credentials", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "expires_at"
+    t.string "key_digest", null: false
+    t.string "key_prefix", null: false
+    t.datetime "last_used_at"
+    t.string "name", null: false
+    t.bigint "organization_id", null: false
+    t.datetime "revoked_at"
+    t.jsonb "scopes", default: [], null: false
+    t.datetime "updated_at", null: false
+    t.index ["key_digest"], name: "index_api_credentials_on_key_digest", unique: true
+    t.index ["key_prefix"], name: "index_api_credentials_on_key_prefix", unique: true
+    t.index ["organization_id", "revoked_at"], name: "index_api_credentials_on_organization_id_and_revoked_at"
+    t.index ["organization_id"], name: "index_api_credentials_on_organization_id"
   end
 
   create_table "audit_logs", force: :cascade do |t|
@@ -229,13 +246,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_29_170200) do
     t.datetime "next_attempt_at"
     t.bigint "organization_id", null: false
     t.jsonb "payload", default: {}, null: false
+    t.string "payload_sha256"
     t.uuid "public_id", default: -> { "gen_random_uuid()" }, null: false
     t.datetime "published_at"
+    t.string "published_to"
+    t.string "publisher"
+    t.string "publisher_message_id"
     t.string "status", default: "pending", null: false
     t.datetime "updated_at", null: false
     t.index ["aggregate_type", "aggregate_id"], name: "index_outbox_events_on_aggregate_type_and_aggregate_id"
     t.index ["organization_id"], name: "index_outbox_events_on_organization_id"
+    t.index ["payload_sha256"], name: "index_outbox_events_on_payload_sha256"
     t.index ["public_id"], name: "index_outbox_events_on_public_id", unique: true
+    t.index ["publisher_message_id"], name: "index_outbox_events_on_publisher_message_id"
     t.index ["status", "created_at"], name: "index_outbox_events_on_status_and_created_at"
     t.index ["status", "next_attempt_at"], name: "idx_outbox_status_next_attempt"
   end
@@ -358,6 +381,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_29_170200) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "api_credentials", "organizations"
   add_foreign_key "audit_logs", "organizations"
   add_foreign_key "balance_projections", "organizations"
   add_foreign_key "balance_projections", "wallets"

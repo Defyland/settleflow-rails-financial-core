@@ -3,19 +3,12 @@ module Ops
     DEFAULT_PER_PAGE = 25
     MAX_PER_PAGE = 100
 
-    CAPABILITIES = {
-      reject_pix_payment: %w[operator admin],
-      retry_outbox_event: %w[operator admin],
-      reverse_pix_payment: %w[admin],
-      settle_pix_payment: %w[admin]
-    }.freeze
-
     helper_method :can?, :pagination
 
     private
 
     def can?(capability)
-      CAPABILITIES.fetch(capability).include?(Current.user&.role)
+      CapabilityPolicy.allowed?(Current.user, capability)
     end
 
     def require_capability!(capability)

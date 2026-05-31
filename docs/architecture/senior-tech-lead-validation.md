@@ -54,7 +54,7 @@ The project implements the ledger primitive and operator workflow because that i
 
 ### What the candidate should explain
 
-Financial APIs must tolerate client retries. SettleFlow uses `Idempotency-Key` on write endpoints so the same command can be retried without creating duplicate ledger entries, payments, transfers, or outbox events. It also rejects a reused key with a different payload.
+Financial APIs must tolerate client retries. SettleFlow uses `Idempotency-Key` on write endpoints so the same command can be retried without creating duplicate ledger entries, payments, transfers, or outbox events. It rejects a reused key with a different payload, persists the command response in the same database transaction as the financial mutation, and allows retry after stale processing locks.
 
 ### Counterpoint to challenge
 
@@ -62,7 +62,7 @@ Idempotency is only as strong as the uniqueness boundary and stored response sem
 
 ### Why this repository does not go further
 
-The repository demonstrates tenant-scoped idempotent command handling inside PostgreSQL. It does not implement long-term retention policies, gateway-level idempotency, replay tooling, or cross-region coordination because the deployment target is a single Rails monolith.
+The repository demonstrates tenant-scoped idempotent command handling inside PostgreSQL, including atomic response storage and stale-lock recovery. It does not implement long-term retention policies, gateway-level idempotency, replay tooling, or cross-region coordination because the deployment target is a single Rails monolith.
 
 ### How we would continue if needed
 
@@ -76,7 +76,7 @@ The repository demonstrates tenant-scoped idempotent command handling inside Pos
 
 ### What the candidate should explain
 
-SettleFlow writes domain state and outbox events in the same database transaction. Active Job/Solid Queue then publishes outbox events asynchronously. Failed publishing attempts remain pending with a scheduled retry; exhausted events move to `dead_lettered` with error evidence.
+SettleFlow writes domain state and outbox events in the same database transaction. Active Job/Solid Queue then publishes outbox events asynchronously through a configured adapter. Failed publishing attempts remain pending with a scheduled retry; exhausted events move to `dead_lettered` with error evidence. Successful delivery stores publisher, destination, message ID, and payload hash.
 
 This avoids the classic bug where financial state commits but the event is lost.
 
@@ -86,11 +86,11 @@ Database-backed queues are not a universal broker. A high-throughput integration
 
 ### Why this repository does not go further
 
-Rails 8's Solid stack is a deliberate fit for a production-minded monolith. The repo demonstrates the transactional outbox pattern and operational recovery without introducing broker infrastructure that the product does not yet need.
+Rails 8's Solid stack is a deliberate fit for a production-minded monolith. The repo demonstrates the transactional outbox pattern, adapter-based publishing, and operational recovery without requiring broker infrastructure that the product does not yet need.
 
 ### How we would continue if needed
 
-- Add real publisher adapters and downstream idempotency keys.
+- Add RabbitMQ/Redpanda/Pub/Sub adapters if throughput or fanout requirements outgrow the built-in log/HTTP publishers.
 - Add DLQ replay screens with approval and bulk retry controls.
 - Partition outbox processing by organization or event type.
 - Track publish latency, retry counts, and dead-letter rates as SLOs.
@@ -121,7 +121,7 @@ The goal is a focused financial core and operations console. Adding distributed 
 
 ### What the candidate should explain
 
-SettleFlow separates API tenant access from human operator access. API requests are organization-scoped through API keys. Browser operations use Rails sessions and operator roles. Mutating operator actions are capability-gated and audited with actor, request, correlation, IP, user agent, subject, and metadata.
+SettleFlow separates API tenant access from human operator access. API requests are organization-scoped through API credentials with prefixes, HMAC digests, scopes, revocation, expiry, and last-used tracking. Browser operations use Rails sessions and operator roles. Mutating operator actions are capability-gated through a policy object and audited with actor, request, correlation, IP, user agent, subject, and metadata.
 
 Tenant isolation is enforced by scoping API queries through the current organization and by validating cross-organization service calls.
 
@@ -136,7 +136,7 @@ The repo implements enough governance to prove senior-level design without depen
 ### How we would continue if needed
 
 - Add OIDC/SAML SSO and enforce MFA for privileged roles.
-- Replace hard-coded capabilities with policy objects or a permission table.
+- Replace the current policy object with database-backed permission groups when customer-specific governance needs appear.
 - Add dual-control approval for high-risk settlement and reversal actions.
 - Add audit retention and export policies.
 - Add organization membership if operators should be scoped to tenants.
@@ -167,6 +167,6 @@ This is a portfolio repository, not a regulated production rollout. It avoids fa
 
 ## What was resolved in this repository
 
-- Ledger invariants, projection updates, idempotency, outbox retry/dead-letter behavior, RBAC denial, Pix rejection, Pix reversal, and tenant-bound service checks are covered by automated tests.
+- Ledger invariants, projection updates, atomic idempotency, stale idempotency lock recovery, outbox adapter delivery/retry/dead-letter behavior, API credential scope/revocation, RBAC denial, Pix rejection, Pix reversal, reconciliation evidence, and tenant-bound service checks are covered by automated tests.
 - OpenAPI, ADRs, runbooks, diagrams, benchmark notes, CI, Docker, security scans, and Rails 8 deployment defaults are present.
 - The remaining gaps are documented as intentional production follow-ups rather than hidden omissions.

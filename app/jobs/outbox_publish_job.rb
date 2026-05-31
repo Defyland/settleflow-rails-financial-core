@@ -7,7 +7,9 @@ class OutboxPublishJob < ApplicationJob
     event = OutboxEvent.find(outbox_event_id)
     return unless event.publishable?
 
-    event.publish!
+    envelope = Outbox::Publisher.envelope_for(event)
+    delivery_result = Outbox::Publisher.publisher.publish(envelope)
+    event.publish!(delivery_result, payload_sha256: Outbox::Publisher.payload_sha256(envelope))
   rescue ActiveRecord::RecordNotFound
     raise
   rescue StandardError => e

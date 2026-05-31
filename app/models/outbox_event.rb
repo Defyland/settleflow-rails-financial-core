@@ -17,7 +17,7 @@ class OutboxEvent < ApplicationRecord
 
   validates :aggregate_type, :aggregate_id, :event_type, presence: true
 
-  def publish!
+  def publish!(delivery_result = nil, payload_sha256: nil)
     update!(
       status: "published",
       attempts: attempts + 1,
@@ -26,7 +26,11 @@ class OutboxEvent < ApplicationRecord
       next_attempt_at: nil,
       last_error: nil,
       error_class: nil,
-      dead_lettered_at: nil
+      dead_lettered_at: nil,
+      publisher: delivery_result&.adapter,
+      published_to: delivery_result&.destination,
+      publisher_message_id: delivery_result&.message_id,
+      payload_sha256:
     )
   end
 

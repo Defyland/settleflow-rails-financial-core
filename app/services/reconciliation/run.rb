@@ -16,7 +16,13 @@ module Reconciliation
 
     def call
       Accounts::BootstrapOrganizationLedger.call(organization:, currency:)
-      ledger_balance = Ledger::AccountLocator.platform_cash(organization:, currency:).balance_cents
+      platform_cash = Ledger::AccountLocator.platform_cash(organization:, currency:)
+      pix_clearing = Ledger::AccountLocator.pix_clearing(organization:, currency:)
+      wallet_liability = organization.ledger_accounts
+        .where(account_type: "liability", normal_balance: "credit", currency:)
+        .where.not(wallet_id: nil)
+        .sum { |account| account.balance_cents }
+      ledger_balance = platform_cash.balance_cents
       discrepancy = provider_balance_cents - ledger_balance
 
       organization.reconciliation_runs.create!(
@@ -27,7 +33,12 @@ module Reconciliation
         discrepancy_cents: discrepancy,
         status: discrepancy.zero? ? "matched" : "discrepant",
         correlation_id:,
-        metadata: metadata.merge(currency:)
+        metadata: metadata.merge(
+          currency:,
+          platform_cash_cents: platform_cash.balance_cents,
+          wallet_liability_cents: wallet_liability,
+          pix_clearing_cents: pix_clearing.balance_cents
+        )
       ).tap do |run|
         OutboxEvents::Emit.call(
           organization:,

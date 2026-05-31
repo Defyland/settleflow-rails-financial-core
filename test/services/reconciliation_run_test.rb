@@ -21,5 +21,9 @@ class ReconciliationRunTest < ActiveSupport::TestCase
     assert run.discrepant?
     assert_equal 12_345, run.ledger_balance_cents
     assert_equal(-45, run.discrepancy_cents)
+    assert_equal "BRL", run.metadata.fetch("currency")
+    assert_equal 12_345, run.metadata.fetch("platform_cash_cents")
+    assert_equal 12_345, run.metadata.fetch("wallet_liability_cents")
+    assert_equal 0, run.metadata.fetch("pix_clearing_cents")
   end
 end

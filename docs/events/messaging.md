@@ -1,6 +1,6 @@
 # Messaging and Outbox Architecture
 
-SettleFlow currently models broker semantics through a transactional outbox and ActiveJob. This keeps the repository self-contained while documenting the future RabbitMQ/Redpanda contract.
+SettleFlow uses a transactional outbox and ActiveJob. Publisher delivery is adapter-based: the default adapter writes a canonical event envelope to structured logs, and `OUTBOX_WEBHOOK_URL` enables an HTTP publisher that posts the same envelope with the outbox public ID as the downstream idempotency key. This keeps the repository self-contained while preserving the seam needed for RabbitMQ, Redpanda, Pub/Sub, or webhook delivery.
 
 For public versioned financial event contracts, see [docs/events/README.md](README.md). Internal outbox event names may differ from the public contract taxonomy; publishers should map internal domain events to the versioned public schema before exposing them to external consumers.
 
@@ -18,7 +18,14 @@ For public versioned financial event contracts, see [docs/events/README.md](READ
 | `reconciliation.matched` | `Reconciliation::Run` | Provider and ledger balances match |
 | `reconciliation.discrepant` | `Reconciliation::Run` | Provider and ledger balances differ |
 
-## Broker mapping
+## Publisher mapping
+
+Current adapters:
+
+- `Outbox::Publishers::LogPublisher`: local/default adapter for self-contained deployments and tests.
+- `Outbox::Publishers::HttpPublisher`: posts JSON envelopes to `OUTBOX_WEBHOOK_URL`, requires a 2xx response, and records the response `X-Message-ID` when present.
+
+Future RabbitMQ mapping:
 
 Future RabbitMQ mapping:
 
@@ -34,7 +41,8 @@ Future RabbitMQ mapping:
 - `OutboxEvent.public_id` is the message ID.
 - `correlation_id` is copied from request context.
 - Consumers must use message ID for idempotency.
-- Publishing increments `attempts`.
+- Publishing increments `attempts` only after the configured adapter is called.
+- Successful publication stores publisher name, destination, downstream message ID, and a SHA-256 hash of the canonical envelope.
 - Failed publication records `error_class`, `last_error`, `last_attempted_at`, and a `next_attempt_at` backoff timestamp.
 - Events move to `dead_lettered` only after the retry budget is exhausted.
 - Operators can manually reset unpublished events through `/ops/outbox_events`.

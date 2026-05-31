@@ -1,6 +1,7 @@
 module V1
   class BaseController < ApiController
     before_action :authenticate_organization!
+    before_action :authorize_api_scope!
     around_action :audit_request
 
     attr_reader :current_organization
@@ -9,12 +10,23 @@ module V1
 
     def authenticate_organization!
       api_key = request.headers["X-Api-Key"].to_s
-      organization = Organization.authenticate_api_key(api_key)
+      credential = ApiCredential.authenticate(api_key)
+      organization = credential&.organization || Organization.authenticate_api_key(api_key)
       raise Errors::AuthenticationError if organization.blank?
 
       Current.organization = organization
       Current.api_key_digest = Organization.digest_api_key(api_key)
+      Current.api_credential = credential
       @current_organization = organization
+    end
+
+    def authorize_api_scope!
+      return if Current.api_credential.blank?
+
+      scope = request.get? || request.head? ? "v1:read" : "v1:write"
+      return if Current.api_credential.allows?(scope)
+
+      raise Errors::AuthorizationError.new(details: { required_scope: scope })
     end
 
     def audit_request

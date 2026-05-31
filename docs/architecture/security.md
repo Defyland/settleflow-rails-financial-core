@@ -17,11 +17,11 @@ Primary risks:
 ## Controls
 
 - Every v1 query is scoped by authenticated organization.
-- API keys are stored as SHA-256 digests and are never returned by the API.
+- API credentials are issued once, stored as HMAC-SHA256 digests, looked up by non-secret prefixes, and can be scoped, expired, or revoked. Legacy organization API key digests remain only for seed/demo compatibility.
 - Operators authenticate through Rails sessions and `bcrypt` password hashes.
 - Browser forms use Rails CSRF protection.
 - Operator roles gate human workflows: viewers are read-only, operators can reject pending-review Pix and retry outbox events, and admins can settle or reverse Pix payments.
-- Mutating endpoints support idempotency records keyed by organization.
+- Mutating endpoints support idempotency records keyed by organization. Financial command effects and idempotency response persistence share the same database transaction, and stale processing locks can be retried.
 - Wallet projections use optimistic locking and row locks for debit checks.
 - Database constraints enforce unique tenant references and positive amounts.
 - `Rack::Attack` throttles by IP and API key.
@@ -55,3 +55,4 @@ Use environment variables for production secrets:
 - `OTEL_EXPORTER_OTLP_ENDPOINT`
 - `RATE_LIMIT_PER_MINUTE`
 - `RATE_LIMIT_PER_API_KEY_PER_MINUTE`
+- `OUTBOX_WEBHOOK_URL`

@@ -18,15 +18,15 @@ Many fintech demos store mutable balances directly on an account row. That hides
 
 ## 4. Main features
 
-- Organization-scoped API key authentication.
-- Idempotent write endpoints using `Idempotency-Key`.
+- Organization-scoped API credentials with HMAC digests, prefixes, scopes, revocation, expiry, and last-used tracking.
+- Idempotent write endpoints using `Idempotency-Key`, atomic response persistence, stale-lock recovery, and conflict detection.
 - Customers and BRL wallets.
 - Double-entry journal entries and immutable ledger lines.
 - Balance projections derived from wallet ledger accounts.
 - Funding, internal transfer, Pix approval/review/rejection, Pix settlement, Pix reversal, and reconciliation flows.
 - Authenticated `/ops` backoffice for dashboard KPIs, paginated wallet statements, Pix manual review, ledger drill-downs, reconciliation, outbox retry, and audit inspection.
 - Role-based operator capabilities for read-only, operator, and admin workflows.
-- Transactional outbox with ActiveJob/Solid Queue workers, retry backoff, next-attempt visibility, and dead-letter evidence.
+- Transactional outbox with pluggable log/HTTP publishers, delivery metadata, payload hashes, retry backoff, next-attempt visibility, and dead-letter evidence.
 - Audit logs, request IDs, correlation IDs, Prometheus metrics, readiness checks, and OpenTelemetry wiring.
 - Minitest coverage across models, services, requests, authorization, failure scenarios, jobs, ledger invariants, Rails auth, and the Hotwire operator surface.
 
@@ -70,7 +70,7 @@ OpenAPI lives in [openapi.yaml](openapi.yaml). Examples and the error envelope l
 
 ## 9. Async or event architecture
 
-SettleFlow uses a transactional outbox table and ActiveJob jobs. Financial services emit events in the same database transaction as ledger mutations, then enqueue `OutboxPublishJob`. Approved Pix payments enqueue `PixSettlementJob`. See [docs/events/messaging.md](docs/events/messaging.md) and the versioned contract policy in [docs/events/README.md](docs/events/README.md).
+SettleFlow uses a transactional outbox table and ActiveJob jobs. Financial services emit events in the same database transaction as ledger mutations, then enqueue `OutboxPublishJob`. The job publishes through a configurable adapter, stores delivery metadata, and only marks events published after the adapter acknowledges. Approved Pix payments enqueue `PixSettlementJob`. See [docs/events/messaging.md](docs/events/messaging.md) and the versioned contract policy in [docs/events/README.md](docs/events/README.md).
 
 ## 10. Database design
 
@@ -103,7 +103,7 @@ k6 scenarios are in [benchmarks/k6-financial-workflow.js](benchmarks/k6-financia
 
 ## 14. Security considerations
 
-- API keys are stored as SHA-256 digests.
+- API credentials are stored as HMAC-SHA256 digests with lookup prefixes, optional expiry, revocation, scopes, and last-used timestamps. Legacy organization API key digests remain supported for seed/demo compatibility.
 - All v1 endpoints require `X-Api-Key`.
 - Human operators authenticate through Rails sessions backed by `bcrypt` password hashes.
 - Tenant isolation is enforced by scoping every query through `current_organization`.
@@ -192,5 +192,5 @@ Operational steps are in [docs/runbooks/incident-response.md](docs/runbooks/inci
 - Add full MED/dispute case management around the reversal ledger primitive.
 - Add ClickHouse export path for reporting.
 - Add multi-currency ledger support.
-- Replace simulated outbox publishing with RabbitMQ/Redpanda adapters.
+- Add RabbitMQ/Redpanda adapters when measured throughput or integration fanout exceeds the built-in log/HTTP outbox publishers.
 - Add selected browser tests for pagination and multi-role review queues as the Ops surface grows.
