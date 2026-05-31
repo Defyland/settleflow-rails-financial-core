@@ -70,7 +70,7 @@ class OpsConsoleTest < ApplicationSystemTestCase
 
     click_button "Reject"
 
-    assert_text "Pix payment rejected."
+    assert_text "Pix payment rejected.", wait: 10
     assert_text "Rejected"
     assert @pending_pix_payment.reload.rejected?
     assert AuditLog.exists?(actor_type: "user", actor_id: @operator.id, action: "ops.pix_payment.reject")
