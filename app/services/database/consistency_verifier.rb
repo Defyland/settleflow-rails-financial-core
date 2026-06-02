@@ -578,6 +578,24 @@ module Database
             AND NOT payout_has_early_settlement_approval(id)
         SQL
       end
+      unique_split_destination_index_present = catalog_value(<<~SQL.squish)
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_indexes
+          WHERE schemaname = 'public'
+            AND tablename = 'split_entries'
+            AND indexname = 'idx_split_entries_unique_destination_per_split'
+        )
+      SQL
+      duplicate_split_destination_rows = ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
+        SELECT COALESCE(SUM(duplicate_count - 1), 0)
+        FROM (
+          SELECT COUNT(*) AS duplicate_count
+          FROM split_entries
+          GROUP BY split_payment_id, destination_wallet_id
+          HAVING COUNT(*) > 1
+        ) duplicate_split_destinations
+      SQL
       present_triggers = enabled_triggers & expected_triggers
       missing_triggers = expected_triggers - present_triggers
 
@@ -585,7 +603,8 @@ module Database
         name: :financial_state_evidence_guards,
         ok: aggregate_function_present && med_resolution_functions_present && refund_limit_function_present &&
           payout_early_settlement_function_present && refund_limit_mismatches.to_i.zero? &&
-          payout_early_settlement_mismatches.to_i.zero? && missing_triggers.empty?,
+          payout_early_settlement_mismatches.to_i.zero? && unique_split_destination_index_present &&
+          duplicate_split_destination_rows.zero? && missing_triggers.empty?,
         details: {
           aggregate_function_present:,
           med_resolution_functions_present:,
@@ -593,6 +612,8 @@ module Database
           refund_limit_mismatches: refund_limit_mismatches.to_i,
           payout_early_settlement_function_present:,
           payout_early_settlement_mismatches: payout_early_settlement_mismatches.to_i,
+          unique_split_destination_index_present:,
+          duplicate_split_destination_rows:,
           present_triggers: present_triggers.sort,
           missing_triggers:
         }

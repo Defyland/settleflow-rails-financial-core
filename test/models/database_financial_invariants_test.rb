@@ -930,6 +930,17 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     assert_database_constraint_violation { split_payment.update_columns(total_amount_cents: split_payment.total_amount_cents + 1) }
     assert_database_constraint_violation { split_entry.update_columns(amount_cents: split_entry.amount_cents + 1) }
     assert_database_constraint_violation { split_entry.update_columns(destination_wallet_id: split_payment.source_wallet_id) }
+    assert_database_constraint_violation do
+      SplitEntry.insert!({
+        organization_id: @organization.id,
+        split_payment_id: split_payment.id,
+        destination_wallet_id: destination_one.id,
+        amount_cents: 1,
+        currency: split_payment.currency,
+        created_at: Time.current,
+        updated_at: Time.current
+      })
+    end
   end
 
   test "database rejects financial aggregate mutation and deletion after evidence" do

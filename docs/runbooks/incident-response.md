@@ -58,8 +58,9 @@
 
 1. Find the `SplitPayment` and confirm `total_amount_cents` equals the sum of `split_entries.amount_cents`.
 2. Confirm the journal has one debit from the source wallet liability and one credit per destination wallet liability.
-3. Compare each destination wallet statement running balance with `/v1/wallets/:id/balance_explanation`.
-4. If a destination is wrong, do not edit split entries or ledger lines; create an explicit compensating transfer or refund-style financial command after approval.
+3. Confirm no duplicate destination wallets exist in `split_entries`; `database:verify_consistency` reports `financial_state_evidence_guards.duplicate_split_destination_rows`.
+4. Compare each destination wallet statement running balance with `/v1/wallets/:id/balance_explanation`.
+5. If a destination is wrong, do not edit split entries or ledger lines; create an explicit compensating transfer or refund-style financial command after approval.
 
 ## Audit hash-chain failure
 

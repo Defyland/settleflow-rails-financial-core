@@ -20,6 +20,7 @@ Indexes are designed around tenant-scoped financial reads, idempotent writes, qu
 - `outbox_events` indexes `(status, created_at)` for publishable work, `(aggregate_type, aggregate_id)` for incident drill-down, and `payload_sha256` for delivery evidence lookup.
 - `audit_logs` indexes `chain_sequence`, `hash_value`, `(organization_id, created_at)`, and `(subject_type, subject_id)`.
 - `operator_approvals` has a partial unique index to allow only one pending approval per action and subject.
+- `split_entries` has a unique `(split_payment_id, destination_wallet_id)` index so one split cannot credit the same destination wallet twice through direct SQL or service bypass.
 
 ## Reconciliation
 

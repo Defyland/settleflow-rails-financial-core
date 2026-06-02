@@ -4465,13 +4465,6 @@ CREATE INDEX idx_on_organization_id_processor_status_4e31dea64d ON public.proces
 
 
 --
--- Name: idx_on_split_payment_id_destination_wallet_id_3ed8360afa; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_on_split_payment_id_destination_wallet_id_3ed8360afa ON public.split_entries USING btree (split_payment_id, destination_wallet_id);
-
-
---
 -- Name: idx_operator_approvals_one_pending_action; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -4525,6 +4518,13 @@ CREATE INDEX idx_reconciliation_rows_run_status ON public.reconciliation_rows US
 --
 
 CREATE UNIQUE INDEX idx_reconciliation_rows_run_type_external_id ON public.reconciliation_rows USING btree (reconciliation_run_id, row_type, external_id);
+
+
+--
+-- Name: idx_split_entries_unique_destination_per_split; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_split_entries_unique_destination_per_split ON public.split_entries USING btree (split_payment_id, destination_wallet_id);
 
 
 --
@@ -6318,6 +6318,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602222500'),
 ('20260602221500'),
 ('20260602220500'),
 ('20260602215500'),

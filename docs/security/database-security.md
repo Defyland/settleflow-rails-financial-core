@@ -19,6 +19,7 @@
 - Funding, transfer, split, Pix, payout, refund, and MED final statuses require matching PostgreSQL evidence through deferrable state triggers. MED terminal statuses additionally require approved maker-checker evidence and, for accepted cases, a matching settled refund. Once ledger or outbox evidence exists, PostgreSQL prevents direct command identity/value mutation and deletion; only documented state transitions with new evidence are allowed.
 - Early payout settlement before D+N due date requires approved maker-checker evidence in PostgreSQL. Public API `force=true` is not sufficient without an operator approval linked to the payout.
 - Settled refunds are capped in PostgreSQL by the original Pix payment amount. Refund writes lock the source Pix row, settled refunds must match the Pix organization/wallet/currency, and direct Pix reversal is rejected after settled refund evidence exists.
+- Split destinations are unique per split payment in PostgreSQL, not only in the service layer, so direct SQL cannot duplicate credits to the same destination wallet inside one split.
 - Balance projections cannot go negative and must match their wallet organization/currency in PostgreSQL.
 - Balance snapshots are append-only projection-vs-ledger evidence; PostgreSQL enforces their wallet organization/currency and difference calculation.
 - Reconciliation runs and rows are immutable after outbox evidence; PostgreSQL enforces provider-vs-ledger discrepancy math and row status evidence.
