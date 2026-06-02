@@ -87,6 +87,7 @@ module Database
         outbox_events_prevent_evidence_mutation
         outbox_events_aggregate_evidence_before_write
         outbox_events_med_resolution_payload_before_write
+        outbox_events_command_identity_before_write
       ]
       enabled_constraints = ActiveRecord::Base.connection.select_values(<<~SQL.squish)
         SELECT conname
@@ -114,11 +115,37 @@ module Database
           WHERE proname = 'med_outbox_event_has_resolution_payload_evidence'
         )
       SQL
+      command_identity_function_present = catalog_value(<<~SQL.squish)
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_proc
+          WHERE proname = 'outbox_event_has_command_identity_evidence'
+        )
+      SQL
       aggregate_evidence_mismatches = if aggregate_function_present
         ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
           SELECT COUNT(*)
           FROM outbox_events
           WHERE NOT outbox_event_has_aggregate_evidence(outbox_events)
+        SQL
+      end
+      mutable_command_identity_mismatches = if command_identity_function_present
+        ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
+          SELECT COUNT(*)
+          FROM outbox_events
+          WHERE aggregate_type IN ('Funding', 'Transfer', 'SplitPayment', 'PixPayment', 'Payout', 'Refund', 'MedCase')
+            AND payload_sha256 IS NULL
+            AND status <> 'published'
+            AND NOT outbox_event_has_command_identity_evidence(outbox_events)
+        SQL
+      end
+      published_legacy_command_identity_mismatches = if command_identity_function_present
+        ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
+          SELECT COUNT(*)
+          FROM outbox_events
+          WHERE aggregate_type IN ('Funding', 'Transfer', 'SplitPayment', 'PixPayment', 'Payout', 'Refund', 'MedCase')
+            AND payload_sha256 IS NOT NULL
+            AND NOT outbox_event_has_command_identity_evidence(outbox_events)
         SQL
       end
       present_constraints = enabled_constraints & expected_constraints
@@ -128,15 +155,20 @@ module Database
 
       Check.new(
         name: :outbox_evidence_guards,
-        ok: aggregate_function_present && med_payload_function_present && aggregate_evidence_mismatches.to_i.zero? && missing_constraints.empty? && missing_triggers.empty?,
+        ok: aggregate_function_present && med_payload_function_present && command_identity_function_present &&
+          aggregate_evidence_mismatches.to_i.zero? && mutable_command_identity_mismatches.to_i.zero? &&
+          missing_constraints.empty? && missing_triggers.empty?,
         details: {
           aggregate_function_present:,
           med_payload_function_present:,
+          command_identity_function_present:,
           present_constraints: present_constraints.sort,
           missing_constraints:,
           present_triggers: present_triggers.sort,
           missing_triggers:,
-          aggregate_evidence_mismatches: aggregate_evidence_mismatches.to_i
+          aggregate_evidence_mismatches: aggregate_evidence_mismatches.to_i,
+          mutable_command_identity_mismatches: mutable_command_identity_mismatches.to_i,
+          published_legacy_command_identity_mismatches: published_legacy_command_identity_mismatches.to_i
         }
       )
     end

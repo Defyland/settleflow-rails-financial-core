@@ -28,6 +28,7 @@ module PixPayments
           aggregate: pix_payment,
           event_type: "pix.payment.rejected",
           correlation_id:,
+          idempotency_key: "pix_payment.reject:#{pix_payment.id}",
           payload: {
             pix_payment_id: pix_payment.public_id,
             wallet_id: pix_payment.wallet.public_id,

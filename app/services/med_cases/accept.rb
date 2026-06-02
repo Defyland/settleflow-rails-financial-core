@@ -44,6 +44,7 @@ module MedCases
           aggregate: med_case,
           event_type: "med.case.refunded",
           correlation_id: correlation_id || med_case.correlation_id,
+          idempotency_key: "med_case.accept:#{med_case.id}",
           payload: {
             med_case_id: med_case.public_id,
             refund_id: refund.public_id,

@@ -36,6 +36,7 @@ module PixPayments
           aggregate: pix_payment,
           event_type: "pix.payment.settled",
           correlation_id:,
+          idempotency_key: "pix_payment.settle:#{pix_payment.id}",
           payload: {
             pix_payment_id: pix_payment.public_id,
             amount_cents: pix_payment.amount_cents,

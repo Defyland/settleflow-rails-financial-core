@@ -44,6 +44,7 @@ module PixPayments
           aggregate: pix_payment,
           event_type: "pix.payment.reversed",
           correlation_id:,
+          idempotency_key: "pix_payment.reverse:#{pix_payment.id}",
           payload: {
             pix_payment_id: pix_payment.public_id,
             wallet_id: pix_payment.wallet.public_id,

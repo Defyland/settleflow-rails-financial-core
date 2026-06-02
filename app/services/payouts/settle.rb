@@ -38,6 +38,7 @@ module Payouts
           aggregate: payout,
           event_type: "payout.settled",
           correlation_id:,
+          idempotency_key: "payout.settle:#{payout.id}",
           payload: {
             payout_id: payout.public_id,
             wallet_id: payout.wallet.public_id,

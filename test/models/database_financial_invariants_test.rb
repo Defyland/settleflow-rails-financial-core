@@ -457,6 +457,24 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
         organization_id: @organization.id,
         aggregate_type: "Funding",
         aggregate_id: funding.id,
+        event_type: "wallet.funded",
+        status: "pending",
+        attempts: 0,
+        payload: {
+          funding_id: funding.public_id,
+          wallet_id: @wallet.public_id,
+          amount_cents: funding.amount_cents,
+          currency: funding.currency
+        },
+        created_at: Time.current,
+        updated_at: Time.current
+      })
+    end
+    assert_database_constraint_violation do
+      OutboxEvent.insert!({
+        organization_id: @organization.id,
+        aggregate_type: "Funding",
+        aggregate_id: funding.id,
         event_type: "wallet.fake_published",
         status: "pending",
         attempts: 0,

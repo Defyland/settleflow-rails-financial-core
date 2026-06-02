@@ -353,6 +353,23 @@ $$;
 
 
 --
+-- Name: assert_outbox_event_command_identity_evidence(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_outbox_event_command_identity_evidence() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NOT outbox_event_has_command_identity_evidence(NEW) THEN
+    RAISE EXCEPTION 'outbox event command identity evidence is invalid';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
 -- Name: assert_payout_state_evidence(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -1643,6 +1660,158 @@ BEGIN
   END IF;
 
   RETURN false;
+END;
+$$;
+
+
+--
+-- Name: outbox_event_has_command_identity_evidence(public.outbox_events); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.outbox_event_has_command_identity_evidence(event_row public.outbox_events) RETURNS boolean
+    LANGUAGE plpgsql STABLE
+    AS $$
+DECLARE
+  has_evidence boolean;
+BEGIN
+  IF event_row.aggregate_type = 'Funding' THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM fundings funding
+      WHERE funding.id = event_row.aggregate_id
+        AND funding.organization_id = event_row.organization_id
+        AND event_row.event_type = 'wallet.funded'
+        AND funding.journal_entry_id IS NOT NULL
+        AND event_row.idempotency_key = funding.idempotency_key
+    ) INTO has_evidence;
+    RETURN has_evidence;
+  END IF;
+
+  IF event_row.aggregate_type = 'Transfer' THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM transfers transfer
+      WHERE transfer.id = event_row.aggregate_id
+        AND transfer.organization_id = event_row.organization_id
+        AND event_row.event_type = 'wallet.transfer.posted'
+        AND transfer.journal_entry_id IS NOT NULL
+        AND event_row.idempotency_key = transfer.idempotency_key
+    ) INTO has_evidence;
+    RETURN has_evidence;
+  END IF;
+
+  IF event_row.aggregate_type = 'SplitPayment' THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM split_payments split_payment
+      WHERE split_payment.id = event_row.aggregate_id
+        AND split_payment.organization_id = event_row.organization_id
+        AND event_row.event_type = 'split.posted'
+        AND split_payment.journal_entry_id IS NOT NULL
+        AND event_row.idempotency_key = split_payment.idempotency_key
+    ) INTO has_evidence;
+    RETURN has_evidence;
+  END IF;
+
+  IF event_row.aggregate_type = 'PixPayment' THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM pix_payments pix_payment
+      WHERE pix_payment.id = event_row.aggregate_id
+        AND pix_payment.organization_id = event_row.organization_id
+        AND (
+          (
+            event_row.event_type IN ('pix.payment.approved', 'pix.payment.pending_review')
+            AND event_row.idempotency_key = pix_payment.idempotency_key
+          )
+          OR (
+            event_row.event_type = 'pix.payment.rejected'
+            AND event_row.idempotency_key IN (
+              pix_payment.idempotency_key,
+              'pix_payment.reject:' || pix_payment.id::text
+            )
+          )
+          OR (
+            event_row.event_type = 'pix.payment.settled'
+            AND pix_payment.settlement_journal_entry_id IS NOT NULL
+            AND event_row.idempotency_key = 'pix_payment.settle:' || pix_payment.id::text
+          )
+          OR (
+            event_row.event_type = 'pix.payment.reversed'
+            AND pix_payment.reversal_journal_entry_id IS NOT NULL
+            AND event_row.idempotency_key = 'pix_payment.reverse:' || pix_payment.id::text
+          )
+        )
+    ) INTO has_evidence;
+    RETURN has_evidence;
+  END IF;
+
+  IF event_row.aggregate_type = 'Payout' THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM payouts payout
+      WHERE payout.id = event_row.aggregate_id
+        AND payout.organization_id = event_row.organization_id
+        AND (
+          (
+            event_row.event_type = 'payout.scheduled'
+            AND payout.journal_entry_id IS NOT NULL
+            AND event_row.idempotency_key = payout.idempotency_key
+          )
+          OR (
+            event_row.event_type = 'payout.settled'
+            AND payout.settlement_journal_entry_id IS NOT NULL
+            AND payout.settled_at IS NOT NULL
+            AND event_row.idempotency_key = 'payout.settle:' || payout.id::text
+          )
+        )
+    ) INTO has_evidence;
+    RETURN has_evidence;
+  END IF;
+
+  IF event_row.aggregate_type = 'Refund' THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM refunds refund
+      WHERE refund.id = event_row.aggregate_id
+        AND refund.organization_id = event_row.organization_id
+        AND event_row.event_type = 'refund.settled'
+        AND refund.journal_entry_id IS NOT NULL
+        AND event_row.idempotency_key = refund.idempotency_key
+    ) INTO has_evidence;
+    RETURN has_evidence;
+  END IF;
+
+  IF event_row.aggregate_type = 'MedCase' THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM med_cases med_case
+      WHERE med_case.id = event_row.aggregate_id
+        AND med_case.organization_id = event_row.organization_id
+        AND (
+          (
+            event_row.event_type = 'med.case.opened'
+            AND event_row.idempotency_key = med_case.idempotency_key
+          )
+          OR (
+            event_row.event_type = 'med.case.rejected'
+            AND med_case.status = 'rejected'
+            AND med_case_has_resolution_approval(med_case.id)
+            AND event_row.idempotency_key = 'med_case.reject:' || med_case.id::text
+          )
+          OR (
+            event_row.event_type = 'med.case.refunded'
+            AND med_case.status = 'refunded'
+            AND med_case_has_resolution_approval(med_case.id)
+            AND med_case_has_refund_evidence(med_case.id)
+            AND event_row.idempotency_key = 'med_case.accept:' || med_case.id::text
+          )
+        )
+    ) INTO has_evidence;
+    RETURN has_evidence;
+  END IF;
+
+  RETURN true;
 END;
 $$;
 
@@ -5296,6 +5465,13 @@ CREATE TRIGGER outbox_events_aggregate_evidence_before_write BEFORE INSERT OR UP
 
 
 --
+-- Name: outbox_events outbox_events_command_identity_before_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER outbox_events_command_identity_before_write BEFORE INSERT OR UPDATE OF organization_id, aggregate_type, aggregate_id, event_type, idempotency_key ON public.outbox_events FOR EACH ROW EXECUTE FUNCTION public.assert_outbox_event_command_identity_evidence();
+
+
+--
 -- Name: outbox_events outbox_events_med_resolution_payload_before_write; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -5972,6 +6148,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602215500'),
 ('20260602214500'),
 ('20260602213000'),
 ('20260602211500'),
