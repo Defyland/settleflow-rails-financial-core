@@ -86,6 +86,7 @@ module Database
       expected_triggers = %w[
         outbox_events_prevent_evidence_mutation
         outbox_events_aggregate_evidence_before_write
+        outbox_events_med_resolution_payload_before_write
       ]
       enabled_constraints = ActiveRecord::Base.connection.select_values(<<~SQL.squish)
         SELECT conname
@@ -106,6 +107,13 @@ module Database
           WHERE proname = 'outbox_event_has_aggregate_evidence'
         )
       SQL
+      med_payload_function_present = catalog_value(<<~SQL.squish)
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_proc
+          WHERE proname = 'med_outbox_event_has_resolution_payload_evidence'
+        )
+      SQL
       aggregate_evidence_mismatches = if aggregate_function_present
         ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
           SELECT COUNT(*)
@@ -120,9 +128,10 @@ module Database
 
       Check.new(
         name: :outbox_evidence_guards,
-        ok: aggregate_function_present && aggregate_evidence_mismatches.to_i.zero? && missing_constraints.empty? && missing_triggers.empty?,
+        ok: aggregate_function_present && med_payload_function_present && aggregate_evidence_mismatches.to_i.zero? && missing_constraints.empty? && missing_triggers.empty?,
         details: {
           aggregate_function_present:,
+          med_payload_function_present:,
           present_constraints: present_constraints.sort,
           missing_constraints:,
           present_triggers: present_triggers.sort,

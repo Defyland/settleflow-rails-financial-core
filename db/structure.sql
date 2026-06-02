@@ -319,6 +319,23 @@ $$;
 
 
 --
+-- Name: assert_med_outbox_resolution_payload_evidence(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_med_outbox_resolution_payload_evidence() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NOT med_outbox_event_has_resolution_payload_evidence(NEW) THEN
+    RAISE EXCEPTION 'MED resolution outbox payload evidence is invalid';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
 -- Name: assert_outbox_event_aggregate_evidence(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -1391,6 +1408,77 @@ CREATE TABLE public.outbox_events (
     CONSTRAINT outbox_events_payload_sha256_hex_check CHECK (((payload_sha256 IS NULL) OR ((payload_sha256)::text ~ '^[0-9a-f]{64}$'::text))),
     CONSTRAINT outbox_events_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'publishing'::character varying, 'published'::character varying, 'dead_lettered'::character varying])::text[])))
 );
+
+
+--
+-- Name: med_outbox_event_has_resolution_payload_evidence(public.outbox_events); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.med_outbox_event_has_resolution_payload_evidence(event_row public.outbox_events) RETURNS boolean
+    LANGUAGE plpgsql STABLE
+    AS $$
+DECLARE
+  has_evidence boolean;
+BEGIN
+  IF event_row.aggregate_type <> 'MedCase'
+    OR event_row.event_type NOT IN ('med.case.rejected', 'med.case.refunded') THEN
+    RETURN true;
+  END IF;
+
+  IF event_row.event_type = 'med.case.rejected' THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM med_cases med_case
+      JOIN pix_payments pix_payment
+        ON pix_payment.id = med_case.pix_payment_id
+      JOIN operator_approvals approval
+        ON approval.id = med_case.operator_approval_id
+      WHERE med_case.id = event_row.aggregate_id
+        AND med_case.organization_id = event_row.organization_id
+        AND med_case.status = 'rejected'
+        AND med_case.refund_id IS NULL
+        AND med_case_has_resolution_approval(med_case.id)
+        AND event_row.payload ? 'resolved_at'
+        AND event_row.payload @> jsonb_build_object(
+          'med_case_id', med_case.public_id::text,
+          'pix_payment_id', pix_payment.public_id::text,
+          'operator_approval_id', approval.public_id::text,
+          'amount_cents', med_case.amount_cents,
+          'currency', med_case.currency,
+          'status', med_case.status
+        )
+    ) INTO has_evidence;
+    RETURN has_evidence;
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM med_cases med_case
+    JOIN pix_payments pix_payment
+      ON pix_payment.id = med_case.pix_payment_id
+    JOIN refunds refund
+      ON refund.id = med_case.refund_id
+    JOIN operator_approvals approval
+      ON approval.id = med_case.operator_approval_id
+    WHERE med_case.id = event_row.aggregate_id
+      AND med_case.organization_id = event_row.organization_id
+      AND med_case.status = 'refunded'
+      AND med_case_has_resolution_approval(med_case.id)
+      AND med_case_has_refund_evidence(med_case.id)
+      AND event_row.payload ? 'resolved_at'
+      AND event_row.payload @> jsonb_build_object(
+        'med_case_id', med_case.public_id::text,
+        'pix_payment_id', pix_payment.public_id::text,
+        'refund_id', refund.public_id::text,
+        'operator_approval_id', approval.public_id::text,
+        'amount_cents', med_case.amount_cents,
+        'currency', med_case.currency,
+        'status', med_case.status
+      )
+  ) INTO has_evidence;
+  RETURN has_evidence;
+END;
+$$;
 
 
 --
@@ -5201,6 +5289,13 @@ CREATE TRIGGER outbox_events_aggregate_evidence_before_write BEFORE INSERT OR UP
 
 
 --
+-- Name: outbox_events outbox_events_med_resolution_payload_before_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER outbox_events_med_resolution_payload_before_write BEFORE INSERT OR UPDATE OF aggregate_type, aggregate_id, event_type, payload ON public.outbox_events FOR EACH ROW EXECUTE FUNCTION public.assert_med_outbox_resolution_payload_evidence();
+
+
+--
 -- Name: outbox_events outbox_events_prevent_evidence_mutation; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -5870,6 +5965,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602213000'),
 ('20260602211500'),
 ('20260602210000'),
 ('20260602204500'),

@@ -376,6 +376,78 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     end
   end
 
+  test "database rejects MED resolution outbox payload without approval and refund evidence" do
+    fund_wallet(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-med-outbox-funding",
+      amount_cents: 1_000
+    )
+    pix_payment = create_pix_payment(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-med-outbox-pix",
+      amount_cents: 100
+    )
+    PixPayments::Settle.call(organization: @organization, pix_payment:)
+    med_case = MedCases::Open.call(
+      organization: @organization,
+      pix_payment:,
+      external_id: "db-invariant-med-outbox",
+      amount_cents: 50,
+      reason: "fraud_report",
+      idempotency_key: "db-invariant-med-outbox"
+    )
+    maker = create_operator("db-med-outbox-maker")
+    checker = create_operator("db-med-outbox-checker")
+    MedCases::Accept.call(organization: @organization, med_case:, operator: maker, reason: "fraud_confirmed")
+    approved = MedCases::Accept.call(organization: @organization, med_case:, operator: checker, reason: "fraud_confirmed").subject
+
+    assert_database_constraint_violation do
+      OutboxEvent.insert!({
+        organization_id: @organization.id,
+        aggregate_type: "MedCase",
+        aggregate_id: approved.id,
+        event_type: "med.case.refunded",
+        status: "pending",
+        attempts: 0,
+        payload: {
+          med_case_id: approved.public_id,
+          pix_payment_id: pix_payment.public_id,
+          amount_cents: approved.amount_cents,
+          currency: approved.currency,
+          status: approved.status,
+          resolved_at: approved.resolved_at.iso8601
+        },
+        created_at: Time.current,
+        updated_at: Time.current
+      })
+    end
+
+    assert_database_constraint_violation do
+      OutboxEvent.insert!({
+        organization_id: @organization.id,
+        aggregate_type: "MedCase",
+        aggregate_id: approved.id,
+        event_type: "med.case.refunded",
+        status: "pending",
+        attempts: 0,
+        payload: {
+          med_case_id: approved.public_id,
+          pix_payment_id: pix_payment.public_id,
+          refund_id: SecureRandom.uuid,
+          operator_approval_id: approved.operator_approval.public_id,
+          amount_cents: approved.amount_cents,
+          currency: approved.currency,
+          status: approved.status,
+          resolved_at: approved.resolved_at.iso8601
+        },
+        created_at: Time.current,
+        updated_at: Time.current
+      })
+    end
+  end
+
   test "database rejects malformed outbox payload hashes" do
     funding = fund_wallet(
       organization: @organization,

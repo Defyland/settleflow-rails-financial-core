@@ -81,7 +81,7 @@ Emitted when a refund or reversal reaches settled state. It must reference the o
 
 ### `med_case_opened.v1` and `med_case_resolved.v1`
 
-Emitted for MED case state changes. Opening/rejection do not imply ledger movement; accepted cases must also produce a `refund_settled` event. Terminal MED resolution requires an approved `operator_approval` for the same case, and accepted cases must link to a settled refund with the deterministic key `med_case.refund:<id>`.
+Emitted for MED case state changes. Opening/rejection do not imply ledger movement; accepted cases must also produce a `refund_settled` event. Terminal MED resolution requires an approved `operator_approval` for the same case, and accepted cases must link to a settled refund with the deterministic key `med_case.refund:<id>`. PostgreSQL rejects terminal MED outbox events whose payload omits or mismatches the approval/refund evidence.
 
 ## Compatibility policy
 

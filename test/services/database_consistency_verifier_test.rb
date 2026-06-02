@@ -11,6 +11,7 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     assert checks.all?(&:ok), checks.map { |check| [ check.name, check.details ] }.inspect
     outbox_guard_check = checks.find { |check| check.name == :outbox_evidence_guards }
     assert outbox_guard_check.details.fetch(:aggregate_function_present)
+    assert outbox_guard_check.details.fetch(:med_payload_function_present)
     assert_empty outbox_guard_check.details.fetch(:missing_constraints)
     assert_empty outbox_guard_check.details.fetch(:missing_triggers)
     assert_equal 0, outbox_guard_check.details.fetch(:aggregate_evidence_mismatches)
@@ -21,6 +22,7 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     ], outbox_guard_check.details.fetch(:present_constraints)
     assert_equal %w[
       outbox_events_aggregate_evidence_before_write
+      outbox_events_med_resolution_payload_before_write
       outbox_events_prevent_evidence_mutation
     ], outbox_guard_check.details.fetch(:present_triggers)
     idempotency_guard_check = checks.find { |check| check.name == :idempotency_evidence_guards }
