@@ -163,6 +163,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BalanceResponse"
+  /v1/wallets/{id}/balance_explanation:
+    get:
+      operationId: getWalletBalanceExplanation
+      summary: Explain projected balance against wallet ledger statement.
+      parameters:
+        - $ref: "#/components/parameters/PublicId"
+      responses:
+        "200":
+          description: Balance explanation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BalanceExplanationResponse"
   /v1/wallets/{id}/statement:
     get:
       operationId: getWalletStatement
@@ -269,6 +282,114 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransferResponse"
+  /v1/split_payments:
+    get:
+      operationId: listSplitPayments
+      summary: List split payments.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Split payment list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SplitPaymentCollection"
+    post:
+      operationId: createSplitPayment
+      summary: Split source wallet funds across destination wallets.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSplitPaymentRequest"
+      responses:
+        "201":
+          description: Split posted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SplitPaymentResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /v1/split_payments/{id}:
+    get:
+      operationId: getSplitPayment
+      summary: Get split payment.
+      parameters:
+        - $ref: "#/components/parameters/PublicId"
+      responses:
+        "200":
+          description: Split payment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SplitPaymentResponse"
+  /v1/payouts:
+    get:
+      operationId: listPayouts
+      summary: List payouts.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Payout list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayoutCollection"
+    post:
+      operationId: createPayout
+      summary: Schedule a D+N payout.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePayoutRequest"
+      responses:
+        "201":
+          description: Payout scheduled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayoutResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /v1/payouts/{id}:
+    get:
+      operationId: getPayout
+      summary: Get payout.
+      parameters:
+        - $ref: "#/components/parameters/PublicId"
+      responses:
+        "200":
+          description: Payout.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayoutResponse"
+  /v1/payouts/{id}/settle:
+    post:
+      operationId: settlePayout
+      summary: Settle a due payout.
+      parameters:
+        - $ref: "#/components/parameters/PublicId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Payout settled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayoutResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
   /v1/pix_payments:
     get:
       operationId: listPixPayments
@@ -329,6 +450,140 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PixPaymentResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /v1/refunds:
+    get:
+      operationId: listRefunds
+      summary: List refunds.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Refund list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefundCollection"
+    post:
+      operationId: createRefund
+      summary: Settle a Pix refund.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRefundRequest"
+      responses:
+        "201":
+          description: Refund settled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefundResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /v1/refunds/{id}:
+    get:
+      operationId: getRefund
+      summary: Get refund.
+      parameters:
+        - $ref: "#/components/parameters/PublicId"
+      responses:
+        "200":
+          description: Refund.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefundResponse"
+  /v1/med_cases:
+    get:
+      operationId: listMedCases
+      summary: List fake MED cases.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: MED case list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MedCaseCollection"
+    post:
+      operationId: createMedCase
+      summary: Open a fake MED dispute for a settled Pix payment.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMedCaseRequest"
+      responses:
+        "201":
+          description: MED case opened.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MedCaseResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /v1/med_cases/{id}:
+    get:
+      operationId: getMedCase
+      summary: Get fake MED case.
+      parameters:
+        - $ref: "#/components/parameters/PublicId"
+      responses:
+        "200":
+          description: MED case.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MedCaseResponse"
+  /v1/med_cases/{id}/accept:
+    post:
+      operationId: acceptMedCase
+      summary: Accept a fake MED case and create its linked refund.
+      parameters:
+        - $ref: "#/components/parameters/PublicId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: MED case refunded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MedCaseResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /v1/med_cases/{id}/reject:
+    post:
+      operationId: rejectMedCase
+      summary: Reject a fake MED case without ledger mutation.
+      parameters:
+        - $ref: "#/components/parameters/PublicId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: MED case rejected.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MedCaseResponse"
         "422":
           $ref: "#/components/responses/ValidationError"
   /v1/ledger_entries:
@@ -591,6 +846,42 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/Balance"
+    BalanceExplanation:
+      type: object
+      properties:
+        wallet_id:
+          type: string
+          format: uuid
+        currency:
+          type: string
+        projection_available_cents:
+          type: integer
+          format: int64
+        ledger_available_cents:
+          type: integer
+          format: int64
+        difference_cents:
+          type: integer
+          format: int64
+        consistent:
+          type: boolean
+        debit_total_cents:
+          type: integer
+          format: int64
+        credit_total_cents:
+          type: integer
+          format: int64
+        line_count:
+          type: integer
+        recent_lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/LedgerLine"
+    BalanceExplanationResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/BalanceExplanation"
     CreateWalletRequest:
       type: object
       required: [customer_id, external_id]
@@ -725,6 +1016,146 @@ components:
             $ref: "#/components/schemas/Transfer"
         meta:
           $ref: "#/components/schemas/PageMeta"
+    CreateSplitPaymentRequest:
+      type: object
+      required: [source_wallet_id, external_id, entries]
+      properties:
+        source_wallet_id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        entries:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [destination_wallet_id, amount_cents]
+            properties:
+              destination_wallet_id:
+                type: string
+                format: uuid
+              amount_cents:
+                $ref: "#/components/schemas/MoneyCents"
+              metadata:
+                $ref: "#/components/schemas/Metadata"
+        currency:
+          type: string
+        memo:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+    SplitPayment:
+      allOf:
+        - $ref: "#/components/schemas/FinancialCommand"
+        - type: object
+          properties:
+            source_wallet_id:
+              type: string
+              format: uuid
+            total_amount_cents:
+              type: integer
+              format: int64
+            memo:
+              type: string
+            entries:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  destination_wallet_id:
+                    type: string
+                    format: uuid
+                  amount_cents:
+                    type: integer
+                    format: int64
+                  currency:
+                    type: string
+                  metadata:
+                    $ref: "#/components/schemas/Metadata"
+    SplitPaymentResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/SplitPayment"
+    SplitPaymentCollection:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SplitPayment"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    CreatePayoutRequest:
+      type: object
+      required: [wallet_id, external_id, amount_cents, destination_reference]
+      properties:
+        wallet_id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        amount_cents:
+          $ref: "#/components/schemas/MoneyCents"
+        currency:
+          type: string
+        settlement_delay_days:
+          type: integer
+          minimum: 0
+          default: 1
+        destination_kind:
+          type: string
+          default: bank_account
+        destination_reference:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+    Payout:
+      allOf:
+        - $ref: "#/components/schemas/FinancialCommand"
+        - type: object
+          properties:
+            wallet_id:
+              type: string
+              format: uuid
+            settlement_journal_entry_id:
+              type: string
+              format: uuid
+              nullable: true
+            settlement_delay_days:
+              type: integer
+            settlement_due_on:
+              type: string
+              format: date
+            settled_at:
+              type: string
+              format: date-time
+              nullable: true
+            destination_kind:
+              type: string
+            destination_reference:
+              type: string
+            failure_code:
+              type: string
+              nullable: true
+    PayoutResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Payout"
+    PayoutCollection:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Payout"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
     CreatePixPaymentRequest:
       type: object
       required: [wallet_id, external_id, pix_key, receiver_name, amount_cents]
@@ -788,6 +1219,131 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PixPayment"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    CreateRefundRequest:
+      type: object
+      required: [pix_payment_id, external_id, amount_cents, reason]
+      properties:
+        pix_payment_id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        amount_cents:
+          $ref: "#/components/schemas/MoneyCents"
+        currency:
+          type: string
+        reason:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+    Refund:
+      allOf:
+        - $ref: "#/components/schemas/FinancialCommand"
+        - type: object
+          properties:
+            wallet_id:
+              type: string
+              format: uuid
+            pix_payment_id:
+              type: string
+              format: uuid
+            reason:
+              type: string
+            settled_at:
+              type: string
+              format: date-time
+              nullable: true
+            failure_code:
+              type: string
+              nullable: true
+    RefundResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Refund"
+    RefundCollection:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Refund"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    CreateMedCaseRequest:
+      type: object
+      required: [pix_payment_id, external_id, amount_cents, reason]
+      properties:
+        pix_payment_id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        amount_cents:
+          $ref: "#/components/schemas/MoneyCents"
+        currency:
+          type: string
+        reason:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+    MedCase:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        pix_payment_id:
+          type: string
+          format: uuid
+        refund_id:
+          type: string
+          format: uuid
+          nullable: true
+        amount_cents:
+          type: integer
+          format: int64
+        delta_cents:
+          type: integer
+          format: int64
+        running_available_cents:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        status:
+          type: string
+          enum: [opened, rejected, refunded]
+        reason:
+          type: string
+        opened_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        created_at:
+          type: string
+          format: date-time
+    MedCaseResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/MedCase"
+    MedCaseCollection:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MedCase"
         meta:
           $ref: "#/components/schemas/PageMeta"
     FinancialCommand:

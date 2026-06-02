@@ -38,8 +38,12 @@ Every public financial event must include:
 | `balance_projection_updated` | 1 | A wallet read model changes after ledger movement | Derived balance changed | wallet, projection, source journal entry |
 | `pix_payment_approved` | 1 | Pix payment passes risk and funds checks | Wallet liability was debited and Pix clearing was credited | Pix payment, wallet, approval journal entry |
 | `settlement_executed` | 1 | Clearing or provider settlement is posted | Clearing and platform cash were reconciled for a payment batch or payment | settlement reference, journal entry |
+| `split_posted` | 1 | A source wallet is split across destinations | Source wallet liability was debited and destination liabilities were credited | split payment, source wallet, destination wallets, journal entry |
+| `payout_scheduled` | 1 | Payout is accepted for D+N settlement | Wallet liability was debited and payout clearing was credited | payout reference, wallet, schedule journal entry |
 | `payout_settled` | 1 | Payout settlement completes | External payout movement is financially settled | payout reference, wallet, journal entry |
 | `refund_settled` | 1 | Refund/reversal settlement completes | Customer-facing money return was financially settled | refund/reversal reference, wallet, journal entry |
+| `med_case_opened` | 1 | Fake MED dispute is opened | Dispute evidence was captured without ledger mutation | MED case, Pix payment, wallet |
+| `med_case_resolved` | 1 | Fake MED dispute is rejected or refunded | Dispute reached terminal state; accepted cases reference a refund | MED case, refund when present |
 
 ## Event Semantics
 
@@ -59,13 +63,25 @@ Emitted after a Pix payment is approved and the wallet liability has been debite
 
 Emitted when settlement is posted against clearing and platform cash accounts. It represents financial settlement execution, not merely scheduling.
 
+### `split_posted.v1`
+
+Emitted when a split posts one debit from the source wallet liability and one or more credits to destination wallet liabilities. Consumers must reconcile the total against the journal entry.
+
+### `payout_scheduled.v1`
+
+Emitted when a payout is scheduled for D+N settlement. It is a committed wallet debit and clearing liability, not provider cash movement.
+
 ### `payout_settled.v1`
 
-Emitted when a payout movement reaches settled state. In the MVP this is a documented public contract for future provider adapters; implementations must tie it to a journal entry before publication.
+Emitted when a payout movement reaches settled state. It must reference the settlement journal entry that debits payout clearing and credits platform cash.
 
 ### `refund_settled.v1`
 
 Emitted when a refund or reversal reaches settled state. It must reference the original financial movement and the compensating journal entry.
+
+### `med_case_opened.v1` and `med_case_resolved.v1`
+
+Emitted for fake MED case state changes. Opening/rejection do not imply ledger movement; accepted cases must also produce a `refund_settled` event.
 
 ## Compatibility policy
 
@@ -101,5 +117,9 @@ The local `bin/ci` gate and GitHub Actions validate that every `*.v1.json` schem
 - [balance_projection_updated.v1.json](balance_projection_updated.v1.json)
 - [pix_payment_approved.v1.json](pix_payment_approved.v1.json)
 - [settlement_executed.v1.json](settlement_executed.v1.json)
+- [split_posted.v1.json](split_posted.v1.json)
+- [payout_scheduled.v1.json](payout_scheduled.v1.json)
 - [payout_settled.v1.json](payout_settled.v1.json)
 - [refund_settled.v1.json](refund_settled.v1.json)
+- [med_case_opened.v1.json](med_case_opened.v1.json)
+- [med_case_resolved.v1.json](med_case_resolved.v1.json)

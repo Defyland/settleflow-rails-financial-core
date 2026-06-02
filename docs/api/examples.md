@@ -66,6 +66,46 @@ curl -sS "$BASE_URL/v1/transfers" \
   }'
 ```
 
+Post a split:
+
+```bash
+curl -sS "$BASE_URL/v1/split_payments" \
+  -H "X-Api-Key: $API_KEY" \
+  -H "Idempotency-Key: split-001" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_wallet_id": "<source_wallet_uuid>",
+    "external_id": "split-001",
+    "entries": [
+      { "destination_wallet_id": "<destination_wallet_uuid_1>", "amount_cents": 2000 },
+      { "destination_wallet_id": "<destination_wallet_uuid_2>", "amount_cents": 3000 }
+    ],
+    "memo": "merchant split"
+  }'
+```
+
+Schedule and settle a D+N payout:
+
+```bash
+curl -sS "$BASE_URL/v1/payouts" \
+  -H "X-Api-Key: $API_KEY" \
+  -H "Idempotency-Key: payout-001" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "wallet_id": "<wallet_uuid>",
+    "external_id": "payout-001",
+    "amount_cents": 4000,
+    "settlement_delay_days": 1,
+    "destination_reference": "bank-account-001"
+  }'
+
+curl -sS "$BASE_URL/v1/payouts/<payout_uuid>/settle" \
+  -H "X-Api-Key: $API_KEY" \
+  -H "Idempotency-Key: payout-001-settle" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
 Create a Pix payment:
 
 ```bash
@@ -82,10 +122,53 @@ curl -sS "$BASE_URL/v1/pix_payments" \
   }'
 ```
 
+Settle a refund for a settled Pix payment:
+
+```bash
+curl -sS "$BASE_URL/v1/refunds" \
+  -H "X-Api-Key: $API_KEY" \
+  -H "Idempotency-Key: refund-001" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pix_payment_id": "<pix_payment_uuid>",
+    "external_id": "refund-001",
+    "amount_cents": 1500,
+    "reason": "customer_request"
+  }'
+```
+
+Open and accept a fake MED case:
+
+```bash
+curl -sS "$BASE_URL/v1/med_cases" \
+  -H "X-Api-Key: $API_KEY" \
+  -H "Idempotency-Key: med-001" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pix_payment_id": "<pix_payment_uuid>",
+    "external_id": "med-001",
+    "amount_cents": 1500,
+    "reason": "fraud_report"
+  }'
+
+curl -sS "$BASE_URL/v1/med_cases/<med_case_uuid>/accept" \
+  -H "X-Api-Key: $API_KEY" \
+  -H "Idempotency-Key: med-001-accept" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
 Inspect a wallet statement:
 
 ```bash
 curl -sS "$BASE_URL/v1/wallets/<wallet_uuid>/statement" \
+  -H "X-Api-Key: $API_KEY"
+```
+
+Explain a wallet balance:
+
+```bash
+curl -sS "$BASE_URL/v1/wallets/<wallet_uuid>/balance_explanation" \
   -H "X-Api-Key: $API_KEY"
 ```
 

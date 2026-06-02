@@ -11,13 +11,19 @@ Production deployment uses Docker, Thruster, Kamal, Rails credentials, PostgreSQ
 - `SETTLEFLOW_RAILS_FINANCIAL_CORE_DATABASE_PASSWORD`
 - `SETTLEFLOW_OPERATOR_EMAIL`
 - `SETTLEFLOW_OPERATOR_PASSWORD`
+- `APP_HOST`
+- `METRICS_BEARER_TOKEN`
+- `OUTBOX_WEBHOOK_URL`
+- `OUTBOX_WEBHOOK_SECRET`
 
 ## Preflight
 
 1. Provision PostgreSQL databases for `primary`, `queue`, `cache`, and `cable`.
 2. Confirm `POSTGRES_HOST`, `POSTGRES_PORT`, and `POSTGRES_USER` in `config/deploy.yml`.
-3. Set registry credentials and Rails secrets in the Kamal secrets store.
-4. Run `bin/ci` locally and ensure the Docker build passes.
+3. Set `APP_HOST` to the production host list used by Rails host authorization.
+4. Confirm `OUTBOX_WEBHOOK_URL` is HTTPS and `OUTBOX_WEBHOOK_SECRET` is set before enabling the HTTP publisher.
+5. Set registry credentials and Rails secrets in the Kamal secrets store.
+6. Run `bin/ci` locally and ensure the Docker build passes.
 
 ## Deploy
 
@@ -25,7 +31,10 @@ Production deployment uses Docker, Thruster, Kamal, Rails credentials, PostgreSQ
 2. Run database migrations.
 3. Boot web and job roles.
 4. Check `/up`, `/ready`, and `/metrics`.
-5. Sign in to `/ops` with the seeded admin operator and verify outbox, ledger, and Pix pages render.
+5. Verify `/metrics` rejects requests without `Authorization: Bearer <METRICS_BEARER_TOKEN>`.
+6. Sign in to `/ops` with the configured admin operator and verify outbox, ledger, audit, reconciliation, and Pix pages render.
+7. Run `bin/rails runner 'abort("audit hash chain broken") unless AuditLog.hash_chain_intact?'`.
+8. Create a non-production smoke organization or fixture and verify a funding plus reconciliation run before allowing live writes.
 
 ## Rollback
 

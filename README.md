@@ -23,11 +23,11 @@ Many fintech demos store mutable balances directly on an account row. That hides
 - Customers and BRL wallets.
 - Double-entry journal entries and immutable ledger lines.
 - Balance projections derived from wallet ledger accounts.
-- Funding, internal transfer, Pix approval/review/rejection, Pix settlement, Pix reversal, and reconciliation flows.
-- Authenticated `/ops` backoffice for dashboard KPIs, paginated wallet statements, Pix manual review, ledger drill-downs, reconciliation, outbox retry, and audit inspection.
+- Funding, internal transfer, split, Pix approval/review/rejection, Pix settlement, Pix reversal, payout D+N, refund, fake MED dispute, and reconciliation flows.
+- Authenticated `/ops` backoffice for dashboard KPIs, paginated wallet statements, Pix manual review, maker-checker settlement/reversal approval, ledger drill-downs, reconciliation, outbox retry, and audit inspection.
 - Role-based operator capabilities for read-only, operator, and admin workflows.
 - Transactional outbox with pluggable log/HTTP publishers, claim leases, delivery metadata, payload hashes, retry backoff, next-attempt visibility, and dead-letter evidence.
-- Audit logs, request IDs, correlation IDs, Prometheus metrics, readiness checks, and OpenTelemetry wiring.
+- Hash-chained audit logs, request IDs, correlation IDs, Prometheus metrics, readiness checks, and OpenTelemetry wiring.
 - Minitest coverage across models, services, requests, authorization, failure scenarios, jobs, ledger invariants, Rails auth, and the Hotwire operator surface.
 
 ## 5. Architecture overview
@@ -61,7 +61,7 @@ Core entities:
 - `LedgerAccount`: asset/liability/revenue/expense/equity account with normal balance.
 - `JournalEntry` and `LedgerLine`: immutable double-entry record.
 - `BalanceProjection`: read-optimized available/pending/blocked wallet balance.
-- `Funding`, `Transfer`, `PixPayment`, `ReconciliationRun`: financial workflows.
+- `Funding`, `Transfer`, `SplitPayment`, `Payout`, `PixPayment`, `Refund`, `MedCase`, `ReconciliationRun`: financial workflows.
 - `OutboxEvent`, `IdempotencyKey`, `AuditLog`: reliability and governance records.
 
 ## 8. API documentation
@@ -74,7 +74,7 @@ SettleFlow uses a transactional outbox table and ActiveJob jobs. Financial servi
 
 ## 10. Database design
 
-The schema uses foreign keys, unique constraints per tenant, check constraints for ledger directions and account types, positive amount checks, UUID public IDs, and optimistic locking on wallets/projections. Money is stored as integer cents. Ledger entries are the source of truth; projections are derived read models. Posted journal entries and ledger lines are append-only through Active Record read-only guards.
+The schema uses foreign keys, unique constraints per tenant, check constraints for ledger directions and account types, positive amount checks, UUID public IDs, and optimistic locking on wallets/projections. Money is stored as integer cents. Ledger entries are the source of truth; projections are derived read models. Posted journal entries and ledger lines are append-only through Active Record and PostgreSQL guards. Audit logs are append-only and hash-chained in PostgreSQL.
 
 ## 11. Testing strategy
 
@@ -147,7 +147,7 @@ Default development operator:
 
 ```text
 email: ops@settleflow.local
-password: password123
+password: settleflow-dev-password-123
 ```
 
 Optional PostgreSQL via Docker:
@@ -179,8 +179,13 @@ Covered and documented scenarios include:
 - unbalanced journal entries
 - cross-tenant resource access
 - Pix risk rejection and manual review
+- payout D+N scheduling and duplicate settlement protection
+- refund/MED over-refund prevention
+- split balance movement across multiple destination wallets
 - outbox retry/dead-letter behavior
 - operator authorization denial
+- maker-checker settlement/reversal approval
+- audit hash-chain tamper detection
 - reconciliation discrepancies
 - unauthenticated operator access
 - manual Pix rejection and reversal with operator audit trail
@@ -191,7 +196,7 @@ Operational steps are in [docs/runbooks/incident-response.md](docs/runbooks/inci
 
 - Add OIDC/SAML SSO, MFA, and finer-grained permission groups for operators.
 - Add real DICT provider adapters and webhook ingestion.
-- Add full MED/dispute case management around the reversal ledger primitive.
+- Replace the fake MED simulator with real provider protocol, deadlines, evidence workflow, and notification handling.
 - Add ClickHouse export path for reporting.
 - Add multi-currency ledger support.
 - Add RabbitMQ/Redpanda adapters when measured throughput or integration fanout exceeds the built-in log/HTTP outbox publishers.

@@ -10,11 +10,18 @@ For public versioned financial event contracts, see [docs/events/README.md](READ
 | --- | --- | --- |
 | `wallet.funded` | `Fundings::Create` | Wallet funding posted |
 | `wallet.transfer.posted` | `Transfers::Create` | Internal transfer posted |
+| `split.posted` | `SplitPayments::Create` | Source wallet split across destination wallets |
 | `pix.payment.approved` | `PixPayments::Create` | Pix accepted and wallet debited |
 | `pix.payment.pending_review` | `PixPayments::Create` | Pix held by risk controls |
 | `pix.payment.rejected` | `PixPayments::Create` | Pix blocked before ledger mutation |
 | `pix.payment.settled` | `PixPayments::Settle` | Pix clearing settled against platform cash |
 | `pix.payment.reversed` | `PixPayments::Reverse` | Settled Pix returned through a compensating journal entry |
+| `payout.scheduled` | `Payouts::Create` | Wallet debited and payout clearing credited for D+N settlement |
+| `payout.settled` | `Payouts::Settle` | Payout clearing settled against platform cash |
+| `refund.settled` | `Refunds::Create` | Customer wallet credited through refund journal entry |
+| `med.case.opened` | `MedCases::Open` | MED dispute opened without ledger mutation |
+| `med.case.rejected` | `MedCases::Reject` | MED dispute rejected without ledger mutation |
+| `med.case.refunded` | `MedCases::Accept` | MED dispute accepted and linked to a settled refund |
 | `reconciliation.matched` | `Reconciliation::Run` | Provider and ledger balances match |
 | `reconciliation.discrepant` | `Reconciliation::Run` | Provider and ledger balances differ |
 
