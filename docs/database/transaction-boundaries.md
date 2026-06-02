@@ -6,6 +6,8 @@ API idempotency records are part of the same transaction boundary. PostgreSQL gu
 
 Deferrable PostgreSQL state-evidence triggers validate funding, transfer, split, Pix, payout, refund, and MED rows at commit, after the service has filled journal/refund/split references. Intermediate rows inside the transaction may be incomplete; committed rows may not be.
 
+Mutation guards run before updates/deletes on those command tables. Identity and value fields are immutable after insert, rows with ledger/outbox evidence cannot be deleted, and state changes after evidence are limited to the documented lifecycle transitions that add settlement, reversal, refund, or rejection evidence.
+
 ## Required pattern
 
 1. Validate tenant and currency.

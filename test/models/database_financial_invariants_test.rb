@@ -497,6 +497,98 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     assert_database_constraint_violation { split_entry.update_columns(destination_wallet_id: split_payment.source_wallet_id) }
   end
 
+  test "database rejects financial aggregate mutation and deletion after evidence" do
+    destination_one = create_wallet(organization: @organization)
+    destination_two = create_wallet(organization: @organization)
+    fund_wallet(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-aggregate-base-funding",
+      amount_cents: 20_000
+    )
+    funding = fund_wallet(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-aggregate-funding",
+      amount_cents: 100
+    )
+    transfer = Transfers::Create.call(
+      organization: @organization,
+      source_wallet: @wallet,
+      destination_wallet: destination_one,
+      external_id: "db-invariant-aggregate-transfer",
+      amount_cents: 100,
+      idempotency_key: "db-invariant-aggregate-transfer"
+    )
+    split_payment = SplitPayments::Create.call(
+      organization: @organization,
+      source_wallet: @wallet,
+      external_id: "db-invariant-aggregate-split",
+      entries: [
+        { destination_wallet: destination_one, amount_cents: 50 },
+        { destination_wallet: destination_two, amount_cents: 50 }
+      ],
+      idempotency_key: "db-invariant-aggregate-split"
+    )
+    split_entry = split_payment.split_entries.first
+    payout = Payouts::Create.call(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-aggregate-payout",
+      amount_cents: 100,
+      settlement_delay_days: 0,
+      destination_reference: "bank-account",
+      idempotency_key: "db-invariant-aggregate-payout"
+    )
+    pix_payment = create_pix_payment(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-aggregate-pix",
+      amount_cents: 100
+    )
+    refundable_pix_payment = create_pix_payment(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-aggregate-refund-pix",
+      amount_cents: 100
+    )
+    PixPayments::Settle.call(organization: @organization, pix_payment: refundable_pix_payment)
+    refund = Refunds::Create.call(
+      organization: @organization,
+      pix_payment: refundable_pix_payment,
+      external_id: "db-invariant-aggregate-refund",
+      amount_cents: 50,
+      reason: "customer_request",
+      idempotency_key: "db-invariant-aggregate-refund"
+    )
+    med_case = MedCases::Open.call(
+      organization: @organization,
+      pix_payment: refundable_pix_payment,
+      external_id: "db-invariant-aggregate-med",
+      amount_cents: 50,
+      reason: "fraud_report",
+      idempotency_key: "db-invariant-aggregate-med"
+    )
+
+    assert_database_constraint_violation { funding.update_columns(amount_cents: funding.amount_cents + 1) }
+    assert_database_constraint_violation { Funding.where(id: funding.id).delete_all }
+    assert_database_constraint_violation { transfer.update_columns(source_wallet_id: destination_two.id) }
+    assert_database_constraint_violation { Transfer.where(id: transfer.id).delete_all }
+    assert_database_constraint_violation { split_payment.update_columns(external_id: "tampered") }
+    assert_database_constraint_violation { split_entry.update_columns(metadata: { tampered: true }) }
+    assert_database_constraint_violation { SplitEntry.where(id: split_entry.id).delete_all }
+    assert_database_constraint_violation { payout.update_columns(destination_reference: "tampered") }
+    assert_database_constraint_violation { Payout.where(id: payout.id).delete_all }
+    assert_database_constraint_violation { pix_payment.update_columns(amount_cents: pix_payment.amount_cents + 1) }
+    assert_database_constraint_violation { pix_payment.update_columns(metadata: { tampered: true }) }
+    assert_database_constraint_violation { PixPayment.where(id: pix_payment.id).delete_all }
+    assert_database_constraint_violation { refund.update_columns(reason: "tampered") }
+    assert_database_constraint_violation { Refund.where(id: refund.id).delete_all }
+    assert_database_constraint_violation { med_case.update_columns(amount_cents: med_case.amount_cents + 1) }
+    assert_database_constraint_violation { med_case.update_columns(metadata: { tampered: true }) }
+    assert_database_constraint_violation { MedCase.where(id: med_case.id).delete_all }
+  end
+
   test "database rejects ledger lines whose account belongs to another organization" do
     journal = post_test_journal
     other_organization = create_organization

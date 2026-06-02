@@ -429,13 +429,21 @@ module Database
     def financial_state_evidence_guards_check
       expected_triggers = %w[
         fundings_state_evidence_after_write
+        fundings_prevent_evidence_mutation
         transfers_state_evidence_after_write
+        transfers_prevent_evidence_mutation
         split_payments_state_evidence_after_write
+        split_payments_prevent_evidence_mutation
         split_entries_state_evidence_after_write
+        split_entries_prevent_evidence_mutation
         payouts_state_evidence_after_write
+        payouts_prevent_evidence_mutation
         refunds_state_evidence_after_write
+        refunds_prevent_evidence_mutation
         med_cases_state_evidence_after_write
+        med_cases_prevent_evidence_mutation
         pix_payments_state_evidence_after_write
+        pix_payments_prevent_evidence_mutation
       ]
       enabled_triggers = ActiveRecord::Base.connection.select_values(<<~SQL.squish)
         SELECT tgname
@@ -443,13 +451,21 @@ module Database
         WHERE NOT tgisinternal
           AND tgenabled <> 'D'
       SQL
+      aggregate_function_present = catalog_value(<<~SQL.squish)
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_proc
+          WHERE proname = 'financial_aggregate_has_outbox_evidence'
+        )
+      SQL
       present_triggers = enabled_triggers & expected_triggers
       missing_triggers = expected_triggers - present_triggers
 
       Check.new(
         name: :financial_state_evidence_guards,
-        ok: missing_triggers.empty?,
+        ok: aggregate_function_present && missing_triggers.empty?,
         details: {
+          aggregate_function_present:,
           present_triggers: present_triggers.sort,
           missing_triggers:
         }

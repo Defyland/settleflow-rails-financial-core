@@ -14,7 +14,7 @@
 - Ledger rows are append-only through Active Record and PostgreSQL triggers.
 - Journal entries require idempotency keys and domain references.
 - Idempotency replay records are guarded in PostgreSQL: command identity is immutable, request hashes must be SHA-256 hex, succeeded responses need an HTTP status, and succeeded evidence cannot be mutated or deleted directly.
-- Funding, transfer, split, Pix, payout, refund, and MED final statuses require matching PostgreSQL evidence through deferrable state triggers.
+- Funding, transfer, split, Pix, payout, refund, and MED final statuses require matching PostgreSQL evidence through deferrable state triggers. Once ledger or outbox evidence exists, PostgreSQL prevents direct command identity/value mutation and deletion; only documented state transitions with new evidence are allowed.
 - Balance projections cannot go negative and must match their wallet organization/currency in PostgreSQL.
 - Balance snapshots are append-only projection-vs-ledger evidence; PostgreSQL enforces their wallet organization/currency and difference calculation.
 - Reconciliation runs and rows are immutable after outbox evidence; PostgreSQL enforces provider-vs-ledger discrepancy math and row status evidence.

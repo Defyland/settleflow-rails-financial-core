@@ -66,15 +66,24 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
       reconciliation_runs_prevent_evidence_mutation
     ], reconciliation_guard_check.details.fetch(:present_triggers)
     state_guard_check = checks.find { |check| check.name == :financial_state_evidence_guards }
+    assert state_guard_check.details.fetch(:aggregate_function_present)
     assert_empty state_guard_check.details.fetch(:missing_triggers)
     assert_equal %w[
+      fundings_prevent_evidence_mutation
       fundings_state_evidence_after_write
+      med_cases_prevent_evidence_mutation
       med_cases_state_evidence_after_write
+      payouts_prevent_evidence_mutation
       payouts_state_evidence_after_write
+      pix_payments_prevent_evidence_mutation
       pix_payments_state_evidence_after_write
+      refunds_prevent_evidence_mutation
       refunds_state_evidence_after_write
+      split_entries_prevent_evidence_mutation
       split_entries_state_evidence_after_write
+      split_payments_prevent_evidence_mutation
       split_payments_state_evidence_after_write
+      transfers_prevent_evidence_mutation
       transfers_state_evidence_after_write
     ], state_guard_check.details.fetch(:present_triggers)
   end
