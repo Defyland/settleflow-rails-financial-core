@@ -17,6 +17,7 @@
 - Funding, transfer, split, Pix, payout, refund, and MED command tables require a nonblank `idempotency_key` in PostgreSQL. Organization-scoped unique indexes then block duplicate command identity even when writes bypass service objects.
 - Idempotency replay records are guarded in PostgreSQL: request identity is immutable, request hashes must be SHA-256 hex, succeeded responses need an HTTP status, and succeeded evidence cannot be mutated or deleted directly.
 - Funding, transfer, split, Pix, payout, refund, and MED final statuses require matching PostgreSQL evidence through deferrable state triggers. MED terminal statuses additionally require approved maker-checker evidence and, for accepted cases, a matching settled refund. Once ledger or outbox evidence exists, PostgreSQL prevents direct command identity/value mutation and deletion; only documented state transitions with new evidence are allowed.
+- Early payout settlement before D+N due date requires approved maker-checker evidence in PostgreSQL. Public API `force=true` is not sufficient without an operator approval linked to the payout.
 - Settled refunds are capped in PostgreSQL by the original Pix payment amount. Refund writes lock the source Pix row, settled refunds must match the Pix organization/wallet/currency, and direct Pix reversal is rejected after settled refund evidence exists.
 - Balance projections cannot go negative and must match their wallet organization/currency in PostgreSQL.
 - Balance snapshots are append-only projection-vs-ledger evidence; PostgreSQL enforces their wallet organization/currency and difference calculation.
@@ -25,7 +26,7 @@
 - Processed-event rows must match a published outbox event by organization, public event ID, event type, and payload hash before they can drive ClickHouse ingestion state.
 - Audit logs are append-only and hash-chained.
 - Audit hash-chain anchors are append-only and can be exported to an external evidence sink.
-- Maker-checker approvals protect operator settlement, reversal, and MED resolution actions. PostgreSQL enforces dual-control, requires checker/timestamp evidence for terminal decisions, and blocks terminal approval mutation or deletion.
+- Maker-checker approvals protect operator settlement exceptions, reversal, and MED resolution actions. PostgreSQL enforces dual-control, requires checker/timestamp evidence for terminal decisions, and blocks terminal approval mutation or deletion.
 
 Audit anchors improve tamper evidence but do not replace regulated WORM storage. Production deployments should publish `audit:anchor_hash_chain` output to immutable storage outside the application database.
 

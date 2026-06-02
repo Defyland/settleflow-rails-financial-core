@@ -43,6 +43,23 @@ class FinancialExtensionsApiTest < ActionDispatch::IntegrationTest
     assert_response :ok
     assert_equal "settled", json_body.dig("data", "status")
 
+    post_json "/v1/payouts", {
+      wallet_id: @source_wallet.public_id,
+      external_id: "api-payout-early-001",
+      amount_cents: 1_000,
+      settlement_delay_days: 2,
+      destination_reference: "bank-account-early-001"
+    }, headers: auth_headers(@api_key, "Idempotency-Key" => "api-payout-early-001")
+
+    assert_response :created
+    early_payout_id = json_body.dig("data", "id")
+
+    post_json "/v1/payouts/#{early_payout_id}/settle?force=true", {}, headers: auth_headers(@api_key, "Idempotency-Key" => "api-payout-early-settle-001")
+
+    assert_response :forbidden
+    assert_equal "authorization_failed", json_body.dig("error", "code")
+    assert_equal "scheduled", @organization.payouts.find_by!(public_id: early_payout_id).status
+
     pix_payment = create_pix_payment(
       organization: @organization,
       wallet: @source_wallet,

@@ -39,9 +39,10 @@
 
 1. Find the `Payout` by `public_id` or `external_id` and confirm `status`, `settlement_due_on`, and `settlement_journal_entry_id`.
 2. If the payout is `scheduled`, confirm wallet available balance was already debited and `PAYOUT_CLEARING:<currency>` was credited.
-3. Do not settle before `settlement_due_on` unless an incident commander approves `force: true` and records the provider evidence.
-4. If settlement was retried, confirm there is only one `payout.settled` journal entry and one deterministic key `payout.settle:<id>`.
-5. If provider cash differs after settlement, run reconciliation for the provider date and preserve the outbox event `payout.settled`.
+3. Do not settle before `settlement_due_on` through the public API. Early settlement must be requested by one operator and approved by a second operator through maker-checker action `payout.settle_early`.
+4. After early settlement, verify `payout.operator_approval_id` references an approved approval for the same payout and `bin/rails database:verify_consistency` reports `payout_early_settlement_mismatches=0`.
+5. If settlement was retried, confirm there is only one `payout.settled` journal entry and one deterministic key `payout.settle:<id>`.
+6. If provider cash differs after settlement, run reconciliation for the provider date and preserve the outbox event `payout.settled`.
 
 ## Refund or MED dispute
 

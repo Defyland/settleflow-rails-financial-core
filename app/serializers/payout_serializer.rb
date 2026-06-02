@@ -6,6 +6,7 @@ class PayoutSerializer
       wallet_id: payout.wallet.public_id,
       journal_entry_id: payout.journal_entry&.public_id,
       settlement_journal_entry_id: payout.settlement_journal_entry&.public_id,
+      operator_approval_id: payout.operator_approval&.public_id,
       amount_cents: payout.amount_cents,
       currency: payout.currency,
       status: payout.status,

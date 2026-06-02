@@ -756,6 +756,41 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     assert_database_constraint_violation { pix_payment.update_columns(status: "reversed", reversed_at: Time.current, reversal_reason: "tampered") }
   end
 
+  test "database rejects direct early payout settlement without maker-checker evidence" do
+    fund_wallet(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-early-payout-funding",
+      amount_cents: 1_000
+    )
+    payout = Payouts::Create.call(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-early-payout",
+      amount_cents: 100,
+      settlement_delay_days: 2,
+      destination_reference: "bank-account",
+      idempotency_key: "db-invariant-early-payout"
+    )
+
+    assert_database_constraint_violation do
+      journal_id = insert_balanced_journal!(
+        event_type: "payout.settled",
+        reference_type: "Payout",
+        reference_id: payout.id,
+        idempotency_key: "payout.settle:#{payout.id}",
+        debit_account: Ledger::AccountLocator.payout_clearing(organization: @organization, currency: payout.currency),
+        credit_account: Ledger::AccountLocator.platform_cash(organization: @organization, currency: payout.currency),
+        amount_cents: payout.amount_cents
+      )
+      payout.update_columns(
+        status: "settled",
+        settlement_journal_entry_id: journal_id,
+        settled_at: Time.current
+      )
+    end
+  end
+
   test "database rejects MED resolution with mismatched refund evidence" do
     fund_wallet(
       organization: @organization,

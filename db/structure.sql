@@ -386,6 +386,7 @@ BEGIN
       payout_row.journal_entry_id IS NULL
       OR payout_row.settlement_journal_entry_id IS NOT NULL
       OR payout_row.settled_at IS NOT NULL
+      OR payout_row.operator_approval_id IS NOT NULL
     ) THEN
     RAISE EXCEPTION 'scheduled payout requires schedule journal evidence only';
   END IF;
@@ -397,6 +398,12 @@ BEGIN
       OR payout_row.settled_at IS NULL
     ) THEN
     RAISE EXCEPTION 'settled payout requires schedule and settlement journal evidence';
+  END IF;
+
+  IF payout_row.status = 'settled'
+    AND payout_row.settled_at::date < payout_row.settlement_due_on
+    AND NOT payout_has_early_settlement_approval(payout_row.id) THEN
+    RAISE EXCEPTION 'early payout settlement requires approved maker-checker evidence';
   END IF;
 
   IF payout_row.status = 'failed' AND payout_row.failure_code IS NULL THEN
@@ -1878,6 +1885,31 @@ $$;
 
 
 --
+-- Name: payout_has_early_settlement_approval(bigint); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.payout_has_early_settlement_approval(payout_id_to_check bigint) RETURNS boolean
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM payouts payout
+    JOIN operator_approvals approval
+      ON approval.id = payout.operator_approval_id
+    WHERE payout.id = payout_id_to_check
+      AND approval.organization_id = payout.organization_id
+      AND approval.subject_type = 'Payout'
+      AND approval.subject_id = payout.id
+      AND approval.action = 'payout.settle_early'
+      AND approval.status = 'approved'
+      AND approval.approved_by_id IS NOT NULL
+      AND approval.approved_at IS NOT NULL
+      AND approval.approved_by_id <> approval.requested_by_id
+  );
+$$;
+
+
+--
 -- Name: prevent_audit_log_anchor_mutation(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -2289,6 +2321,10 @@ BEGIN
       AND NEW.settlement_journal_entry_id IS NOT NULL
       AND OLD.settled_at IS NULL
       AND NEW.settled_at IS NOT NULL
+      AND (
+        (NEW.settled_at::date >= NEW.settlement_due_on AND NEW.operator_approval_id IS NULL)
+        OR (NEW.settled_at::date < NEW.settlement_due_on AND OLD.operator_approval_id IS NULL AND NEW.operator_approval_id IS NOT NULL)
+      )
       AND OLD.failure_code IS NOT DISTINCT FROM NEW.failure_code
       AND OLD.metadata IS NOT DISTINCT FROM NEW.metadata
     )
@@ -2296,6 +2332,7 @@ BEGIN
       NEW.status = 'failed'
       AND OLD.settlement_journal_entry_id IS NOT DISTINCT FROM NEW.settlement_journal_entry_id
       AND OLD.settled_at IS NOT DISTINCT FROM NEW.settled_at
+      AND OLD.operator_approval_id IS NOT DISTINCT FROM NEW.operator_approval_id
       AND OLD.failure_code IS NULL
       AND NEW.failure_code IS NOT NULL
       AND OLD.metadata IS NOT DISTINCT FROM NEW.metadata
@@ -2308,6 +2345,7 @@ BEGIN
       OLD.status IS DISTINCT FROM NEW.status
       OR OLD.settlement_journal_entry_id IS DISTINCT FROM NEW.settlement_journal_entry_id
       OR OLD.settled_at IS DISTINCT FROM NEW.settled_at
+      OR OLD.operator_approval_id IS DISTINCT FROM NEW.operator_approval_id
       OR OLD.failure_code IS DISTINCT FROM NEW.failure_code
       OR OLD.metadata IS DISTINCT FROM NEW.metadata
       OR OLD.updated_at IS DISTINCT FROM NEW.updated_at
@@ -3456,6 +3494,7 @@ CREATE TABLE public.payouts (
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
+    operator_approval_id bigint,
     CONSTRAINT payouts_amount_positive_check CHECK ((amount_cents > 0)),
     CONSTRAINT payouts_idempotency_key_required_check CHECK (((idempotency_key IS NOT NULL) AND (btrim((idempotency_key)::text) <> ''::text))),
     CONSTRAINT payouts_settlement_delay_non_negative_check CHECK ((settlement_delay_days >= 0)),
@@ -5028,6 +5067,13 @@ CREATE INDEX index_payouts_on_journal_entry_id ON public.payouts USING btree (jo
 
 
 --
+-- Name: index_payouts_on_operator_approval_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_payouts_on_operator_approval_id ON public.payouts USING btree (operator_approval_id);
+
+
+--
 -- Name: index_payouts_on_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -5818,6 +5864,14 @@ ALTER TABLE ONLY public.idempotency_keys
 
 
 --
+-- Name: payouts fk_rails_15f7baae91; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payouts
+    ADD CONSTRAINT fk_rails_15f7baae91 FOREIGN KEY (operator_approval_id) REFERENCES public.operator_approvals(id);
+
+
+--
 -- Name: balance_snapshots fk_rails_19719194e6; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -6264,6 +6318,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602221500'),
 ('20260602220500'),
 ('20260602215500'),
 ('20260602214500'),

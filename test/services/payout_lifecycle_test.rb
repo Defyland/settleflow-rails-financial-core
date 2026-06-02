@@ -29,6 +29,43 @@ class PayoutLifecycleTest < ActiveSupport::TestCase
     assert_nil payout.settlement_journal_entry
   end
 
+  test "early payout settlement requires maker-checker approval" do
+    payout = create_payout(amount_cents: 4_000, settlement_delay_days: 2)
+    maker = create_operator("payout-early-maker")
+    checker = create_operator("payout-early-checker")
+
+    assert_raises(Errors::AuthorizationError) do
+      Payouts::Settle.call(organization: @organization, payout:, force: true)
+    end
+
+    requested = Payouts::Settle.call(
+      organization: @organization,
+      payout:,
+      force: true,
+      operator: maker,
+      reason: "provider_confirmed_early_settlement",
+      correlation_id: "payout-early-corr"
+    )
+    assert_equal :requested, requested.status
+    assert payout.reload.scheduled?
+
+    approved = Payouts::Settle.call(
+      organization: @organization,
+      payout:,
+      force: true,
+      operator: checker,
+      reason: "provider_confirmed_early_settlement",
+      correlation_id: "payout-early-corr"
+    )
+
+    assert_equal :approved, approved.status
+    settled = approved.subject
+    assert settled.settled?
+    assert_equal requested.approval.id, settled.operator_approval_id
+    assert_equal checker.id, settled.operator_approval.approved_by_id
+    assert settled.settled_at.to_date < settled.settlement_due_on
+  end
+
   test "settles a due payout once through platform cash" do
     payout = create_payout(amount_cents: 4_000, settlement_delay_days: 0)
     settled = Payouts::Settle.call(organization: @organization, payout:, correlation_id: "payout-settle-corr")
@@ -76,6 +113,14 @@ class PayoutLifecycleTest < ActiveSupport::TestCase
       settlement_delay_days:,
       destination_reference: "bank-account-#{external_id}",
       idempotency_key: external_id
+    )
+  end
+
+  def create_operator(email_prefix)
+    User.create!(
+      email_address: "#{email_prefix}-#{SecureRandom.hex(4)}@example.com",
+      password: "strong-password-123",
+      role: "admin"
     )
   end
 end

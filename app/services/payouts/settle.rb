@@ -4,20 +4,52 @@ module Payouts
       new(...).call
     end
 
-    def initialize(organization:, payout:, correlation_id: nil, force: false)
+    def initialize(organization:, payout:, correlation_id: nil, force: false, operator: nil, reason: nil)
       @organization = organization
       @payout = payout
       @correlation_id = correlation_id
       @force = force
+      @operator = operator
+      @reason = reason.presence || "early_payout_settlement"
     end
 
     def call
       raise Errors::ValidationError.new("Payout belongs to another organization") if payout.organization_id != organization.id
 
+      if early_settlement?
+        raise Errors::ValidationError.new("Payout settlement date has not arrived", details: { settlement_due_on: payout.settlement_due_on.iso8601 }) unless force
+        raise Errors::AuthorizationError.new("Early payout settlement requires ops maker-checker approval") if operator.blank?
+
+        return Ops::MakerChecker.call(
+          action: "payout.settle_early",
+          subject: payout,
+          operator:,
+          reason:,
+          correlation_id:
+        ) do |approval|
+          settle!(operator_approval: approval)
+        end
+      end
+
+      settle!(operator_approval: nil)
+    end
+
+    private
+
+    attr_reader :organization, :payout, :correlation_id, :force, :operator, :reason
+
+    def early_settlement?
+      payout.reload
+      payout.scheduled? && payout.settlement_due_on > Date.current
+    end
+
+    def settle!(operator_approval:)
       ActiveRecord::Base.transaction do
         payout.lock!
         raise Errors::ValidationError.new("Payout must be scheduled before settlement", details: { status: payout.status }) unless payout.scheduled?
-        raise Errors::ValidationError.new("Payout settlement date has not arrived", details: { settlement_due_on: payout.settlement_due_on.iso8601 }) if !force && payout.settlement_due_on > Date.current
+        if payout.settlement_due_on > Date.current && operator_approval.blank?
+          raise Errors::AuthorizationError.new("Early payout settlement requires ops maker-checker approval")
+        end
 
         Accounts::BootstrapOrganizationLedger.call(organization:, currency: payout.currency)
         journal_entry = Ledger::JournalPoster.call(
@@ -32,7 +64,12 @@ module Payouts
             { account: Ledger::AccountLocator.platform_cash(organization:, currency: payout.currency), direction: "credit", amount_cents: payout.amount_cents, currency: payout.currency }
           ]
         )
-        payout.update!(status: "settled", settlement_journal_entry: journal_entry, settled_at: Time.current)
+        payout.update!(
+          status: "settled",
+          settlement_journal_entry: journal_entry,
+          settled_at: Time.current,
+          operator_approval:
+        )
         OutboxEvents::Emit.call(
           organization:,
           aggregate: payout,
@@ -50,9 +87,5 @@ module Payouts
         payout
       end
     end
-
-    private
-
-    attr_reader :organization, :payout, :correlation_id, :force
   end
 end

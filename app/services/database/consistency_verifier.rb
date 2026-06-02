@@ -555,11 +555,27 @@ module Database
           WHERE proname = 'refund_pix_payment_evidence_valid'
         )
       SQL
+      payout_early_settlement_function_present = catalog_value(<<~SQL.squish)
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_proc
+          WHERE proname = 'payout_has_early_settlement_approval'
+        )
+      SQL
       refund_limit_mismatches = if refund_limit_function_present
         ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
           SELECT COUNT(*)
           FROM pix_payments
           WHERE NOT refund_pix_payment_evidence_valid(id)
+        SQL
+      end
+      payout_early_settlement_mismatches = if payout_early_settlement_function_present
+        ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
+          SELECT COUNT(*)
+          FROM payouts
+          WHERE status = 'settled'
+            AND settled_at::date < settlement_due_on
+            AND NOT payout_has_early_settlement_approval(id)
         SQL
       end
       present_triggers = enabled_triggers & expected_triggers
@@ -568,12 +584,15 @@ module Database
       Check.new(
         name: :financial_state_evidence_guards,
         ok: aggregate_function_present && med_resolution_functions_present && refund_limit_function_present &&
-          refund_limit_mismatches.to_i.zero? && missing_triggers.empty?,
+          payout_early_settlement_function_present && refund_limit_mismatches.to_i.zero? &&
+          payout_early_settlement_mismatches.to_i.zero? && missing_triggers.empty?,
         details: {
           aggregate_function_present:,
           med_resolution_functions_present:,
           refund_limit_function_present:,
           refund_limit_mismatches: refund_limit_mismatches.to_i,
+          payout_early_settlement_function_present:,
+          payout_early_settlement_mismatches: payout_early_settlement_mismatches.to_i,
           present_triggers: present_triggers.sort,
           missing_triggers:
         }

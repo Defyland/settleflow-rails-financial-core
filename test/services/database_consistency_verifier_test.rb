@@ -85,7 +85,9 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     assert state_guard_check.details.fetch(:aggregate_function_present)
     assert state_guard_check.details.fetch(:med_resolution_functions_present)
     assert state_guard_check.details.fetch(:refund_limit_function_present)
+    assert state_guard_check.details.fetch(:payout_early_settlement_function_present)
     assert_equal 0, state_guard_check.details.fetch(:refund_limit_mismatches)
+    assert_equal 0, state_guard_check.details.fetch(:payout_early_settlement_mismatches)
     assert_empty state_guard_check.details.fetch(:missing_triggers)
     assert_equal %w[
       fundings_prevent_evidence_mutation

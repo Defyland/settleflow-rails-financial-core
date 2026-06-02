@@ -64,15 +64,15 @@ class IdempotencyTest < ActionDispatch::IntegrationTest
       external_id: "idem-query-payout",
       amount_cents: 1_000,
       destination_reference: "query-sensitive-destination",
-      settlement_delay_days: 1,
+      settlement_delay_days: 0,
       idempotency_key: "idem-query-payout"
     )
     headers = auth_headers(@api_key, "Idempotency-Key" => "idem-query-settle")
 
-    post_json "/v1/payouts/#{payout.public_id}/settle?force=true", {}, headers: headers
+    post_json "/v1/payouts/#{payout.public_id}/settle", {}, headers: headers
     assert_response :ok
 
-    post_json "/v1/payouts/#{payout.public_id}/settle", {}, headers: headers
+    post_json "/v1/payouts/#{payout.public_id}/settle?force=true", {}, headers: headers
 
     assert_response :conflict
     assert_equal "idempotency_conflict", json_body.dig("error", "code")

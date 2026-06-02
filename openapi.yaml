@@ -1135,6 +1135,10 @@ components:
               type: string
               format: uuid
               nullable: true
+            operator_approval_id:
+              type: string
+              format: uuid
+              nullable: true
             settlement_delay_days:
               type: integer
             settlement_due_on:
