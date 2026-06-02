@@ -102,6 +102,10 @@ module Database
 
     def financial_state_evidence_guards_check
       expected_triggers = %w[
+        fundings_state_evidence_after_write
+        transfers_state_evidence_after_write
+        split_payments_state_evidence_after_write
+        split_entries_state_evidence_after_write
         payouts_state_evidence_after_write
         refunds_state_evidence_after_write
         med_cases_state_evidence_after_write

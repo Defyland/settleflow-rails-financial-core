@@ -19,4 +19,20 @@ class FundingCreateTest < ActiveSupport::TestCase
     assert_empty Funding.where(external_id: "funding-missing-idempotency")
     assert_equal 0, @wallet.balance_projection.reload.available_cents
   end
+
+  test "rejects funding currency that does not match wallet currency" do
+    assert_raises(Errors::ValidationError) do
+      Fundings::Create.call(
+        organization: @organization,
+        wallet: @wallet,
+        external_id: "funding-currency-mismatch",
+        amount_cents: 1_000,
+        currency: "USD",
+        idempotency_key: "funding-currency-mismatch"
+      )
+    end
+
+    assert_empty Funding.where(external_id: "funding-currency-mismatch")
+    assert_equal 0, @wallet.balance_projection.reload.available_cents
+  end
 end

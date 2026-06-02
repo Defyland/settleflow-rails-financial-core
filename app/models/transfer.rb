@@ -4,7 +4,7 @@ class Transfer < ApplicationRecord
   belongs_to :destination_wallet, class_name: "Wallet"
   belongs_to :journal_entry, optional: true
 
-  enum :status, { posted: "posted", failed: "failed", reversed: "reversed" }
+  enum :status, { posted: "posted", failed: "failed" }
 
   validates :external_id, :amount_cents, :currency, presence: true
   validates :external_id, uniqueness: { scope: :organization_id }
@@ -12,6 +12,7 @@ class Transfer < ApplicationRecord
   validates :amount_cents, numericality: { greater_than: 0, only_integer: true }
   validate :wallets_belong_to_organization
   validate :wallets_are_different
+  validate :currency_matches_wallets
 
   private
 
@@ -26,5 +27,12 @@ class Transfer < ApplicationRecord
     return if source_wallet_id.blank? || destination_wallet_id.blank? || source_wallet_id != destination_wallet_id
 
     errors.add(:destination_wallet_id, "must be different from source_wallet_id")
+  end
+
+  def currency_matches_wallets
+    return if currency.blank?
+
+    errors.add(:currency, "must match source wallet currency") if source_wallet.present? && source_wallet.currency != currency
+    errors.add(:currency, "must match destination wallet currency") if destination_wallet.present? && destination_wallet.currency != currency
   end
 end

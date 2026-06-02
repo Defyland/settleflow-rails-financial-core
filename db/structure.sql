@@ -24,6 +24,42 @@ COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
 
 
 --
+-- Name: assert_funding_state_evidence(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_funding_state_evidence() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  funding_row fundings%ROWTYPE;
+BEGIN
+  SELECT * INTO funding_row FROM fundings WHERE id = NEW.id;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM wallets
+    WHERE wallets.id = funding_row.wallet_id
+      AND wallets.organization_id = funding_row.organization_id
+      AND wallets.currency = funding_row.currency
+  ) THEN
+    RAISE EXCEPTION 'funding wallet must match organization and currency';
+  END IF;
+
+  IF funding_row.status = 'posted' AND funding_row.journal_entry_id IS NULL THEN
+    RAISE EXCEPTION 'posted funding requires journal evidence';
+  END IF;
+
+  IF funding_row.status = 'failed'
+    AND (funding_row.failure_code IS NULL OR funding_row.journal_entry_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'failed funding requires failure evidence without journal';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
 -- Name: assert_inserted_journal_entry_balanced(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -249,6 +285,146 @@ BEGIN
 
   IF refund_row.status = 'failed' AND refund_row.failure_code IS NULL THEN
     RAISE EXCEPTION 'failed refund requires a failure code';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: assert_split_entry_state_evidence_trigger(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_split_entry_state_evidence_trigger() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    PERFORM assert_split_payment_state_evidence(OLD.split_payment_id);
+    RETURN OLD;
+  END IF;
+
+  PERFORM assert_split_payment_state_evidence(NEW.split_payment_id);
+  IF TG_OP = 'UPDATE' AND OLD.split_payment_id <> NEW.split_payment_id THEN
+    PERFORM assert_split_payment_state_evidence(OLD.split_payment_id);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: assert_split_payment_state_evidence(bigint); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_split_payment_state_evidence(split_payment_id_to_check bigint) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  split_payment_row split_payments%ROWTYPE;
+  split_entry_count integer;
+  split_entry_total bigint;
+  mismatched_entry_count integer;
+BEGIN
+  SELECT * INTO split_payment_row FROM split_payments WHERE id = split_payment_id_to_check;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM wallets
+    WHERE wallets.id = split_payment_row.source_wallet_id
+      AND wallets.organization_id = split_payment_row.organization_id
+      AND wallets.currency = split_payment_row.currency
+  ) THEN
+    RAISE EXCEPTION 'split source wallet must match organization and currency';
+  END IF;
+
+  SELECT COUNT(*), COALESCE(SUM(amount_cents), 0)
+  INTO split_entry_count, split_entry_total
+  FROM split_entries
+  WHERE split_payment_id = split_payment_row.id;
+
+  SELECT COUNT(*)
+  INTO mismatched_entry_count
+  FROM split_entries
+  JOIN wallets ON wallets.id = split_entries.destination_wallet_id
+  WHERE split_entries.split_payment_id = split_payment_row.id
+    AND (
+      split_entries.organization_id <> split_payment_row.organization_id
+      OR split_entries.currency <> split_payment_row.currency
+      OR wallets.organization_id <> split_payment_row.organization_id
+      OR wallets.currency <> split_payment_row.currency
+      OR wallets.id = split_payment_row.source_wallet_id
+    );
+
+  IF split_payment_row.status = 'posted'
+    AND (
+      split_payment_row.journal_entry_id IS NULL
+      OR split_entry_count = 0
+      OR split_entry_total <> split_payment_row.total_amount_cents
+      OR mismatched_entry_count > 0
+    ) THEN
+    RAISE EXCEPTION 'posted split requires journal evidence and matching destination entries';
+  END IF;
+
+  IF split_payment_row.status = 'failed'
+    AND (split_payment_row.failure_code IS NULL OR split_payment_row.journal_entry_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'failed split requires failure evidence without journal';
+  END IF;
+END;
+$$;
+
+
+--
+-- Name: assert_split_payment_state_evidence_trigger(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_split_payment_state_evidence_trigger() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  PERFORM assert_split_payment_state_evidence(NEW.id);
+  RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: assert_transfer_state_evidence(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_transfer_state_evidence() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  transfer_row transfers%ROWTYPE;
+BEGIN
+  SELECT * INTO transfer_row FROM transfers WHERE id = NEW.id;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM wallets source_wallets
+    JOIN wallets destination_wallets ON destination_wallets.id = transfer_row.destination_wallet_id
+    WHERE source_wallets.id = transfer_row.source_wallet_id
+      AND source_wallets.id <> destination_wallets.id
+      AND source_wallets.organization_id = transfer_row.organization_id
+      AND destination_wallets.organization_id = transfer_row.organization_id
+      AND source_wallets.currency = transfer_row.currency
+      AND destination_wallets.currency = transfer_row.currency
+  ) THEN
+    RAISE EXCEPTION 'transfer wallets must match organization, currency, and be different';
+  END IF;
+
+  IF transfer_row.status = 'posted' AND transfer_row.journal_entry_id IS NULL THEN
+    RAISE EXCEPTION 'posted transfer requires journal evidence';
+  END IF;
+
+  IF transfer_row.status = 'failed'
+    AND (transfer_row.failure_code IS NULL OR transfer_row.journal_entry_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'failed transfer requires failure evidence without journal';
   END IF;
 
   RETURN NEW;
@@ -849,7 +1025,9 @@ CREATE TABLE public.fundings (
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    CONSTRAINT fundings_amount_positive_check CHECK ((amount_cents > 0))
+    failure_code character varying,
+    CONSTRAINT fundings_amount_positive_check CHECK ((amount_cents > 0)),
+    CONSTRAINT fundings_status_check CHECK (((status)::text = ANY ((ARRAY['posted'::character varying, 'failed'::character varying])::text[])))
 );
 
 
@@ -1638,7 +1816,8 @@ CREATE TABLE public.transfers (
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    CONSTRAINT transfers_amount_positive_check CHECK ((amount_cents > 0))
+    CONSTRAINT transfers_amount_positive_check CHECK ((amount_cents > 0)),
+    CONSTRAINT transfers_status_check CHECK (((status)::text = ANY ((ARRAY['posted'::character varying, 'failed'::character varying])::text[])))
 );
 
 
@@ -3250,6 +3429,13 @@ CREATE TRIGGER enforce_ledger_line_account_consistency BEFORE INSERT ON public.l
 
 
 --
+-- Name: fundings fundings_state_evidence_after_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE CONSTRAINT TRIGGER fundings_state_evidence_after_write AFTER INSERT OR UPDATE ON public.fundings DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_funding_state_evidence();
+
+
+--
 -- Name: journal_entries journal_entry_balanced_after_journal_insert; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -3310,6 +3496,27 @@ CREATE TRIGGER prevent_ledger_line_mutation BEFORE DELETE OR UPDATE ON public.le
 --
 
 CREATE CONSTRAINT TRIGGER refunds_state_evidence_after_write AFTER INSERT OR UPDATE ON public.refunds DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_refund_state_evidence();
+
+
+--
+-- Name: split_entries split_entries_state_evidence_after_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE CONSTRAINT TRIGGER split_entries_state_evidence_after_write AFTER INSERT OR DELETE OR UPDATE ON public.split_entries DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_split_entry_state_evidence_trigger();
+
+
+--
+-- Name: split_payments split_payments_state_evidence_after_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE CONSTRAINT TRIGGER split_payments_state_evidence_after_write AFTER INSERT OR UPDATE ON public.split_payments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_split_payment_state_evidence_trigger();
+
+
+--
+-- Name: transfers transfers_state_evidence_after_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE CONSTRAINT TRIGGER transfers_state_evidence_after_write AFTER INSERT OR UPDATE ON public.transfers DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_transfer_state_evidence();
 
 
 --
@@ -3799,6 +4006,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602180000'),
 ('20260602173000'),
 ('20260602170000'),
 ('20260602161000'),

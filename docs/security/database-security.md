@@ -13,7 +13,7 @@
 
 - Ledger rows are append-only through Active Record and PostgreSQL triggers.
 - Journal entries require idempotency keys and domain references.
-- Pix, payout, refund, and MED final statuses require matching PostgreSQL evidence through deferrable state triggers.
+- Funding, transfer, split, Pix, payout, refund, and MED final statuses require matching PostgreSQL evidence through deferrable state triggers.
 - Balance projections cannot go negative.
 - Outbox event envelopes are immutable in PostgreSQL after insert; delivery status may change, but payload, event identity, and aggregate identity may not.
 - Audit logs are append-only and hash-chained.

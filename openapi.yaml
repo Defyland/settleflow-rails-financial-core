@@ -955,6 +955,9 @@ components:
             wallet_id:
               type: string
               format: uuid
+            failure_code:
+              type: string
+              nullable: true
     FundingResponse:
       type: object
       properties:
@@ -1002,6 +1005,9 @@ components:
               format: uuid
             memo:
               type: string
+            failure_code:
+              type: string
+              nullable: true
     TransferResponse:
       type: object
       properties:
@@ -1058,6 +1064,9 @@ components:
               format: int64
             memo:
               type: string
+            failure_code:
+              type: string
+              nullable: true
             entries:
               type: array
               items:

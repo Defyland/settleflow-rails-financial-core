@@ -8,6 +8,7 @@ class FundingSerializer
       amount_cents: funding.amount_cents,
       currency: funding.currency,
       status: funding.status,
+      failure_code: funding.failure_code,
       metadata: funding.metadata,
       created_at: funding.created_at.iso8601
     }

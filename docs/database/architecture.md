@@ -11,7 +11,7 @@ SettleFlow is an OLTP-first financial core. PostgreSQL is the only source of tru
 ## OLTP model
 
 - `journal_entries` and `ledger_lines` are append-only double-entry records.
-- Financial command states for Pix, payout, refund, and MED are guarded by deferrable PostgreSQL triggers so final statuses require the expected journal, refund, or failure evidence at commit.
+- Financial command states for funding, transfer, split, Pix, payout, refund, and MED are guarded by deferrable PostgreSQL triggers so final statuses require the expected journal, refund, split-entry, or failure evidence at commit.
 - `balance_projections` are derived read models and can be rebuilt from wallet liability ledger accounts.
 - `balance_snapshots` capture projection-vs-ledger comparisons for daily explainability.
 - `idempotency_keys` preserve write command identity and replay behavior.

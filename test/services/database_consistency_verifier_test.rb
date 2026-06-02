@@ -15,10 +15,14 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     state_guard_check = checks.find { |check| check.name == :financial_state_evidence_guards }
     assert_empty state_guard_check.details.fetch(:missing_triggers)
     assert_equal %w[
+      fundings_state_evidence_after_write
       med_cases_state_evidence_after_write
       payouts_state_evidence_after_write
       pix_payments_state_evidence_after_write
       refunds_state_evidence_after_write
+      split_entries_state_evidence_after_write
+      split_payments_state_evidence_after_write
+      transfers_state_evidence_after_write
     ], state_guard_check.details.fetch(:present_triggers)
   end
 

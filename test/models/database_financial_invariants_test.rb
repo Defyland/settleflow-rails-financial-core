@@ -155,6 +155,45 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     assert_database_constraint_violation { pix_payment.update_columns(status: "reversed", reversed_at: Time.current, reversal_reason: "tampered") }
   end
 
+  test "database rejects direct wallet command state and split entry tampering" do
+    destination_one = create_wallet(organization: @organization)
+    destination_two = create_wallet(organization: @organization)
+    fund_wallet(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-wallet-command-funding",
+      amount_cents: 20
+    )
+    funding = @organization.fundings.find_by!(external_id: "db-invariant-wallet-command-funding")
+    transfer = Transfers::Create.call(
+      organization: @organization,
+      source_wallet: @wallet,
+      destination_wallet: destination_one,
+      external_id: "db-invariant-transfer-state",
+      amount_cents: 1,
+      idempotency_key: "db-invariant-transfer-state"
+    )
+    split_payment = SplitPayments::Create.call(
+      organization: @organization,
+      source_wallet: @wallet,
+      external_id: "db-invariant-split-state",
+      entries: [
+        { destination_wallet: destination_one, amount_cents: 2 },
+        { destination_wallet: destination_two, amount_cents: 3 }
+      ],
+      idempotency_key: "db-invariant-split-state"
+    )
+    split_entry = split_payment.split_entries.first
+
+    assert_database_constraint_violation { funding.update_columns(journal_entry_id: nil) }
+    assert_database_constraint_violation { funding.update_columns(status: "failed", failure_code: nil) }
+    assert_database_constraint_violation { transfer.update_columns(journal_entry_id: nil) }
+    assert_database_constraint_violation { transfer.update_columns(status: "reversed") }
+    assert_database_constraint_violation { split_payment.update_columns(total_amount_cents: split_payment.total_amount_cents + 1) }
+    assert_database_constraint_violation { split_entry.update_columns(amount_cents: split_entry.amount_cents + 1) }
+    assert_database_constraint_violation { split_entry.update_columns(destination_wallet_id: split_payment.source_wallet_id) }
+  end
+
   test "database rejects ledger lines whose account belongs to another organization" do
     journal = post_test_journal
     other_organization = create_organization
@@ -184,25 +223,16 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
       external_id: "db-invariant-funding-#{SecureRandom.hex(4)}",
       amount_cents: 10
     )
-    transfer = @organization.transfers.create!(
+    transfer = Transfers::Create.call(
+      organization: @organization,
       source_wallet: @wallet,
       destination_wallet:,
       external_id: "db-invariant-transfer-#{SecureRandom.hex(4)}",
       amount_cents: 1,
-      currency: "BRL",
       idempotency_key: "db-invariant-transfer-#{SecureRandom.hex(4)}"
     )
 
-    Ledger::JournalPoster.call(
-      organization: @organization,
-      event_type: "db_invariant.test_journal",
-      reference: transfer,
-      idempotency_key: "db-invariant-journal-#{SecureRandom.hex(4)}",
-      lines: [
-        { account: @wallet.liability_account, direction: "debit", amount_cents: 1, currency: "BRL" },
-        { account: destination_wallet.liability_account, direction: "credit", amount_cents: 1, currency: "BRL" }
-      ]
-    )
+    transfer.journal_entry
   end
 
   def assert_database_constraint_violation
