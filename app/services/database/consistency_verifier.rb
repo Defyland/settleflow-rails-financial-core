@@ -22,6 +22,7 @@ module Database
         reconciliation_evidence_guards_check,
         financial_state_evidence_guards_check,
         financial_journal_evidence_guards_check,
+        journal_event_taxonomy_check,
         journal_balance_check,
         negative_projection_check,
         projection_rebuild_check
@@ -547,6 +548,33 @@ module Database
           present_triggers: present_triggers.sort,
           missing_triggers:,
           evidence_mismatches: evidence_mismatches.to_i
+        }
+      )
+    end
+
+    def journal_event_taxonomy_check
+      constraint_validated = catalog_value(<<~SQL.squish)
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conrelid = 'journal_entries'::regclass
+            AND conname = 'journal_entries_event_type_supported_check'
+            AND convalidated
+        )
+      SQL
+      unknown_event_types = JournalEntry
+        .where.not(event_type: JournalEntry::SUPPORTED_EVENT_TYPES)
+        .distinct
+        .order(:event_type)
+        .pluck(:event_type)
+
+      Check.new(
+        name: :journal_event_taxonomy,
+        ok: constraint_validated && unknown_event_types.empty?,
+        details: {
+          constraint_validated:,
+          supported_event_types: JournalEntry::SUPPORTED_EVENT_TYPES,
+          unknown_event_types:
         }
       )
     end

@@ -12,7 +12,8 @@
 ## Financial controls
 
 - Ledger rows are append-only through Active Record and PostgreSQL triggers.
-- Journal entries require idempotency keys and domain references. Known financial journal event types must match their owning aggregate, deterministic idempotency key, expected debit/credit accounts, amount, and currency in PostgreSQL.
+- Journal entries require idempotency keys and domain references. PostgreSQL rejects unsupported journal event types, so ad hoc manual adjustments cannot bypass aggregate-specific evidence by inventing an event name.
+- Supported financial journal event types must match their owning aggregate, deterministic idempotency key, expected debit/credit accounts, amount, and currency in PostgreSQL.
 - Idempotency replay records are guarded in PostgreSQL: command identity is immutable, request hashes must be SHA-256 hex, succeeded responses need an HTTP status, and succeeded evidence cannot be mutated or deleted directly.
 - Funding, transfer, split, Pix, payout, refund, and MED final statuses require matching PostgreSQL evidence through deferrable state triggers. Once ledger or outbox evidence exists, PostgreSQL prevents direct command identity/value mutation and deletion; only documented state transitions with new evidence are allowed.
 - Balance projections cannot go negative and must match their wallet organization/currency in PostgreSQL.

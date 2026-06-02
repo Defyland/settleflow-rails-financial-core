@@ -2754,6 +2754,7 @@ CREATE TABLE public.journal_entries (
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT journal_entries_event_type_supported_check CHECK (public.financial_journal_event_type_requires_evidence((event_type)::text)),
     CONSTRAINT journal_entries_reference_required_check CHECK (((reference_type IS NOT NULL) AND (reference_id IS NOT NULL)))
 );
 
@@ -5784,6 +5785,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602210000'),
 ('20260602204500'),
 ('20260602203000'),
 ('20260602201500'),

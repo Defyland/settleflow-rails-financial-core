@@ -154,7 +154,9 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     assert_raises(ActiveRecord::StatementInvalid) do
       JournalEntry.insert!({
         organization_id: @organization.id,
-        event_type: "raw.missing_idempotency",
+        event_type: "wallet.funded",
+        reference_type: "Funding",
+        reference_id: -1,
         occurred_at: Time.current,
         created_at: Time.current,
         updated_at: Time.current
@@ -166,10 +168,20 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     destination_wallet = create_wallet(organization: @organization)
     assert_raises(ActiveRecord::StatementInvalid) do
       ActiveRecord::Base.transaction do
+        transfer = @organization.transfers.create!(
+          source_wallet: @wallet,
+          destination_wallet:,
+          external_id: "db-invariant-unbalanced-transfer",
+          amount_cents: 100,
+          currency: "BRL",
+          idempotency_key: "db-invariant-unbalanced-transfer"
+        )
         journal_id = JournalEntry.insert!({
           organization_id: @organization.id,
-          event_type: "raw.unbalanced",
-          idempotency_key: "raw-unbalanced",
+          event_type: "wallet.transfer.posted",
+          reference_type: "Transfer",
+          reference_id: transfer.id,
+          idempotency_key: transfer.idempotency_key,
           occurred_at: Time.current,
           created_at: Time.current,
           updated_at: Time.current
@@ -197,10 +209,35 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
             updated_at: Time.current
           }
         ])
+        transfer.update!(journal_entry_id: journal_id)
         ActiveRecord::Base.connection.execute(
           "SET CONSTRAINTS journal_entry_balanced_after_journal_insert, journal_entry_balanced_after_line_insert IMMEDIATE"
         )
       end
+    end
+  end
+
+  test "database rejects unsupported journal event types" do
+    destination_wallet = create_wallet(organization: @organization)
+    transfer = @organization.transfers.create!(
+      source_wallet: @wallet,
+      destination_wallet:,
+      external_id: "db-invariant-unsupported-journal-event",
+      amount_cents: 100,
+      currency: "BRL",
+      idempotency_key: "db-invariant-unsupported-journal-event"
+    )
+
+    assert_database_constraint_violation do
+      insert_balanced_journal!(
+        event_type: "manual.adjustment",
+        reference_type: "Transfer",
+        reference_id: transfer.id,
+        idempotency_key: transfer.idempotency_key,
+        debit_account: @wallet.liability_account,
+        credit_account: destination_wallet.liability_account,
+        amount_cents: 100
+      )
     end
   end
 
@@ -230,7 +267,7 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
 
     assert_database_constraint_violation do
       wrong_journal_id = insert_balanced_journal!(
-        event_type: "test.detached_financial_journal",
+        event_type: "wallet.funded",
         reference_type: "Funding",
         reference_id: 0,
         idempotency_key: "db-invariant-detached-financial-journal",

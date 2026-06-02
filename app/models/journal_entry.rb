@@ -1,4 +1,16 @@
 class JournalEntry < ApplicationRecord
+  SUPPORTED_EVENT_TYPES = [
+    "wallet.funded",
+    "wallet.transfer.posted",
+    "split.posted",
+    "pix.payment.approved",
+    "pix.payment.settled",
+    "pix.payment.reversed",
+    "payout.scheduled",
+    "payout.settled",
+    "refund.settled"
+  ].freeze
+
   before_update :raise_immutable_record
   before_destroy :raise_immutable_record, prepend: true
 
@@ -9,6 +21,7 @@ class JournalEntry < ApplicationRecord
   enum :status, { posted: "posted", reversed: "reversed" }
 
   validates :event_type, :occurred_at, :idempotency_key, :reference_type, :reference_id, presence: true
+  validates :event_type, inclusion: { in: SUPPORTED_EVENT_TYPES }
   validates :idempotency_key, uniqueness: { scope: :organization_id }
 
   def balanced?

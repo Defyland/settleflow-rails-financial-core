@@ -100,6 +100,10 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
       split_payments_journal_evidence_after_write
       transfers_journal_evidence_after_write
     ], journal_guard_check.details.fetch(:present_triggers)
+    journal_taxonomy_check = checks.find { |check| check.name == :journal_event_taxonomy }
+    assert journal_taxonomy_check.details.fetch(:constraint_validated)
+    assert_equal JournalEntry::SUPPORTED_EVENT_TYPES, journal_taxonomy_check.details.fetch(:supported_event_types)
+    assert_empty journal_taxonomy_check.details.fetch(:unknown_event_types)
   end
 
   test "detects balance projection drift from ledger" do
