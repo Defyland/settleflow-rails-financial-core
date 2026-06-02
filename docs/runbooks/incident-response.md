@@ -30,7 +30,7 @@
 1. Confirm the Pix payment is `settled`; pending or approved payments use rejection/cancellation paths, not reversal.
 2. Verify provider evidence that money returned or must be restored to the customer wallet.
 3. Use an admin operator in `/ops/pix_payments/:id` to reverse with a reason.
-4. A second admin must approve the maker-checker request before the reversal executes.
+4. A second admin must approve the maker-checker request before the reversal executes; do not edit `operator_approvals` directly because terminal approvals are immutable PostgreSQL governance evidence.
 5. Confirm the reversal journal entry is balanced and the wallet projection increased by the Pix amount.
 6. If a `refund` already exists for the Pix payment, do not use direct reversal; continue with the refund/MED evidence path.
 7. Preserve the audit log, `pix.payment.reversed` outbox event, and reconciliation evidence for the incident record.

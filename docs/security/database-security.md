@@ -21,7 +21,7 @@
 - Processed-event rows must match a published outbox event by organization, public event ID, event type, and payload hash before they can drive ClickHouse ingestion state.
 - Audit logs are append-only and hash-chained.
 - Audit hash-chain anchors are append-only and can be exported to an external evidence sink.
-- Maker-checker approvals protect operator settlement and reversal actions.
+- Maker-checker approvals protect operator settlement and reversal actions. PostgreSQL enforces dual-control, requires checker/timestamp evidence for terminal decisions, and blocks terminal approval mutation or deletion.
 
 Audit anchors improve tamper evidence but do not replace regulated WORM storage. Production deployments should publish `audit:anchor_hash_chain` output to immutable storage outside the application database.
 

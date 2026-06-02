@@ -18,6 +18,7 @@ module Database
         idempotency_evidence_guards_check,
         processed_event_evidence_guards_check,
         balance_evidence_guards_check,
+        operator_approval_evidence_guards_check,
         financial_state_evidence_guards_check,
         journal_balance_check,
         negative_projection_check,
@@ -253,6 +254,57 @@ module Database
           missing_triggers:,
           projection_wallet_mismatches: projection_mismatches,
           snapshot_evidence_mismatches: snapshot_mismatches
+        }
+      )
+    end
+
+    def operator_approval_evidence_guards_check
+      expected_constraints = %w[
+        operator_approvals_status_check
+        operator_approvals_dual_control_check
+        operator_approvals_identity_present_check
+        operator_approvals_state_evidence_check
+      ]
+      expected_triggers = %w[
+        operator_approvals_prevent_evidence_mutation
+      ]
+      enabled_constraints = ActiveRecord::Base.connection.select_values(<<~SQL.squish)
+        SELECT conname
+        FROM pg_constraint
+        WHERE conrelid = 'operator_approvals'::regclass
+      SQL
+      enabled_triggers = ActiveRecord::Base.connection.select_values(<<~SQL.squish)
+        SELECT tgname
+        FROM pg_trigger
+        WHERE tgrelid = 'operator_approvals'::regclass
+          AND NOT tgisinternal
+          AND tgenabled <> 'D'
+      SQL
+      evidence_mismatches = ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
+        SELECT COUNT(*)
+        FROM operator_approvals
+        WHERE btrim(action) = ''
+           OR btrim(subject_type) = ''
+           OR subject_id <= 0
+           OR status NOT IN ('pending', 'approved', 'rejected')
+           OR approved_by_id = requested_by_id
+           OR (status = 'pending' AND (approved_by_id IS NOT NULL OR approved_at IS NOT NULL))
+           OR (status IN ('approved', 'rejected') AND (approved_by_id IS NULL OR approved_at IS NULL))
+      SQL
+      present_constraints = enabled_constraints & expected_constraints
+      present_triggers = enabled_triggers & expected_triggers
+      missing_constraints = expected_constraints - present_constraints
+      missing_triggers = expected_triggers - present_triggers
+
+      Check.new(
+        name: :operator_approval_evidence_guards,
+        ok: missing_constraints.empty? && missing_triggers.empty? && evidence_mismatches.zero?,
+        details: {
+          present_constraints: present_constraints.sort,
+          missing_constraints:,
+          present_triggers: present_triggers.sort,
+          missing_triggers:,
+          evidence_mismatches:
         }
       )
     end

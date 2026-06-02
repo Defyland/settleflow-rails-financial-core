@@ -60,6 +60,61 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     end
   end
 
+  test "database rejects direct operator approval evidence tampering" do
+    requester = User.create!(
+      email_address: "requester-#{SecureRandom.hex(4)}@example.com",
+      password: "strong-password-123",
+      role: "admin"
+    )
+    checker = User.create!(
+      email_address: "checker-#{SecureRandom.hex(4)}@example.com",
+      password: "strong-password-123",
+      role: "admin"
+    )
+    approval = @organization.operator_approvals.create!(
+      action: "pix_payment.settle",
+      subject_type: "PixPayment",
+      subject_id: 1,
+      requested_by: requester,
+      reason: "db_invariant"
+    )
+
+    assert_database_constraint_violation { approval.update_columns(status: "approved") }
+    approval.reload
+    assert_database_constraint_violation { approval.update_columns(approved_by_id: requester.id, approved_at: Time.current) }
+    assert_database_constraint_violation do
+      OperatorApproval.insert!({
+        organization_id: @organization.id,
+        action: "pix_payment.reverse",
+        subject_type: "PixPayment",
+        subject_id: 2,
+        status: "approved",
+        requested_by_id: requester.id,
+        approved_by_id: checker.id,
+        approved_at: Time.current,
+        created_at: Time.current,
+        updated_at: Time.current
+      })
+    end
+    assert_database_constraint_violation do
+      OperatorApproval.insert!({
+        organization_id: @organization.id,
+        action: "",
+        subject_type: "PixPayment",
+        subject_id: 3,
+        status: "pending",
+        requested_by_id: requester.id,
+        created_at: Time.current,
+        updated_at: Time.current
+      })
+    end
+
+    approval.update!(status: "approved", approved_by: checker, approved_at: Time.current)
+
+    assert_database_constraint_violation { approval.update_columns(metadata: { tampered: true }) }
+    assert_database_constraint_violation { OperatorApproval.where(id: approval.id).delete_all }
+  end
+
   test "database rejects journal entries without command identity" do
     assert_raises(ActiveRecord::StatementInvalid) do
       JournalEntry.insert!({

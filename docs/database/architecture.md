@@ -16,6 +16,7 @@ SettleFlow is an OLTP-first financial core. PostgreSQL is the only source of tru
 - `balance_snapshots` capture projection-vs-ledger comparisons for daily explainability. PostgreSQL keeps snapshots append-only and enforces `difference_cents = available_cents - ledger_available_cents`.
 - `idempotency_keys` preserve write command identity and replay behavior. PostgreSQL checks the request hash format and response state, keeps command identity immutable, prevents direct successful-record insertion, and blocks mutation/deletion of succeeded replay evidence.
 - `reconciliation_runs` and `reconciliation_rows` preserve provider-vs-ledger discrepancy evidence.
+- `operator_approvals` preserve maker-checker evidence. PostgreSQL enforces dual-control, pending-vs-terminal evidence, and immutable terminal approvals.
 - `outbox_events` preserve integration delivery evidence. PostgreSQL blocks direct published inserts, envelope mutation, deletion, and any mutation after an event is published.
 - `processed_events` records downstream processors such as ClickHouse sync, validates against a published outbox event, stores the outbox payload hash, and prevents duplicate analytics ingestion.
 - `audit_log_anchors` stores append-only anchor records for exported audit hash-chain tail evidence.

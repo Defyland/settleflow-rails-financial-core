@@ -826,6 +826,58 @@ $$;
 
 
 --
+-- Name: prevent_operator_approval_evidence_mutation(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.prevent_operator_approval_evidence_mutation() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'operator approvals are governance evidence';
+  END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.status <> 'pending'
+      OR NEW.approved_by_id IS NOT NULL
+      OR NEW.approved_at IS NOT NULL THEN
+      RAISE EXCEPTION 'operator approvals must start pending';
+    END IF;
+
+    RETURN NEW;
+  END IF;
+
+  IF OLD.organization_id IS DISTINCT FROM NEW.organization_id
+    OR OLD.public_id IS DISTINCT FROM NEW.public_id
+    OR OLD.action IS DISTINCT FROM NEW.action
+    OR OLD.subject_type IS DISTINCT FROM NEW.subject_type
+    OR OLD.subject_id IS DISTINCT FROM NEW.subject_id
+    OR OLD.requested_by_id IS DISTINCT FROM NEW.requested_by_id
+    OR OLD.reason IS DISTINCT FROM NEW.reason
+    OR OLD.correlation_id IS DISTINCT FROM NEW.correlation_id
+    OR OLD.created_at IS DISTINCT FROM NEW.created_at THEN
+    RAISE EXCEPTION 'operator approval identity is immutable';
+  END IF;
+
+  IF OLD.status IN ('approved', 'rejected') THEN
+    RAISE EXCEPTION 'terminal operator approvals are immutable governance evidence';
+  END IF;
+
+  IF OLD.status <> 'pending' OR NEW.status NOT IN ('pending', 'approved', 'rejected') THEN
+    RAISE EXCEPTION 'invalid operator approval state transition';
+  END IF;
+
+  IF NEW.status = 'pending'
+    AND (OLD.approved_by_id IS DISTINCT FROM NEW.approved_by_id OR OLD.approved_at IS DISTINCT FROM NEW.approved_at) THEN
+    RAISE EXCEPTION 'pending operator approvals cannot carry checker evidence';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
 -- Name: prevent_outbox_event_evidence_mutation(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -1525,6 +1577,8 @@ CREATE TABLE public.operator_approvals (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     CONSTRAINT operator_approvals_dual_control_check CHECK (((approved_by_id IS NULL) OR (approved_by_id <> requested_by_id))),
+    CONSTRAINT operator_approvals_identity_present_check CHECK (((btrim((action)::text) <> ''::text) AND (btrim((subject_type)::text) <> ''::text) AND (subject_id > 0))),
+    CONSTRAINT operator_approvals_state_evidence_check CHECK (((((status)::text = 'pending'::text) AND (approved_by_id IS NULL) AND (approved_at IS NULL)) OR (((status)::text = ANY ((ARRAY['approved'::character varying, 'rejected'::character varying])::text[])) AND (approved_by_id IS NOT NULL) AND (approved_at IS NOT NULL)))),
     CONSTRAINT operator_approvals_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying])::text[])))
 );
 
@@ -3702,6 +3756,13 @@ CREATE CONSTRAINT TRIGGER med_cases_state_evidence_after_write AFTER INSERT OR U
 
 
 --
+-- Name: operator_approvals operator_approvals_prevent_evidence_mutation; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER operator_approvals_prevent_evidence_mutation BEFORE INSERT OR DELETE OR UPDATE ON public.operator_approvals FOR EACH ROW EXECUTE FUNCTION public.prevent_operator_approval_evidence_mutation();
+
+
+--
 -- Name: outbox_events outbox_events_prevent_evidence_mutation; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -4258,6 +4319,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602194500'),
 ('20260602193000'),
 ('20260602190000'),
 ('20260602183000'),

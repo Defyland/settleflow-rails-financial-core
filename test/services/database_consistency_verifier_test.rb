@@ -44,6 +44,11 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
       balance_projections_wallet_evidence_before_write
       balance_snapshots_prevent_evidence_mutation
     ], balance_guard_check.details.fetch(:present_triggers)
+    operator_approval_guard_check = checks.find { |check| check.name == :operator_approval_evidence_guards }
+    assert_empty operator_approval_guard_check.details.fetch(:missing_constraints)
+    assert_empty operator_approval_guard_check.details.fetch(:missing_triggers)
+    assert_equal 0, operator_approval_guard_check.details.fetch(:evidence_mismatches)
+    assert_equal [ "operator_approvals_prevent_evidence_mutation" ], operator_approval_guard_check.details.fetch(:present_triggers)
     state_guard_check = checks.find { |check| check.name == :financial_state_evidence_guards }
     assert_empty state_guard_check.details.fetch(:missing_triggers)
     assert_equal %w[
