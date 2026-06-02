@@ -10,6 +10,7 @@ class OutboxPublishJob < ApplicationJob
     envelope = Outbox::Publisher.envelope_for(event)
     delivery_result = Outbox::Publisher.publisher.publish(envelope)
     event.publish!(delivery_result, payload_sha256: Outbox::Publisher.payload_sha256(envelope))
+    ClickHouseSyncJob.perform_later(event.id) if Analytics::ClickHouseClient.configured?
   rescue ActiveRecord::RecordNotFound
     raise
   rescue StandardError => e

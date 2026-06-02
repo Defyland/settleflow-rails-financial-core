@@ -30,6 +30,28 @@ class OutboxPublishJobTest < ActiveJob::TestCase
     assert_equal "msg-#{event.public_id}", event.publisher_message_id
   end
 
+  test "enqueues ClickHouse sync after publishing when analytics is configured" do
+    organization = create_organization
+    wallet = create_wallet(organization:)
+    Rails.application.config.x.outbox.publisher = RecordingOutboxPublisher.new
+    event = OutboxEvents::Emit.call(
+      organization:,
+      aggregate: wallet,
+      event_type: "wallet.created",
+      payload: { wallet_id: wallet.public_id }
+    )
+    clear_enqueued_jobs
+
+    original_configured = Analytics::ClickHouseClient.method(:configured?)
+    Analytics::ClickHouseClient.define_singleton_method(:configured?) { true }
+    OutboxPublishJob.perform_now(event.id)
+
+    assert event.reload.published?
+    assert_includes enqueued_jobs.map { |job| job[:job] }, ClickHouseSyncJob
+  ensure
+    Analytics::ClickHouseClient.define_singleton_method(:configured?) { original_configured.call } if original_configured
+  end
+
   test "keeps transient failures pending with a scheduled retry" do
     organization = create_organization
     wallet = create_wallet(organization:)
