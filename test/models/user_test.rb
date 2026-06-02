@@ -11,4 +11,11 @@ class UserTest < ActiveSupport::TestCase
     assert User.new(role: "operator").can_operate?
     assert User.new(role: "admin").can_operate?
   end
+
+  test "requires stronger operator passwords when setting a password" do
+    user = User.new(email_address: "weak@example.com", role: "admin", password: "short")
+
+    assert_not user.valid?
+    assert_includes user.errors[:password], "is too short (minimum is 12 characters)"
+  end
 end

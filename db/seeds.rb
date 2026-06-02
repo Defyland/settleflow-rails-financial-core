@@ -69,7 +69,7 @@ Reconciliation::Run.call(
 ) unless organization.reconciliation_runs.exists?(provider: "demo-bank", statement_date: Date.current)
 
 operator_user = User.find_or_initialize_by(email_address: ENV.fetch("SETTLEFLOW_OPERATOR_EMAIL", "ops@settleflow.local"))
-operator_user.password = ENV.fetch("SETTLEFLOW_OPERATOR_PASSWORD", "password123") if operator_user.new_record?
+operator_user.password = ENV.fetch("SETTLEFLOW_OPERATOR_PASSWORD", "settleflow-dev-password-123") if operator_user.new_record?
 operator_user.role = ENV.fetch("SETTLEFLOW_OPERATOR_ROLE", "admin")
 operator_user.save!
 

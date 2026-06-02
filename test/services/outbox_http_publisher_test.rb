@@ -74,7 +74,27 @@ class OutboxHttpPublisherTest < ActiveSupport::TestCase
     assert_equal "500", error.code
   end
 
+  test "requires https and a signing secret in production" do
+    with_rails_env("production") do
+      assert_raises(ArgumentError) do
+        Outbox::Publishers::HttpPublisher.new("http://events.example.test/outbox", secret: "webhook-secret")
+      end
+
+      assert_raises(ArgumentError) do
+        Outbox::Publishers::HttpPublisher.new("https://events.example.test/outbox", secret: nil)
+      end
+    end
+  end
+
   private
+
+  def with_rails_env(name)
+    original_env = Rails.env
+    Rails.singleton_class.define_method(:env) { ActiveSupport::StringInquirer.new(name) }
+    yield
+  ensure
+    Rails.singleton_class.define_method(:env) { original_env }
+  end
 
   def with_net_http_start(starter)
     original_start = Net::HTTP.method(:start)

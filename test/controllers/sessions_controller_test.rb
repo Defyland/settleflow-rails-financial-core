@@ -30,4 +30,15 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to new_session_path
     assert_empty cookies[:session_id]
   end
+
+  test "expired sessions are rejected and removed" do
+    sign_in_as(@user)
+    expired_session = Current.session
+    expired_session.update_columns(updated_at: 13.hours.ago)
+
+    get root_path
+
+    assert_redirected_to new_session_path
+    assert_nil Session.find_by(id: expired_session.id)
+  end
 end

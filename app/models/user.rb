@@ -8,6 +8,7 @@ class User < ApplicationRecord
 
   validates :role, presence: true
   validates :email_address, presence: true, uniqueness: { case_sensitive: false }
+  validates :password, length: { minimum: 12 }, allow_nil: true
 
   def can_operate?
     operator? || admin?

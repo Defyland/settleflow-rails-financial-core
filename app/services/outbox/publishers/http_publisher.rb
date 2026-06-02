@@ -35,6 +35,7 @@ module Outbox
         @secret = secret
         @open_timeout = open_timeout
         @read_timeout = read_timeout
+        validate_endpoint!
       end
 
       def publish(envelope)
@@ -67,6 +68,13 @@ module Outbox
       private
 
       attr_reader :uri, :secret, :open_timeout, :read_timeout
+
+      def validate_endpoint!
+        return unless Rails.env.production?
+
+        raise ArgumentError, "OUTBOX_WEBHOOK_URL must use HTTPS in production" unless uri.scheme == "https"
+        raise ArgumentError, "OUTBOX_WEBHOOK_SECRET is required in production" if secret.blank?
+      end
 
       def signature(body)
         "sha256=#{OpenSSL::HMAC.hexdigest("SHA256", secret, body)}"
