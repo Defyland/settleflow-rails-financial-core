@@ -266,4 +266,22 @@ namespace :audit do
     anchor = AuditLogs::HashChainAnchor.call
     puts "Audit hash chain anchored sequence=#{anchor.chain_sequence} anchor_hash=#{anchor.anchor_hash}"
   end
+
+  desc "Check external WORM anchor export readiness without claiming destination compliance"
+  task worm_readiness_check: :environment do
+    checks = AuditLogs::WormReadiness.call
+    checks.each do |check|
+      status = check.ok ? "ok" : "failed"
+      puts "#{check.name}=#{status} #{check.details.to_json}"
+    end
+
+    output_dir = Rails.root.join("benchmarks/database")
+    FileUtils.mkdir_p(output_dir)
+    output_path = output_dir.join("audit_worm_readiness.json")
+    File.write(output_path, JSON.pretty_generate(checks.map(&:to_h)))
+    puts "Wrote #{output_path}"
+
+    strict = ActiveModel::Type::Boolean.new.cast(ENV["STRICT"])
+    abort "Audit WORM readiness failed" if strict && checks.any? { |check| !check.ok }
+  end
 end

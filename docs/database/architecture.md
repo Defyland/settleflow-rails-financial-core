@@ -40,4 +40,4 @@ The analytics table is partitioned by event month and deduplicated by `event_id`
 
 ## Audit anchoring
 
-`audit:anchor_hash_chain` records the current audit hash-chain tail in `audit_log_anchors`. Anchors are append-only, chained to the previous anchor, included in `database:verify_consistency`, and can be exported to `AUDIT_ANCHOR_WEBHOOK_URL`. This is tamper-evidence and export evidence; regulated WORM storage still requires an external immutable destination.
+`audit:anchor_hash_chain` records the current audit hash-chain tail in `audit_log_anchors`. Anchors are append-only, chained to the previous anchor, included in `database:verify_consistency`, and can be exported to `AUDIT_ANCHOR_WEBHOOK_URL`. `audit:worm_readiness_check` verifies that external anchor export is configured, signed, and fresh. This is tamper-evidence and export readiness; regulated WORM storage still requires an external immutable destination.

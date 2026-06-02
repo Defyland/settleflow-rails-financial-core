@@ -1,0 +1,44 @@
+[
+  {
+    "name": "audit_anchor_webhook_url_configured",
+    "ok": false,
+    "details": {
+      "configured": false
+    }
+  },
+  {
+    "name": "audit_anchor_webhook_uses_https",
+    "ok": false,
+    "details": {
+      "scheme": null
+    }
+  },
+  {
+    "name": "audit_anchor_webhook_external_host",
+    "ok": false,
+    "details": {
+      "host": "",
+      "rejected_hosts": [
+        "0.0.0.0",
+        "127.0.0.1",
+        "localhost"
+      ],
+      "rejects_local_suffix": true
+    }
+  },
+  {
+    "name": "audit_anchor_webhook_secret_configured",
+    "ok": false,
+    "details": {
+      "configured": false
+    }
+  },
+  {
+    "name": "latest_anchor_covers_current_audit_tail",
+    "ok": true,
+    "details": {
+      "latest_anchor_sequence": 110,
+      "latest_audit_sequence": 110
+    }
+  }
+]

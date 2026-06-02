@@ -20,6 +20,15 @@
 
 Audit anchors improve tamper evidence but do not replace regulated WORM storage. Production deployments should publish `audit:anchor_hash_chain` output to immutable storage outside the application database.
 
+Check external anchor export readiness with:
+
+```bash
+bin/rails audit:worm_readiness_check
+STRICT=true bin/rails audit:worm_readiness_check
+```
+
+The task writes `benchmarks/database/audit_worm_readiness.json` and checks HTTPS external webhook configuration, signing secret presence, and whether the latest anchor covers the current audit tail. It does not certify the destination as regulated WORM; that requires provider controls outside this repository.
+
 ## ClickHouse
 
 - ClickHouse credentials are analytics-only.
