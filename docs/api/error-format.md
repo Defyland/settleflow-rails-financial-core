@@ -22,7 +22,7 @@ Standard codes:
 - `not_found`: missing resource or cross-tenant access attempt.
 - `validation_failed`: malformed input, failed model validation, or unsupported state transition.
 - `insufficient_funds`: wallet projection cannot cover a debit.
-- `idempotency_conflict`: key reused with a different method, path, or request body.
+- `idempotency_conflict`: key reused with a different method, full path including query string, or request body.
 - `rate_limited`: request exceeded IP or API-key throttle.
 
 Every error includes `request_id` and `correlation_id` so operators can trace the request through logs, metrics, audit records, and outbox events.

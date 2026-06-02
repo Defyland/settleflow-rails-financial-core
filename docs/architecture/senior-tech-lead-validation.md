@@ -54,7 +54,7 @@ The project implements the ledger primitive and operator workflow because that i
 
 ### What the candidate should explain
 
-Financial APIs must tolerate client retries. SettleFlow uses `Idempotency-Key` on write endpoints so the same command can be retried without creating duplicate ledger entries, payments, transfers, or outbox events. It rejects a reused key with a different payload, persists the command response in the same database transaction as the financial mutation, and allows retry after stale processing locks.
+Financial APIs must tolerate client retries. SettleFlow uses `Idempotency-Key` on write endpoints so the same command can be retried without creating duplicate ledger entries, payments, transfers, or outbox events. It rejects a reused key with a different body, path, or query string, persists the command response in the same database transaction as the financial mutation, and allows retry after stale processing locks.
 
 ### Counterpoint to challenge
 

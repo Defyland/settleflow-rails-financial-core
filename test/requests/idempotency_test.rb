@@ -55,6 +55,30 @@ class IdempotencyTest < ActionDispatch::IntegrationTest
     assert_equal "idempotency_conflict", json_body.dig("error", "code")
   end
 
+  test "rejects key reuse when query parameters change command semantics" do
+    wallet = create_wallet(organization: @organization, external_id: "idem-query-wallet")
+    fund_wallet(organization: @organization, wallet:, external_id: "idem-query-funding", amount_cents: 10_000)
+    payout = Payouts::Create.call(
+      organization: @organization,
+      wallet:,
+      external_id: "idem-query-payout",
+      amount_cents: 1_000,
+      destination_reference: "query-sensitive-destination",
+      settlement_delay_days: 1,
+      idempotency_key: "idem-query-payout"
+    )
+    headers = auth_headers(@api_key, "Idempotency-Key" => "idem-query-settle")
+
+    post_json "/v1/payouts/#{payout.public_id}/settle?force=true", {}, headers: headers
+    assert_response :ok
+
+    post_json "/v1/payouts/#{payout.public_id}/settle", {}, headers: headers
+
+    assert_response :conflict
+    assert_equal "idempotency_conflict", json_body.dig("error", "code")
+    assert_nil response.headers["Idempotency-Replayed"]
+  end
+
   test "rolls back command effects when idempotency response persistence fails" do
     original_update = IdempotencyKey.instance_method(:update!)
     IdempotencyKey.define_method(:update!) do |*args, **kwargs, &block|

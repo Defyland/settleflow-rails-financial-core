@@ -25,7 +25,7 @@ class ApiController < ActionController::API
       organization: current_organization,
       key: idempotency_key,
       request_method: request.request_method,
-      request_path: request.path,
+      request_path: request.fullpath,
       request_hash: request_hash
     ) do
       body = yield
