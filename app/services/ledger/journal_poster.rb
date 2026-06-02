@@ -15,6 +15,10 @@ module Ledger
     end
 
     def call
+      raise Errors::IdempotencyKeyRequired.new("Journal entries require an idempotency key") if idempotency_key.blank?
+      raise Errors::ValidationError.new("Journal entries require a domain reference") if reference.blank?
+      raise Errors::ValidationError.new("Journal reference belongs to another organization") if reference.respond_to?(:organization_id) && reference.organization_id != organization.id
+
       validate_lines!
 
       ActiveRecord::Base.transaction do

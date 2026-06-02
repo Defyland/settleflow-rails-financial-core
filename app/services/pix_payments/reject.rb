@@ -13,10 +13,11 @@ module PixPayments
 
     def call
       raise Errors::ValidationError.new("Pix payment belongs to another organization") if pix_payment.organization_id != organization.id
-      raise Errors::ValidationError.new("Only pending review Pix payments can be rejected", details: { status: pix_payment.status }) unless pix_payment.pending_review?
 
       ActiveRecord::Base.transaction do
         pix_payment.lock!
+        raise Errors::ValidationError.new("Only pending review Pix payments can be rejected", details: { status: pix_payment.status }) unless pix_payment.pending_review?
+
         pix_payment.update!(
           status: "rejected",
           failure_code: reason,

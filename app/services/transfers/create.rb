@@ -18,6 +18,7 @@ module Transfers
     end
 
     def call
+      raise Errors::IdempotencyKeyRequired if idempotency_key.blank?
       validate_wallets!
 
       ActiveRecord::Base.transaction do

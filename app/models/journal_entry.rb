@@ -8,8 +8,8 @@ class JournalEntry < ApplicationRecord
 
   enum :status, { posted: "posted", reversed: "reversed" }
 
-  validates :event_type, :occurred_at, presence: true
-  validates :idempotency_key, uniqueness: { scope: :organization_id }, allow_nil: true
+  validates :event_type, :occurred_at, :idempotency_key, :reference_type, :reference_id, presence: true
+  validates :idempotency_key, uniqueness: { scope: :organization_id }
 
   def balanced?
     ledger_lines.debit.sum(:amount_cents) == ledger_lines.credit.sum(:amount_cents)

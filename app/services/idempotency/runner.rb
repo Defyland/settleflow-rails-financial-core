@@ -15,7 +15,7 @@ module Idempotency
     end
 
     def call(&block)
-      return block.call if key.blank?
+      raise Errors::IdempotencyKeyRequired if key.blank?
 
       replay = nil
       response = nil

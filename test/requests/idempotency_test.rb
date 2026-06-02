@@ -26,6 +26,19 @@ class IdempotencyTest < ActionDispatch::IntegrationTest
     assert_equal 1, @organization.customers.where(external_id: "customer-idem").count
   end
 
+  test "rejects mutating requests without an idempotency key before side effects" do
+    post_json "/v1/customers", {
+      external_id: "customer-missing-idem",
+      legal_name: "Missing Idempotency",
+      document_kind: "cpf",
+      document_number: "12345678909"
+    }, headers: auth_headers(@api_key)
+
+    assert_response :bad_request
+    assert_equal "idempotency_key_required", json_body.dig("error", "code")
+    assert_not @organization.customers.exists?(external_id: "customer-missing-idem")
+  end
+
   test "rejects key reuse with a different request body" do
     headers = auth_headers(@api_key, "Idempotency-Key" => "idem-conflict-001")
     base_payload = {

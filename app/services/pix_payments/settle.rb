@@ -22,6 +22,7 @@ module PixPayments
           organization:,
           event_type: "pix.payment.settled",
           reference: pix_payment,
+          idempotency_key: "pix_payment.settle:#{pix_payment.id}",
           correlation_id:,
           metadata: { external_id: pix_payment.external_id },
           lines: [

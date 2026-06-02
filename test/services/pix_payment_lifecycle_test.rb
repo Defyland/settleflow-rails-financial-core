@@ -26,6 +26,21 @@ class PixPaymentLifecycleTest < ActiveSupport::TestCase
     assert_includes enqueued_jobs.map { |job| job[:job] }, PixSettlementJob
   end
 
+  test "requires idempotency before creating any Pix state" do
+    assert_raises(Errors::IdempotencyKeyRequired) do
+      PixPayments::Create.call(
+        organization: @organization,
+        wallet: @wallet,
+        external_id: "pix-missing-idempotency",
+        pix_key: "receiver-missing-idem@example.com",
+        receiver_name: "Receiver",
+        amount_cents: 600_000
+      )
+    end
+
+    assert_empty PixPayment.where(external_id: "pix-missing-idempotency")
+  end
+
   test "settles approved payments through the Pix clearing account" do
     pix_payment = create_pix_payment(
       organization: @organization,

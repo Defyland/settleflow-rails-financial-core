@@ -16,6 +16,7 @@ module Fundings
     end
 
     def call
+      raise Errors::IdempotencyKeyRequired if idempotency_key.blank?
       raise Errors::ValidationError.new("Wallet belongs to another organization") if wallet.organization_id != organization.id
 
       ActiveRecord::Base.transaction do
