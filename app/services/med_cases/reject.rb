@@ -1,0 +1,48 @@
+module MedCases
+  class Reject
+    def self.call(...)
+      new(...).call
+    end
+
+    def initialize(organization:, med_case:, reason:, correlation_id: nil)
+      @organization = organization
+      @med_case = med_case
+      @reason = reason.presence || "med_rejected"
+      @correlation_id = correlation_id
+    end
+
+    def call
+      raise Errors::ValidationError.new("MED case belongs to another organization") if med_case.organization_id != organization.id
+
+      ActiveRecord::Base.transaction do
+        med_case.lock!
+        raise Errors::ValidationError.new("MED case must be opened before rejection", details: { status: med_case.status }) unless med_case.opened?
+
+        med_case.update!(
+          status: "rejected",
+          resolved_at: Time.current,
+          metadata: med_case.metadata.merge("rejection_reason" => reason)
+        )
+        OutboxEvents::Emit.call(
+          organization:,
+          aggregate: med_case,
+          event_type: "med.case.rejected",
+          correlation_id: correlation_id || med_case.correlation_id,
+          payload: {
+            med_case_id: med_case.public_id,
+            pix_payment_id: med_case.pix_payment.public_id,
+            amount_cents: med_case.amount_cents,
+            currency: med_case.currency,
+            status: med_case.status,
+            reason:
+          }
+        )
+        med_case
+      end
+    end
+
+    private
+
+    attr_reader :organization, :med_case, :reason, :correlation_id
+  end
+end

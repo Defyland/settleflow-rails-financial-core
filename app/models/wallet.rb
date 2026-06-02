@@ -5,8 +5,12 @@ class Wallet < ApplicationRecord
   has_one :balance_projection, dependent: :restrict_with_exception
   has_many :fundings, dependent: :restrict_with_exception
   has_many :pix_payments, dependent: :restrict_with_exception
+  has_many :payouts, dependent: :restrict_with_exception
+  has_many :refunds, dependent: :restrict_with_exception
   has_many :source_transfers, class_name: "Transfer", foreign_key: :source_wallet_id, dependent: :restrict_with_exception, inverse_of: :source_wallet
   has_many :destination_transfers, class_name: "Transfer", foreign_key: :destination_wallet_id, dependent: :restrict_with_exception, inverse_of: :destination_wallet
+  has_many :source_split_payments, class_name: "SplitPayment", foreign_key: :source_wallet_id, dependent: :restrict_with_exception, inverse_of: :source_wallet
+  has_many :destination_split_entries, class_name: "SplitEntry", foreign_key: :destination_wallet_id, dependent: :restrict_with_exception, inverse_of: :destination_wallet
 
   enum :status, { active: "active", blocked: "blocked", closed: "closed" }
 

@@ -17,12 +17,14 @@ module PixPayments
       ActiveRecord::Base.transaction do
         pix_payment.lock!
         raise Errors::ValidationError.new("Only settled Pix payments can be reversed", details: { status: pix_payment.status }) unless pix_payment.settled?
+        raise Errors::ValidationError.new("Pix payment already has settled refunds") if pix_payment.refunds.settled.exists?
 
         Accounts::BootstrapOrganizationLedger.call(organization:, currency: pix_payment.currency)
         journal_entry = Ledger::JournalPoster.call(
           organization:,
           event_type: "pix.payment.reversed",
           reference: pix_payment,
+          idempotency_key: "pix_payment.reverse:#{pix_payment.id}",
           correlation_id:,
           metadata: { external_id: pix_payment.external_id, reason: },
           lines: [

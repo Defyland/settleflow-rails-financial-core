@@ -6,8 +6,14 @@ class Organization < ApplicationRecord
   has_many :fundings, dependent: :restrict_with_exception
   has_many :transfers, dependent: :restrict_with_exception
   has_many :pix_payments, dependent: :restrict_with_exception
+  has_many :payouts, dependent: :restrict_with_exception
+  has_many :refunds, dependent: :restrict_with_exception
+  has_many :split_payments, dependent: :restrict_with_exception
+  has_many :split_entries, dependent: :restrict_with_exception
+  has_many :med_cases, dependent: :restrict_with_exception
   has_many :reconciliation_runs, dependent: :restrict_with_exception
   has_many :outbox_events, dependent: :restrict_with_exception
+  has_many :operator_approvals, dependent: :restrict_with_exception
   has_many :api_credentials, dependent: :destroy
   has_many :idempotency_keys, dependent: :delete_all
   has_many :audit_logs, dependent: :nullify

@@ -31,13 +31,25 @@ Rails.application.routes.draw do
     resources :wallets, only: [ :index, :show, :create ] do
       member do
         get :balance
+        get :balance_explanation
         get :statement
       end
     end
     resources :fundings, only: [ :index, :show, :create ]
     resources :transfers, only: [ :index, :show, :create ]
+    resources :split_payments, only: [ :index, :show, :create ]
+    resources :payouts, only: [ :index, :show, :create ] do
+      post :settle, on: :member
+    end
     resources :pix_payments, only: [ :index, :show, :create ] do
       post :settle, on: :member
+    end
+    resources :refunds, only: [ :index, :show, :create ]
+    resources :med_cases, only: [ :index, :show, :create ] do
+      member do
+        post :accept
+        post :reject
+      end
     end
     resources :ledger_entries, only: [ :index, :show ]
     resources :reconciliation_runs, only: [ :index, :show, :create ]

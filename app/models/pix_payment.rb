@@ -4,6 +4,8 @@ class PixPayment < ApplicationRecord
   belongs_to :journal_entry, optional: true
   belongs_to :settlement_journal_entry, class_name: "JournalEntry", optional: true
   belongs_to :reversal_journal_entry, class_name: "JournalEntry", optional: true
+  has_many :refunds, dependent: :restrict_with_exception
+  has_many :med_cases, dependent: :restrict_with_exception
 
   enum :status, {
     created: "created",
