@@ -1,0 +1,401 @@
+[
+  {
+    "table": "journal_entries",
+    "partition_key": "occurred_at",
+    "strategy": "monthly_range",
+    "ready": false,
+    "blockers": [
+      {
+        "code": "unique_index_missing_partition_key",
+        "severity": "blocker",
+        "message": "PostgreSQL partitioned-table uniqueness must include every partition key column",
+        "details": {
+          "table": "journal_entries",
+          "index_name": "index_journal_entries_on_organization_id_and_idempotency_key",
+          "columns": [
+            "organization_id",
+            "idempotency_key"
+          ],
+          "partition_key": "occurred_at",
+          "partial": true,
+          "predicate": "(idempotency_key IS NOT NULL)"
+        }
+      },
+      {
+        "code": "unique_index_missing_partition_key",
+        "severity": "blocker",
+        "message": "PostgreSQL partitioned-table uniqueness must include every partition key column",
+        "details": {
+          "table": "journal_entries",
+          "index_name": "index_journal_entries_on_public_id",
+          "columns": [
+            "public_id"
+          ],
+          "partition_key": "occurred_at",
+          "partial": false,
+          "predicate": null
+        }
+      },
+      {
+        "code": "primary_key_missing_partition_key",
+        "severity": "blocker",
+        "message": "PostgreSQL partitioned-table uniqueness must include every partition key column",
+        "details": {
+          "table": "journal_entries",
+          "index_name": "journal_entries_pkey",
+          "columns": [
+            "id"
+          ],
+          "partition_key": "occurred_at",
+          "partial": false,
+          "predicate": null
+        }
+      },
+      {
+        "code": "foreign_key_references_without_partition_key",
+        "severity": "blocker",
+        "message": "foreign key references this table without the intended partition key",
+        "details": {
+          "constraint_name": "fk_rails_6d59ee71eb",
+          "source_table": "fundings",
+          "source_columns": [
+            "journal_entry_id"
+          ],
+          "target_table": "journal_entries",
+          "target_columns": [
+            "id"
+          ],
+          "partition_key": "occurred_at"
+        }
+      },
+      {
+        "code": "foreign_key_references_without_partition_key",
+        "severity": "blocker",
+        "message": "foreign key references this table without the intended partition key",
+        "details": {
+          "constraint_name": "fk_rails_d088bea263",
+          "source_table": "ledger_lines",
+          "source_columns": [
+            "journal_entry_id"
+          ],
+          "target_table": "journal_entries",
+          "target_columns": [
+            "id"
+          ],
+          "partition_key": "occurred_at"
+        }
+      },
+      {
+        "code": "foreign_key_references_without_partition_key",
+        "severity": "blocker",
+        "message": "foreign key references this table without the intended partition key",
+        "details": {
+          "constraint_name": "fk_rails_14046417f7",
+          "source_table": "payouts",
+          "source_columns": [
+            "settlement_journal_entry_id"
+          ],
+          "target_table": "journal_entries",
+          "target_columns": [
+            "id"
+          ],
+          "partition_key": "occurred_at"
+        }
+      },
+      {
+        "code": "foreign_key_references_without_partition_key",
+        "severity": "blocker",
+        "message": "foreign key references this table without the intended partition key",
+        "details": {
+          "constraint_name": "fk_rails_d13fce3946",
+          "source_table": "payouts",
+          "source_columns": [
+            "journal_entry_id"
+          ],
+          "target_table": "journal_entries",
+          "target_columns": [
+            "id"
+          ],
+          "partition_key": "occurred_at"
+        }
+      },
+      {
+        "code": "foreign_key_references_without_partition_key",
+        "severity": "blocker",
+        "message": "foreign key references this table without the intended partition key",
+        "details": {
+          "constraint_name": "fk_rails_5808e88679",
+          "source_table": "pix_payments",
+          "source_columns": [
+            "journal_entry_id"
+          ],
+          "target_table": "journal_entries",
+          "target_columns": [
+            "id"
+          ],
+          "partition_key": "occurred_at"
+        }
+      },
+      {
+        "code": "foreign_key_references_without_partition_key",
+        "severity": "blocker",
+        "message": "foreign key references this table without the intended partition key",
+        "details": {
+          "constraint_name": "fk_rails_d3b180fc2a",
+          "source_table": "pix_payments",
+          "source_columns": [
+            "reversal_journal_entry_id"
+          ],
+          "target_table": "journal_entries",
+          "target_columns": [
+            "id"
+          ],
+          "partition_key": "occurred_at"
+        }
+      },
+      {
+        "code": "foreign_key_references_without_partition_key",
+        "severity": "blocker",
+        "message": "foreign key references this table without the intended partition key",
+        "details": {
+          "constraint_name": "fk_rails_dbda65b1d0",
+          "source_table": "pix_payments",
+          "source_columns": [
+            "settlement_journal_entry_id"
+          ],
+          "target_table": "journal_entries",
+          "target_columns": [
+            "id"
+          ],
+          "partition_key": "occurred_at"
+        }
+      },
+      {
+        "code": "foreign_key_references_without_partition_key",
+        "severity": "blocker",
+        "message": "foreign key references this table without the intended partition key",
+        "details": {
+          "constraint_name": "fk_rails_94ce031b15",
+          "source_table": "refunds",
+          "source_columns": [
+            "journal_entry_id"
+          ],
+          "target_table": "journal_entries",
+          "target_columns": [
+            "id"
+          ],
+          "partition_key": "occurred_at"
+        }
+      },
+      {
+        "code": "foreign_key_references_without_partition_key",
+        "severity": "blocker",
+        "message": "foreign key references this table without the intended partition key",
+        "details": {
+          "constraint_name": "fk_rails_85ba9e5558",
+          "source_table": "split_payments",
+          "source_columns": [
+            "journal_entry_id"
+          ],
+          "target_table": "journal_entries",
+          "target_columns": [
+            "id"
+          ],
+          "partition_key": "occurred_at"
+        }
+      },
+      {
+        "code": "foreign_key_references_without_partition_key",
+        "severity": "blocker",
+        "message": "foreign key references this table without the intended partition key",
+        "details": {
+          "constraint_name": "fk_rails_5ac317b559",
+          "source_table": "transfers",
+          "source_columns": [
+            "journal_entry_id"
+          ],
+          "target_table": "journal_entries",
+          "target_columns": [
+            "id"
+          ],
+          "partition_key": "occurred_at"
+        }
+      }
+    ],
+    "warnings": [
+      {
+        "code": "missing_partition_key_index",
+        "severity": "warning",
+        "message": "table has no current index that includes the intended partition key",
+        "details": {
+          "table": "journal_entries",
+          "partition_key": "occurred_at"
+        }
+      }
+    ]
+  },
+  {
+    "table": "ledger_lines",
+    "partition_key": "created_at",
+    "strategy": "monthly_range",
+    "ready": false,
+    "blockers": [
+      {
+        "code": "unique_index_missing_partition_key",
+        "severity": "blocker",
+        "message": "PostgreSQL partitioned-table uniqueness must include every partition key column",
+        "details": {
+          "table": "ledger_lines",
+          "index_name": "index_ledger_lines_on_public_id",
+          "columns": [
+            "public_id"
+          ],
+          "partition_key": "created_at",
+          "partial": false,
+          "predicate": null
+        }
+      },
+      {
+        "code": "primary_key_missing_partition_key",
+        "severity": "blocker",
+        "message": "PostgreSQL partitioned-table uniqueness must include every partition key column",
+        "details": {
+          "table": "ledger_lines",
+          "index_name": "ledger_lines_pkey",
+          "columns": [
+            "id"
+          ],
+          "partition_key": "created_at",
+          "partial": false,
+          "predicate": null
+        }
+      }
+    ],
+    "warnings": []
+  },
+  {
+    "table": "audit_logs",
+    "partition_key": "created_at",
+    "strategy": "monthly_range",
+    "ready": false,
+    "blockers": [
+      {
+        "code": "primary_key_missing_partition_key",
+        "severity": "blocker",
+        "message": "PostgreSQL partitioned-table uniqueness must include every partition key column",
+        "details": {
+          "table": "audit_logs",
+          "index_name": "audit_logs_pkey",
+          "columns": [
+            "id"
+          ],
+          "partition_key": "created_at",
+          "partial": false,
+          "predicate": null
+        }
+      },
+      {
+        "code": "unique_index_missing_partition_key",
+        "severity": "blocker",
+        "message": "PostgreSQL partitioned-table uniqueness must include every partition key column",
+        "details": {
+          "table": "audit_logs",
+          "index_name": "index_audit_logs_on_chain_sequence",
+          "columns": [
+            "chain_sequence"
+          ],
+          "partition_key": "created_at",
+          "partial": false,
+          "predicate": null
+        }
+      },
+      {
+        "code": "unique_index_missing_partition_key",
+        "severity": "blocker",
+        "message": "PostgreSQL partitioned-table uniqueness must include every partition key column",
+        "details": {
+          "table": "audit_logs",
+          "index_name": "index_audit_logs_on_hash_value",
+          "columns": [
+            "hash_value"
+          ],
+          "partition_key": "created_at",
+          "partial": false,
+          "predicate": null
+        }
+      },
+      {
+        "code": "unique_index_missing_partition_key",
+        "severity": "blocker",
+        "message": "PostgreSQL partitioned-table uniqueness must include every partition key column",
+        "details": {
+          "table": "audit_logs",
+          "index_name": "index_audit_logs_on_public_id",
+          "columns": [
+            "public_id"
+          ],
+          "partition_key": "created_at",
+          "partial": false,
+          "predicate": null
+        }
+      },
+      {
+        "code": "foreign_key_references_without_partition_key",
+        "severity": "blocker",
+        "message": "foreign key references this table without the intended partition key",
+        "details": {
+          "constraint_name": "fk_rails_a63eb6c722",
+          "source_table": "audit_log_anchors",
+          "source_columns": [
+            "audit_log_id"
+          ],
+          "target_table": "audit_logs",
+          "target_columns": [
+            "id"
+          ],
+          "partition_key": "created_at"
+        }
+      }
+    ],
+    "warnings": []
+  },
+  {
+    "table": "reconciliation_runs",
+    "partition_key": "statement_date",
+    "strategy": "monthly_range",
+    "ready": false,
+    "blockers": [
+      {
+        "code": "unique_index_missing_partition_key",
+        "severity": "blocker",
+        "message": "PostgreSQL partitioned-table uniqueness must include every partition key column",
+        "details": {
+          "table": "reconciliation_runs",
+          "index_name": "index_reconciliation_runs_on_public_id",
+          "columns": [
+            "public_id"
+          ],
+          "partition_key": "statement_date",
+          "partial": false,
+          "predicate": null
+        }
+      },
+      {
+        "code": "primary_key_missing_partition_key",
+        "severity": "blocker",
+        "message": "PostgreSQL partitioned-table uniqueness must include every partition key column",
+        "details": {
+          "table": "reconciliation_runs",
+          "index_name": "reconciliation_runs_pkey",
+          "columns": [
+            "id"
+          ],
+          "partition_key": "statement_date",
+          "partial": false,
+          "predicate": null
+        }
+      }
+    ],
+    "warnings": []
+  }
+]

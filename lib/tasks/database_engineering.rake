@@ -126,6 +126,33 @@ namespace :database do
     strict = ActiveModel::Type::Boolean.new.cast(ENV["STRICT"])
     abort "Partition readiness failed" if strict && checks.any? { |check| !check.partitioned }
   end
+
+  desc "Report catalog blockers before converting high-volume tables to partitions"
+  task partition_feasibility_check: :environment do
+    checks = Database::PartitionFeasibility.call
+
+    checks.each do |check|
+      status = check.ready ? "ready" : "blocked"
+      puts "#{check.table}=#{status} partition_key=#{check.partition_key} strategy=#{check.strategy}"
+
+      check.blockers.each do |finding|
+        puts "  [#{finding.severity}] #{finding.code}: #{finding.message} #{finding.details.to_json}"
+      end
+
+      check.warnings.each do |finding|
+        puts "  [#{finding.severity}] #{finding.code}: #{finding.message} #{finding.details.to_json}"
+      end
+    end
+
+    output_dir = Rails.root.join("benchmarks/database/partitioning")
+    FileUtils.mkdir_p(output_dir)
+    output_path = output_dir.join("feasibility.json")
+    File.write(output_path, JSON.pretty_generate(checks.map(&:to_h)))
+    puts "Wrote #{output_path}"
+
+    strict = ActiveModel::Type::Boolean.new.cast(ENV["STRICT"])
+    abort "Partition feasibility failed" if strict && checks.any? { |check| !check.ready }
+  end
 end
 
 namespace :clickhouse do

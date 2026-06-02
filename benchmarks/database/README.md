@@ -54,3 +54,18 @@ Track:
 - outbox publishable query uses the status/date index when the dataset has at least 100 outbox rows
 - plans do not spill temp files
 - query execution time stays under `DATABASE_BENCHMARK_MAX_QUERY_MS`, default `250`
+
+## Partition evidence
+
+```bash
+bin/rails database:partition_readiness_check
+bin/rails database:partition_feasibility_check
+```
+
+`partition_readiness_check` proves whether the candidate high-volume tables are already PostgreSQL partitioned parents. `partition_feasibility_check` writes current catalog blockers to:
+
+```text
+benchmarks/database/partitioning/feasibility.json
+```
+
+The current repo is expected to be blocked until partition-aware key and foreign-key strategy is implemented.

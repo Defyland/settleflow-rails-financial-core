@@ -34,9 +34,32 @@ Generate future partition DDL with:
 ```bash
 bin/rails 'database:partition_plan[6]'
 bin/rails database:partition_readiness_check
+bin/rails database:partition_feasibility_check
 STRICT=true bin/rails database:partition_readiness_check
+STRICT=true bin/rails database:partition_feasibility_check
 ```
 
 The task writes SQL to `benchmarks/database/partitioning/next_partitions.sql`. The generated SQL assumes the parent tables have already been converted to partitioned tables through the copy/swap migration approach above.
 
 `database:partition_readiness_check` queries PostgreSQL catalog tables and reports whether each candidate table is currently a partitioned parent. `STRICT=true` is expected to fail until the production copy/swap conversion has actually happened; this prevents the plan from being mistaken for implemented partitioning.
+
+`database:partition_feasibility_check` queries PostgreSQL catalog tables and writes current blockers to `benchmarks/database/partitioning/feasibility.json`. It checks:
+
+- primary keys and unique indexes that do not include the intended partition key
+- inbound foreign keys that reference the candidate table without the partition key
+- nullable or missing partition key columns
+- missing supporting indexes that include the partition key
+
+Current status is intentionally blocked, not hidden:
+
+- `journal_entries` cannot be range-partitioned by `occurred_at` while consumers reference `journal_entries(id)` and uniqueness is enforced on `id`, `public_id`, and `(organization_id, idempotency_key)` without `occurred_at`.
+- `ledger_lines` needs its primary/public identifiers remodeled or scoped by `created_at` before becoming a partitioned parent.
+- `audit_logs` needs a deliberate design for global `chain_sequence` and `hash_value` uniqueness before partitioning by `created_at`.
+- `reconciliation_runs` already scopes provider uniqueness by `statement_date`, but its primary/public identifiers still do not include the partition key.
+
+The next production-grade step is not a blind migration. It is a key strategy decision:
+
+- use composite partition-aware keys and carry partition keys into referencing tables; or
+- introduce stable global key tables for references while partitioned fact tables enforce local partition constraints.
+
+Either path must be followed by copy/swap backfill, dual-write reconciliation if needed, `database:verify_consistency`, `database:partition_readiness_check`, `database:partition_feasibility_check`, and benchmark reruns.
