@@ -34,7 +34,8 @@ Production deployment uses Docker, Thruster, Kamal, Rails credentials, PostgreSQ
 5. Verify `/metrics` rejects requests without `Authorization: Bearer <METRICS_BEARER_TOKEN>`.
 6. Sign in to `/ops` with the configured admin operator and verify outbox, ledger, audit, reconciliation, and Pix pages render.
 7. Run `bin/rails database:verify_consistency`.
-8. Create a non-production smoke organization or fixture and verify a funding plus reconciliation run before allowing live writes.
+8. Run `bin/rails audit:anchor_hash_chain`; configure `AUDIT_ANCHOR_WEBHOOK_URL` when an external immutable evidence sink exists.
+9. Create a non-production smoke organization or fixture and verify a funding plus reconciliation run before allowing live writes.
 
 ## Rollback
 

@@ -11,6 +11,7 @@ class DatabaseBenchmarkRunnerTest < ActiveSupport::TestCase
     assert_equal 2, result.counts.fetch(:wallets)
     assert result.counts.fetch(:journal_entries).positive?
     assert result.consistency.all? { |check| check.fetch(:ok) }, result.consistency.inspect
+    assert result.thresholds.all? { |check| check.fetch(:ok) }, result.thresholds.inspect
     assert_equal %i[audit_chain_tail outbox_publishable reconciliation_accounts wallet_statement].sort,
       result.explains.map { |explain| explain.fetch(:name) }.sort
   end

@@ -13,6 +13,7 @@ module Database
     def call
       [
         audit_hash_chain_check,
+        audit_anchor_chain_check,
         journal_balance_check,
         negative_projection_check,
         projection_rebuild_check
@@ -50,6 +51,20 @@ module Database
         name: :journal_balance,
         ok: rows.empty?,
         details: { unbalanced_journal_currency_pairs: rows.count }
+      )
+    end
+
+    def audit_anchor_chain_check
+      Check.new(
+        name: :audit_anchor_chain,
+        ok: AuditLogAnchor.anchor_chain_intact?,
+        details: {
+          anchor_hash_mismatches: AuditLogAnchor.hash_mismatches.count,
+          broken_anchor_links: AuditLogAnchor.broken_anchor_links.count,
+          latest_anchor_sequence: AuditLogAnchor.maximum(:chain_sequence),
+          latest_audit_sequence: AuditLog.maximum(:chain_sequence),
+          latest_anchor_covers_current_audit_tail: AuditLogAnchor.latest_covers_current_audit_tail?
+        }
       )
     end
 

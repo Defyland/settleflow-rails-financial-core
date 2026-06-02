@@ -15,7 +15,10 @@
 - Journal entries require idempotency keys and domain references.
 - Balance projections cannot go negative.
 - Audit logs are append-only and hash-chained.
+- Audit hash-chain anchors are append-only and can be exported to an external evidence sink.
 - Maker-checker approvals protect operator settlement and reversal actions.
+
+Audit anchors improve tamper evidence but do not replace regulated WORM storage. Production deployments should publish `audit:anchor_hash_chain` output to immutable storage outside the application database.
 
 ## ClickHouse
 

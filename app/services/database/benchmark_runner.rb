@@ -1,6 +1,6 @@
 module Database
   class BenchmarkRunner
-    Result = Data.define(:organizations, :wallets, :entries, :seed_duration_seconds, :counts, :consistency, :explains)
+    Result = Data.define(:organizations, :wallets, :entries, :seed_duration_seconds, :counts, :consistency, :explains, :thresholds)
 
     def self.call(...)
       new(...).call
@@ -21,15 +21,17 @@ module Database
       consistency = Database::ConsistencyVerifier.call(organizations: Organization.where(id: seeded_organizations.map(&:id)))
       explains = Database::CriticalQueryExplainer.call(organization: seeded_organizations.first)
 
-      Result.new(
+      result = Result.new(
         organizations:,
         wallets:,
         entries:,
         seed_duration_seconds: seed_duration_seconds.round(3),
         counts: counts_for(seeded_organizations),
         consistency: consistency.map { |check| { name: check.name, ok: check.ok, details: check.details } },
-        explains: explains.map { |explain| explain.slice(:name, :sql, :plan) }
+        explains: explains.map { |explain| explain.slice(:name, :sql, :plan) },
+        thresholds: []
       )
+      result.with(thresholds: Database::BenchmarkThresholds.call(result:).map { |check| { name: check.name, ok: check.ok, details: check.details } })
     end
 
     private

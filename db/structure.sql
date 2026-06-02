@@ -122,6 +122,60 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
+-- Name: audit_log_anchors; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_log_anchors (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint,
+    audit_log_id bigint NOT NULL,
+    chain_sequence bigint NOT NULL,
+    hash_value character varying NOT NULL,
+    previous_anchor_hash character varying,
+    anchor_hash character varying NOT NULL,
+    hash_algorithm character varying DEFAULT 'sha256'::character varying NOT NULL,
+    anchored_at timestamp(6) without time zone NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT audit_log_anchors_anchor_hash_format_check CHECK (((anchor_hash)::text ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT audit_log_anchors_hash_algorithm_check CHECK (((hash_algorithm)::text = 'sha256'::text)),
+    CONSTRAINT audit_log_anchors_hash_value_format_check CHECK (((hash_value)::text ~ '^[0-9a-f]{64}$'::text))
+);
+
+
+--
+-- Name: audit_log_anchor_hash(public.audit_log_anchors); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.audit_log_anchor_hash(anchor_row public.audit_log_anchors) RETURNS text
+    LANGUAGE sql IMMUTABLE
+    AS $$
+  SELECT encode(digest(audit_log_anchor_payload(anchor_row)::text, 'sha256'), 'hex')
+$$;
+
+
+--
+-- Name: audit_log_anchor_payload(public.audit_log_anchors); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.audit_log_anchor_payload(anchor_row public.audit_log_anchors) RETURNS jsonb
+    LANGUAGE plpgsql IMMUTABLE
+    AS $$
+BEGIN
+  RETURN jsonb_build_object(
+    'chain_sequence', anchor_row.chain_sequence,
+    'hash_value', anchor_row.hash_value,
+    'previous_anchor_hash', anchor_row.previous_anchor_hash,
+    'hash_algorithm', anchor_row.hash_algorithm,
+    'anchored_at', anchor_row.anchored_at
+  );
+END;
+$$;
+
+
+--
 -- Name: audit_logs; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -211,6 +265,20 @@ BEGIN
   END IF;
 
   RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: prevent_audit_log_anchor_mutation(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.prevent_audit_log_anchor_mutation() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  RAISE EXCEPTION 'audit log anchors are append-only and cannot be mutated'
+    USING ERRCODE = 'integrity_constraint_violation';
 END;
 $$;
 
@@ -389,6 +457,25 @@ CREATE TABLE public.ar_internal_metadata (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL
 );
+
+
+--
+-- Name: audit_log_anchors_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.audit_log_anchors_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: audit_log_anchors_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.audit_log_anchors_id_seq OWNED BY public.audit_log_anchors.id;
 
 
 --
@@ -1419,6 +1506,13 @@ ALTER TABLE ONLY public.api_credentials ALTER COLUMN id SET DEFAULT nextval('pub
 
 
 --
+-- Name: audit_log_anchors id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_log_anchors ALTER COLUMN id SET DEFAULT nextval('public.audit_log_anchors_id_seq'::regclass);
+
+
+--
 -- Name: audit_logs id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -1624,6 +1718,14 @@ ALTER TABLE ONLY public.api_credentials
 
 ALTER TABLE ONLY public.ar_internal_metadata
     ADD CONSTRAINT ar_internal_metadata_pkey PRIMARY KEY (key);
+
+
+--
+-- Name: audit_log_anchors audit_log_anchors_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_log_anchors
+    ADD CONSTRAINT audit_log_anchors_pkey PRIMARY KEY (id);
 
 
 --
@@ -1929,6 +2031,48 @@ CREATE INDEX index_api_credentials_on_organization_id ON public.api_credentials 
 --
 
 CREATE INDEX index_api_credentials_on_organization_id_and_revoked_at ON public.api_credentials USING btree (organization_id, revoked_at);
+
+
+--
+-- Name: index_audit_log_anchors_on_anchor_hash; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_audit_log_anchors_on_anchor_hash ON public.audit_log_anchors USING btree (anchor_hash);
+
+
+--
+-- Name: index_audit_log_anchors_on_audit_log_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_audit_log_anchors_on_audit_log_id ON public.audit_log_anchors USING btree (audit_log_id);
+
+
+--
+-- Name: index_audit_log_anchors_on_chain_sequence; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_audit_log_anchors_on_chain_sequence ON public.audit_log_anchors USING btree (chain_sequence);
+
+
+--
+-- Name: index_audit_log_anchors_on_hash_value; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_audit_log_anchors_on_hash_value ON public.audit_log_anchors USING btree (hash_value);
+
+
+--
+-- Name: index_audit_log_anchors_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_audit_log_anchors_on_organization_id ON public.audit_log_anchors USING btree (organization_id);
+
+
+--
+-- Name: index_audit_log_anchors_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_audit_log_anchors_on_public_id ON public.audit_log_anchors USING btree (public_id);
 
 
 --
@@ -2744,6 +2888,13 @@ CREATE UNIQUE INDEX index_wallets_on_public_id ON public.wallets USING btree (pu
 
 
 --
+-- Name: audit_log_anchors audit_log_anchors_prevent_update_delete; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER audit_log_anchors_prevent_update_delete BEFORE DELETE OR UPDATE ON public.audit_log_anchors FOR EACH ROW EXECUTE FUNCTION public.prevent_audit_log_anchor_mutation();
+
+
+--
 -- Name: audit_logs audit_logs_hash_chain_before_insert; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -3057,6 +3208,14 @@ ALTER TABLE ONLY public.operator_approvals
 
 
 --
+-- Name: audit_log_anchors fk_rails_a63eb6c722; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_log_anchors
+    ADD CONSTRAINT fk_rails_a63eb6c722 FOREIGN KEY (audit_log_id) REFERENCES public.audit_logs(id);
+
+
+--
 -- Name: journal_entries fk_rails_aad8a6d0fe; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3086,6 +3245,14 @@ ALTER TABLE ONLY public.payouts
 
 ALTER TABLE ONLY public.outbox_events
     ADD CONSTRAINT fk_rails_b6cb24ddb3 FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: audit_log_anchors fk_rails_bb37efe629; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_log_anchors
+    ADD CONSTRAINT fk_rails_bb37efe629 FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
 
 
 --
@@ -3239,6 +3406,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602110000'),
 ('20260602101000'),
 ('20260602100000'),
 ('20260602095000'),

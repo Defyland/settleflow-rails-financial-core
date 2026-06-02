@@ -20,6 +20,8 @@ namespace :database do
 
     failed_checks = result.consistency.reject { |check| check.fetch(:ok) }
     abort "Benchmark dataset consistency failed: #{failed_checks.to_json}" if failed_checks.any?
+    failed_thresholds = result.thresholds.reject { |check| check.fetch(:ok) }
+    abort "Benchmark thresholds failed: #{failed_thresholds.to_json}" if failed_thresholds.any?
 
     output_dir = Rails.root.join("benchmarks/database/results")
     FileUtils.mkdir_p(output_dir)
@@ -112,6 +114,18 @@ namespace :database do
     File.write(output_path, "#{plan.to_sql}\n")
     puts "Wrote #{output_path}"
   end
+
+  desc "Report whether candidate high-volume tables are PostgreSQL partitioned parents"
+  task partition_readiness_check: :environment do
+    checks = Database::PartitionReadiness.call
+    checks.each do |check|
+      state = check.partitioned ? "partitioned:#{check.partition_strategy}" : "not_partitioned"
+      puts "#{check.table}=#{state}"
+    end
+
+    strict = ActiveModel::Type::Boolean.new.cast(ENV["STRICT"])
+    abort "Partition readiness failed" if strict && checks.any? { |check| !check.partitioned }
+  end
 end
 
 namespace :clickhouse do
@@ -198,5 +212,13 @@ namespace :redis do
     puts "Redis temporary lock verified key=#{key}"
   ensure
     client&.close
+  end
+end
+
+namespace :audit do
+  desc "Anchor the current audit hash-chain tail and optionally publish it to AUDIT_ANCHOR_WEBHOOK_URL"
+  task anchor_hash_chain: :environment do
+    anchor = AuditLogs::HashChainAnchor.call
+    puts "Audit hash chain anchored sequence=#{anchor.chain_sequence} anchor_hash=#{anchor.anchor_hash}"
   end
 end

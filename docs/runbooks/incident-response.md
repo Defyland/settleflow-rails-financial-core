@@ -62,9 +62,10 @@
 
 1. Run `bin/rails database:verify_consistency`.
 2. Inspect `AuditLog.hash_mismatches`, `AuditLog.broken_chain_links`, and `AuditLog.invalid_genesis_links`.
-3. Treat any mismatch as evidence of database-level tampering or an unsafe maintenance script.
-4. Preserve a physical database backup before attempting repair.
-5. Do not update or delete audit rows; the database trigger intentionally blocks mutation.
+3. Compare the latest `AuditLogAnchor` with the external `AUDIT_ANCHOR_WEBHOOK_URL` destination if configured.
+4. Treat any mismatch as evidence of database-level tampering or an unsafe maintenance script.
+5. Preserve a physical database backup before attempting repair.
+6. Do not update or delete audit rows or anchors; database triggers intentionally block mutation.
 
 ## Duplicate command or idempotency conflict
 

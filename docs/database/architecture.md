@@ -16,6 +16,7 @@ SettleFlow is an OLTP-first financial core. PostgreSQL is the only source of tru
 - `idempotency_keys` preserve write command identity and replay behavior.
 - `outbox_events` preserve integration delivery evidence.
 - `processed_events` records downstream processors such as ClickHouse sync and prevents duplicate analytics ingestion.
+- `audit_log_anchors` stores append-only anchor records for exported audit hash-chain tail evidence.
 
 ## OLAP model
 
@@ -36,3 +37,7 @@ ClickHouse table `settleflow.financial_events` receives JSONEachRow rows from pu
 The analytics table is partitioned by event month and deduplicated by `event_id` with `ReplacingMergeTree(synced_at)`.
 
 `clickhouse:create_schema` also creates a daily rollup view for event counts and amount sums by organization, event type, and day. The view reads `financial_events FINAL` so retried inserts with the same `event_id` do not inflate analytical counts. These objects are analytical only and must not feed authoritative balance, settlement, refund, or reconciliation decisions.
+
+## Audit anchoring
+
+`audit:anchor_hash_chain` records the current audit hash-chain tail in `audit_log_anchors`. Anchors are append-only, chained to the previous anchor, included in `database:verify_consistency`, and can be exported to `AUDIT_ANCHOR_WEBHOOK_URL`. This is tamper-evidence and export evidence; regulated WORM storage still requires an external immutable destination.

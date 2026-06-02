@@ -19,6 +19,7 @@ class Organization < ApplicationRecord
   has_many :api_credentials, dependent: :destroy
   has_many :idempotency_keys, dependent: :delete_all
   has_many :audit_logs, dependent: :nullify
+  has_many :audit_log_anchors, dependent: :nullify
 
   enum :status, { active: "active", suspended: "suspended" }
 

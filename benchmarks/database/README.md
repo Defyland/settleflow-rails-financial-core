@@ -17,7 +17,7 @@ Arguments:
 
 The seed uses domain services so ledger, projections, idempotency, and outbox behavior stay realistic.
 
-`database:benchmark` seeds through the same domain services, runs `database:verify_consistency` logic against the generated organizations, captures critical `EXPLAIN` plans, and writes JSON evidence to:
+`database:benchmark` seeds through the same domain services, runs `database:verify_consistency` logic against the generated organizations, captures critical `EXPLAIN` plans, evaluates threshold gates, and writes JSON evidence to:
 
 ```text
 benchmarks/database/results/*.json
@@ -45,10 +45,12 @@ Track:
 
 ## Acceptance threshold
 
-Before calling a dataset benchmark healthy:
+`database:benchmark` fails the task when any hard threshold fails:
 
-- wallet statement query uses wallet/ledger indexes
-- outbox publishable query uses status/date indexes
-- reconciliation account aggregation stays bounded by tenant/currency
-- audit chain tail reads by chain sequence index
-- projection rebuild dry-run matches ledger balances
+- consistency checks are green
+- generated row counts meet the expected domain-service minimums
+- every critical query plan is present
+- wallet statement query uses a ledger index
+- outbox publishable query uses the status/date index when the dataset has at least 100 outbox rows
+- plans do not spill temp files
+- query execution time stays under `DATABASE_BENCHMARK_MAX_QUERY_MS`, default `250`

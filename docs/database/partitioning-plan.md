@@ -33,6 +33,10 @@ Generate future partition DDL with:
 
 ```bash
 bin/rails 'database:partition_plan[6]'
+bin/rails database:partition_readiness_check
+STRICT=true bin/rails database:partition_readiness_check
 ```
 
 The task writes SQL to `benchmarks/database/partitioning/next_partitions.sql`. The generated SQL assumes the parent tables have already been converted to partitioned tables through the copy/swap migration approach above.
+
+`database:partition_readiness_check` queries PostgreSQL catalog tables and reports whether each candidate table is currently a partitioned parent. `STRICT=true` is expected to fail until the production copy/swap conversion has actually happened; this prevents the plan from being mistaken for implemented partitioning.
