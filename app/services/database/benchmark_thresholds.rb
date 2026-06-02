@@ -12,14 +12,22 @@ module Database
       new(...).call
     end
 
-    def initialize(result:, max_execution_time_ms: ENV.fetch("DATABASE_BENCHMARK_MAX_QUERY_MS", 250).to_f)
+    def initialize(
+      result:,
+      max_execution_time_ms: ENV.fetch("DATABASE_BENCHMARK_MAX_QUERY_MS", 250).to_f,
+      minimum_wallets: ENV.fetch("DATABASE_BENCHMARK_MIN_WALLETS", 100).to_i,
+      minimum_entries: ENV.fetch("DATABASE_BENCHMARK_MIN_ENTRIES", 2_000).to_i
+    )
       @result = result
       @max_execution_time_ms = max_execution_time_ms
+      @minimum_wallets = minimum_wallets
+      @minimum_entries = minimum_entries
     end
 
     def call
       [
         consistency_check,
+        benchmark_profile_check,
         count_check,
         critical_plan_check,
         wallet_statement_index_check,
@@ -31,11 +39,25 @@ module Database
 
     private
 
-    attr_reader :result, :max_execution_time_ms
+    attr_reader :result, :max_execution_time_ms, :minimum_wallets, :minimum_entries
 
     def consistency_check
       failed = result.consistency.reject { |check| check.fetch(:ok) }
       Check.new(name: :consistency_green, ok: failed.empty?, details: { failed: failed.map { |check| check.fetch(:name) } })
+    end
+
+    def benchmark_profile_check
+      ok = result.wallets >= minimum_wallets && result.entries >= minimum_entries
+      Check.new(
+        name: :minimum_benchmark_profile,
+        ok:,
+        details: {
+          minimum_wallets:,
+          actual_wallets: result.wallets,
+          minimum_entries:,
+          actual_entries: result.entries
+        }
+      )
     end
 
     def count_check

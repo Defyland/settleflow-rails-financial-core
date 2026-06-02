@@ -23,6 +23,32 @@ class DatabaseBenchmarkThresholdsTest < ActiveSupport::TestCase
     assert_not check.ok
   end
 
+  test "fails when benchmark input is below the configured volume profile" do
+    result = Result.new(
+      organizations: 1,
+      wallets: 25,
+      entries: 250,
+      counts: { wallets: 25, journal_entries: 275, ledger_lines: 550, outbox_events: 100 },
+      consistency: [ { name: :consistency, ok: true, details: {} } ],
+      explains: [
+        explain(:wallet_statement, index_plan("ledger_lines", "index_ledger_lines_on_organization_id_and_created_at")),
+        explain(:outbox_publishable, index_plan("outbox_events", "idx_outbox_status_next_attempt")),
+        explain(:reconciliation_accounts, seq_scan_plan("ledger_accounts")),
+        explain(:audit_chain_tail, seq_scan_plan("audit_logs"))
+      ]
+    )
+
+    check = Database::BenchmarkThresholds.call(
+      result:,
+      minimum_wallets: 100,
+      minimum_entries: 2_000
+    ).find { |item| item.name == :minimum_benchmark_profile }
+
+    assert_not check.ok
+    assert_equal 100, check.details.fetch(:minimum_wallets)
+    assert_equal 2_000, check.details.fetch(:minimum_entries)
+  end
+
   private
 
   def explain(name, plan)

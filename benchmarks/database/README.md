@@ -48,12 +48,16 @@ Track:
 `database:benchmark` fails the task when any hard threshold fails:
 
 - consistency checks are green
+- benchmark input is at least `DATABASE_BENCHMARK_MIN_WALLETS`, default `100`
+- benchmark input is at least `DATABASE_BENCHMARK_MIN_ENTRIES`, default `2000`
 - generated row counts meet the expected domain-service minimums
 - every critical query plan is present
 - wallet statement query uses a ledger index
 - outbox publishable query uses the status/date index when the dataset has at least 100 outbox rows
 - plans do not spill temp files
 - query execution time stays under `DATABASE_BENCHMARK_MAX_QUERY_MS`, default `250`
+
+The default `database:benchmark` profile is `1` organization, `100` wallets, and `2000` transfer entries. Smaller runs are useful for local smoke tests only and should not be committed as volume evidence.
 
 ## Partition evidence
 

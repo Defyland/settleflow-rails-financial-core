@@ -6,7 +6,7 @@ module Database
       new(...).call
     end
 
-    def initialize(organizations: 1, wallets: 100, entries: 1_000)
+    def initialize(organizations: 1, wallets: 100, entries: 2_000)
       @organizations = organizations.to_i
       @wallets = wallets.to_i
       @entries = entries.to_i

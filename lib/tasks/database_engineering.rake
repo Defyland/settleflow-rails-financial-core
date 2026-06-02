@@ -15,7 +15,7 @@ namespace :database do
   task :benchmark, [ :organizations, :wallets, :entries ] => :environment do |_task, args|
     organizations = args[:organizations].presence || ENV.fetch("ORGANIZATIONS", 1)
     wallets = args[:wallets].presence || ENV.fetch("WALLETS", 100)
-    entries = args[:entries].presence || ENV.fetch("ENTRIES", 1_000)
+    entries = args[:entries].presence || ENV.fetch("ENTRIES", 2_000)
     result = Database::BenchmarkRunner.call(organizations:, wallets:, entries:)
 
     failed_checks = result.consistency.reject { |check| check.fetch(:ok) }
