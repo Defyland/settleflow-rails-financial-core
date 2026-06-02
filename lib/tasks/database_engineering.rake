@@ -11,6 +11,23 @@ namespace :database do
     puts "Seeded #{seeded.size} organization(s), #{wallets} wallet(s) each, #{entries} transfer(s) each"
   end
 
+  desc "Run database benchmark and write JSON result: database:benchmark[organizations,wallets,entries]"
+  task :benchmark, [ :organizations, :wallets, :entries ] => :environment do |_task, args|
+    organizations = args[:organizations].presence || ENV.fetch("ORGANIZATIONS", 1)
+    wallets = args[:wallets].presence || ENV.fetch("WALLETS", 100)
+    entries = args[:entries].presence || ENV.fetch("ENTRIES", 1_000)
+    result = Database::BenchmarkRunner.call(organizations:, wallets:, entries:)
+
+    failed_checks = result.consistency.reject { |check| check.fetch(:ok) }
+    abort "Benchmark dataset consistency failed: #{failed_checks.to_json}" if failed_checks.any?
+
+    output_dir = Rails.root.join("benchmarks/database/results")
+    FileUtils.mkdir_p(output_dir)
+    output_path = output_dir.join("#{Time.current.utc.strftime("%Y%m%d%H%M%S")}_database_benchmark.json")
+    File.write(output_path, JSON.pretty_generate(result.to_h))
+    puts "Wrote #{output_path}"
+  end
+
   desc "Capture daily balance snapshots for all organizations"
   task capture_balance_snapshots: :environment do
     Organization.find_each do |organization|
@@ -27,6 +44,18 @@ namespace :database do
         puts "#{organization.slug} #{result.wallet_id} current=#{result.current_available_cents} rebuilt=#{result.rebuilt_available_cents} diff=#{result.difference_cents}"
       end
     end
+  end
+
+  desc "Verify financial database consistency after restore, migration, or incident"
+  task verify_consistency: :environment do
+    checks = Database::ConsistencyVerifier.call
+    checks.each do |check|
+      status = check.ok ? "ok" : "failed"
+      puts "#{check.name}=#{status} #{check.details.to_json}"
+    end
+
+    failed = checks.reject(&:ok)
+    abort "Database consistency verification failed: #{failed.map(&:name).join(", ")}" if failed.any?
   end
 
   desc "Write EXPLAIN plans for critical financial queries into benchmarks/database/explain"
@@ -94,5 +123,71 @@ namespace :clickhouse do
     end
 
     puts "Synced #{synced} published outbox event(s) to ClickHouse"
+  end
+
+  desc "Verify real ClickHouse schema, duplicate-event dedupe, and daily analytics view"
+  task verify: :environment do
+    abort "CLICKHOUSE_URL is required" unless Analytics::ClickHouseClient.configured?
+
+    database = "settleflow_verify_#{Time.current.utc.strftime("%Y%m%d%H%M%S")}_#{SecureRandom.hex(4)}"
+    client = Analytics::ClickHouseClient.new(database:)
+    event_id = SecureRandom.uuid
+    event = {
+      event_id:,
+      event_type: "clickhouse.verify",
+      aggregate_type: "Verification",
+      aggregate_id: 1,
+      organization_id: SecureRandom.uuid,
+      correlation_id: SecureRandom.uuid,
+      idempotency_key: "clickhouse-verify-#{event_id}",
+      payload: JSON.generate(amount_cents: 1_234),
+      payload_sha256: OpenSSL::Digest::SHA256.hexdigest("clickhouse-verify-#{event_id}"),
+      occurred_at: Analytics::ClickHouseEventMapper.format_time(Time.current),
+      synced_at: Analytics::ClickHouseEventMapper.format_time(Time.current)
+    }
+
+    begin
+      client.execute!("DROP DATABASE IF EXISTS `#{database}`")
+      client.create_schema!
+      2.times { client.insert_financial_event!(event.merge(synced_at: Analytics::ClickHouseEventMapper.format_time(Time.current))) }
+
+      rows = client.query_json_each_row!(<<~SQL.squish)
+        SELECT event_type, event_count, amount_cents_sum
+        FROM #{client.qualified_daily_rollup_view_name}
+        WHERE event_type = 'clickhouse.verify'
+      SQL
+      row = rows.sole
+      abort "ClickHouse dedupe failed: #{row.inspect}" unless row.fetch("event_count").to_i == 1
+      abort "ClickHouse amount rollup failed: #{row.inspect}" unless row.fetch("amount_cents_sum").to_i == 1_234
+
+      puts "ClickHouse verified database=#{database} event_id=#{event_id}"
+    ensure
+      client.execute!("DROP DATABASE IF EXISTS `#{database}`") if client
+    end
+  end
+end
+
+namespace :redis do
+  desc "Verify real Redis temporary lock behavior without storing financial truth"
+  task verify: :environment do
+    abort "REDIS_URL is required" unless Operational::RedisTemporaryLock.configured?
+
+    key = "verify:#{SecureRandom.hex(8)}"
+    client = RedisClient.config(url: ENV.fetch("REDIS_URL")).new_client
+
+    Operational::RedisTemporaryLock.call(key:, ttl: 5.seconds) do
+      begin
+        Operational::RedisTemporaryLock.call(key:, ttl: 5.seconds) { abort "Redis duplicate lock unexpectedly acquired" }
+      rescue Errors::ValidationError
+        nil
+      end
+    end
+
+    leaked_value = client.call("GET", "operational-lock:#{key}")
+    abort "Redis temporary lock leaked after release" if leaked_value.present?
+
+    puts "Redis temporary lock verified key=#{key}"
+  ensure
+    client&.close
   end
 end

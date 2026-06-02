@@ -60,7 +60,7 @@
 
 ## Audit hash-chain failure
 
-1. Run `bin/rails runner 'abort("audit hash chain broken") unless AuditLog.hash_chain_intact?'`.
+1. Run `bin/rails database:verify_consistency`.
 2. Inspect `AuditLog.hash_mismatches`, `AuditLog.broken_chain_links`, and `AuditLog.invalid_genesis_links`.
 3. Treat any mismatch as evidence of database-level tampering or an unsafe maintenance script.
 4. Preserve a physical database backup before attempting repair.
@@ -88,4 +88,4 @@
 1. Ledger rows are append-only; direct `UPDATE` or `DELETE` is an incident, not a repair path.
 2. Financial corrections must be explicit compensating commands with a unique idempotency key, correlation ID, operator approval where applicable, and outbox evidence.
 3. If a console repair is unavoidable, document the exact journal event type, debit/credit accounts, amount, currency, approval, and reconciliation evidence before execution.
-4. After repair, run the full reconciliation for affected provider dates and verify `AuditLog.hash_chain_intact?`.
+4. After repair, run the full reconciliation for affected provider dates and `bin/rails database:verify_consistency`.

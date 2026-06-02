@@ -6,6 +6,7 @@ This folder records database engineering benchmark inputs and outputs.
 
 ```bash
 bin/rails database:seed_large[1,1000,100000]
+bin/rails database:benchmark[1,1000,100000]
 ```
 
 Arguments:
@@ -15,6 +16,12 @@ Arguments:
 - transfer entries per organization
 
 The seed uses domain services so ledger, projections, idempotency, and outbox behavior stay realistic.
+
+`database:benchmark` seeds through the same domain services, runs `database:verify_consistency` logic against the generated organizations, captures critical `EXPLAIN` plans, and writes JSON evidence to:
+
+```text
+benchmarks/database/results/*.json
+```
 
 ## Critical query plans
 

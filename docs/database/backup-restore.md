@@ -19,7 +19,7 @@ PostgreSQL backups protect the financial source of truth. ClickHouse can be rebu
 Run:
 
 ```bash
-bin/rails runner 'abort("audit hash chain broken") unless AuditLog.hash_chain_intact?'
+bin/rails database:verify_consistency
 bin/rails database:rebuild_balance_projections
 bin/rails database:explain_queries
 ```

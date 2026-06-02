@@ -21,6 +21,8 @@ services:
       RAILS_ENV: development
       DATABASE_URL: postgres://settleflow:settleflow@db:5432/settleflow_rails_financial_core_development
       CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USERNAME: settleflow
+      CLICKHOUSE_PASSWORD: settleflow
       REDIS_URL: redis://redis:6379/0
       SETTLEFLOW_DEMO_API_KEY: settleflow_dev_key_change_me
       RAILS_LOG_LEVEL: info
@@ -37,13 +39,18 @@ services:
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.8-alpine
+    environment:
+      CLICKHOUSE_DB: settleflow
+      CLICKHOUSE_USER: settleflow
+      CLICKHOUSE_PASSWORD: settleflow
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     ports:
       - "8123:8123"
       - "9000:9000"
     volumes:
       - clickhouse-data:/var/lib/clickhouse
     healthcheck:
-      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      test: ["CMD", "clickhouse-client", "--user", "settleflow", "--password", "settleflow", "--query", "SELECT 1"]
       interval: 5s
       timeout: 3s
       retries: 20

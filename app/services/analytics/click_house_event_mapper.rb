@@ -1,7 +1,13 @@
 module Analytics
   class ClickHouseEventMapper
+    TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S.%6N".freeze
+
     def self.call(...)
       new(...).call
+    end
+
+    def self.format_time(time)
+      time.utc.strftime(TIMESTAMP_FORMAT)
     end
 
     def initialize(outbox_event:)
@@ -22,8 +28,8 @@ module Analytics
         idempotency_key: outbox_event.idempotency_key,
         payload: payload_json,
         payload_sha256: Outbox::Publisher.payload_sha256(envelope),
-        occurred_at: outbox_event.created_at.utc.iso8601(6),
-        synced_at: Time.current.utc.iso8601(6)
+        occurred_at: self.class.format_time(outbox_event.created_at),
+        synced_at: self.class.format_time(Time.current)
       }.compact
     end
 

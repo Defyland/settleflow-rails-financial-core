@@ -33,6 +33,6 @@ ClickHouse table `settleflow.financial_events` receives JSONEachRow rows from pu
 - `occurred_at`
 - `synced_at`
 
-The analytics table is partitioned by event month and ordered by `(organization_id, event_type, occurred_at, event_id)`.
+The analytics table is partitioned by event month and deduplicated by `event_id` with `ReplacingMergeTree(synced_at)`.
 
-`clickhouse:create_schema` also creates a daily rollup table and materialized view for event counts and amount sums by organization, event type, and day. These objects are analytical only and must not feed authoritative balance, settlement, refund, or reconciliation decisions.
+`clickhouse:create_schema` also creates a daily rollup view for event counts and amount sums by organization, event type, and day. The view reads `financial_events FINAL` so retried inserts with the same `event_id` do not inflate analytical counts. These objects are analytical only and must not feed authoritative balance, settlement, refund, or reconciliation decisions.

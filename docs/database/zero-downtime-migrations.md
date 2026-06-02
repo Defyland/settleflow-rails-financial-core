@@ -26,7 +26,7 @@ Financial migrations must avoid long blocking locks and must preserve replay saf
 - Expected lock types.
 - Roll-forward plan.
 - Reconciliation query before and after.
-- `AuditLog.hash_chain_intact?` after completion.
+- `bin/rails database:verify_consistency` after completion.
 
 ## Automated Check
 
