@@ -46,6 +46,34 @@ namespace :database do
       puts "Wrote #{path}"
     end
   end
+
+  desc "Check migration files for high-volume PostgreSQL safety patterns"
+  task migration_safety_check: :environment do
+    findings = Database::MigrationSafetyChecker.call
+
+    if findings.empty?
+      puts "No high-volume migration safety findings"
+    else
+      findings.each do |finding|
+        puts "[#{finding.severity}] #{finding.file}:#{finding.line} #{finding.message} -- #{finding.evidence}"
+      end
+    end
+
+    strict = ActiveModel::Type::Boolean.new.cast(ENV["STRICT"])
+    abort "Migration safety findings found" if strict && findings.any? { |finding| finding.severity.in?([ :high, :medium ]) }
+  end
+
+  desc "Write future partition SQL plan: database:partition_plan[months]"
+  task :partition_plan, [ :months ] => :environment do |_task, args|
+    months = (args[:months].presence || ENV.fetch("MONTHS", 3)).to_i
+    output_dir = Rails.root.join("benchmarks/database/partitioning")
+    FileUtils.mkdir_p(output_dir)
+
+    plan = Database::PartitionPlan.new(months:)
+    output_path = output_dir.join("next_partitions.sql")
+    File.write(output_path, "#{plan.to_sql}\n")
+    puts "Wrote #{output_path}"
+  end
 end
 
 namespace :clickhouse do

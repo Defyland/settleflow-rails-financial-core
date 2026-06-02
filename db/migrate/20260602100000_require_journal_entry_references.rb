@@ -10,7 +10,9 @@ class RequireJournalEntryReferences < ActiveRecord::Migration[8.1]
 
     add_check_constraint :journal_entries,
       "reference_type IS NOT NULL AND reference_id IS NOT NULL",
-      name: "journal_entries_reference_required_check"
+      name: "journal_entries_reference_required_check",
+      validate: false
+    validate_check_constraint :journal_entries, name: "journal_entries_reference_required_check"
   end
 
   def down

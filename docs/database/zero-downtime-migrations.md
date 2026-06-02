@@ -27,3 +27,14 @@ Financial migrations must avoid long blocking locks and must preserve replay saf
 - Roll-forward plan.
 - Reconciliation query before and after.
 - `AuditLog.hash_chain_intact?` after completion.
+
+## Automated Check
+
+Run the migration safety scanner before merging database changes:
+
+```bash
+bin/rails database:migration_safety_check
+STRICT=true bin/rails database:migration_safety_check
+```
+
+The scanner flags high-volume tables where indexes are not concurrent, DDL transactions are not disabled for concurrent indexes, references create blocking indexes, foreign keys are added without `NOT VALID`, or check constraints are added without delayed validation.

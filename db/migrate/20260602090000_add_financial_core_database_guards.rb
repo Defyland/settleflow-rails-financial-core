@@ -1,9 +1,15 @@
 class AddFinancialCoreDatabaseGuards < ActiveRecord::Migration[8.1]
   def up
-    add_check_constraint :balance_projections, "available_cents >= 0", name: "balance_projections_available_non_negative_check"
-    add_check_constraint :balance_projections, "pending_cents >= 0", name: "balance_projections_pending_non_negative_check"
-    add_check_constraint :balance_projections, "blocked_cents >= 0", name: "balance_projections_blocked_non_negative_check"
+    add_check_constraint :balance_projections, "available_cents >= 0", name: "balance_projections_available_non_negative_check", validate: false
+    add_check_constraint :balance_projections, "pending_cents >= 0", name: "balance_projections_pending_non_negative_check", validate: false
+    add_check_constraint :balance_projections, "blocked_cents >= 0", name: "balance_projections_blocked_non_negative_check", validate: false
+    validate_check_constraint :balance_projections, name: "balance_projections_available_non_negative_check"
+    validate_check_constraint :balance_projections, name: "balance_projections_pending_non_negative_check"
+    validate_check_constraint :balance_projections, name: "balance_projections_blocked_non_negative_check"
+
     execute "UPDATE journal_entries SET idempotency_key = 'legacy-journal-entry:' || id WHERE idempotency_key IS NULL"
+    add_check_constraint :journal_entries, "idempotency_key IS NOT NULL", name: "journal_entries_idempotency_key_required_check", validate: false
+    validate_check_constraint :journal_entries, name: "journal_entries_idempotency_key_required_check"
     change_column_null :journal_entries, :idempotency_key, false
 
     execute <<~SQL
@@ -132,6 +138,7 @@ class AddFinancialCoreDatabaseGuards < ActiveRecord::Migration[8.1]
     SQL
 
     change_column_null :journal_entries, :idempotency_key, true
+    remove_check_constraint :journal_entries, name: "journal_entries_idempotency_key_required_check", if_exists: true
     remove_check_constraint :balance_projections, name: "balance_projections_blocked_non_negative_check"
     remove_check_constraint :balance_projections, name: "balance_projections_pending_non_negative_check"
     remove_check_constraint :balance_projections, name: "balance_projections_available_non_negative_check"

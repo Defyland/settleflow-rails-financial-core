@@ -1,4 +1,6 @@
 class AddAuditLogHashChain < ActiveRecord::Migration[8.1]
+  disable_ddl_transaction!
+
   def up
     add_column :audit_logs, :chain_sequence, :bigint
     add_column :audit_logs, :previous_hash, :string
@@ -70,11 +72,14 @@ class AddAuditLogHashChain < ActiveRecord::Migration[8.1]
     change_column_null :audit_logs, :hash_value, false
     change_column_null :audit_logs, :hash_algorithm, false
 
-    add_index :audit_logs, :chain_sequence, unique: true
-    add_index :audit_logs, :hash_value, unique: true
-    add_check_constraint :audit_logs, "hash_algorithm = 'sha256'", name: "audit_logs_hash_algorithm_check"
-    add_check_constraint :audit_logs, "hash_value ~ '^[0-9a-f]{64}$'", name: "audit_logs_hash_value_format_check"
-    add_check_constraint :audit_logs, "chain_sequence = 1 OR previous_hash IS NOT NULL", name: "audit_logs_previous_hash_required_check"
+    add_index :audit_logs, :chain_sequence, unique: true, algorithm: :concurrently
+    add_index :audit_logs, :hash_value, unique: true, algorithm: :concurrently
+    add_check_constraint :audit_logs, "hash_algorithm = 'sha256'", name: "audit_logs_hash_algorithm_check", validate: false
+    add_check_constraint :audit_logs, "hash_value ~ '^[0-9a-f]{64}$'", name: "audit_logs_hash_value_format_check", validate: false
+    add_check_constraint :audit_logs, "chain_sequence = 1 OR previous_hash IS NOT NULL", name: "audit_logs_previous_hash_required_check", validate: false
+    validate_check_constraint :audit_logs, name: "audit_logs_hash_algorithm_check"
+    validate_check_constraint :audit_logs, name: "audit_logs_hash_value_format_check"
+    validate_check_constraint :audit_logs, name: "audit_logs_previous_hash_required_check"
 
     execute <<~SQL
       CREATE OR REPLACE FUNCTION assign_audit_log_hash_chain()
@@ -133,8 +138,8 @@ class AddAuditLogHashChain < ActiveRecord::Migration[8.1]
     remove_check_constraint :audit_logs, name: "audit_logs_previous_hash_required_check"
     remove_check_constraint :audit_logs, name: "audit_logs_hash_value_format_check"
     remove_check_constraint :audit_logs, name: "audit_logs_hash_algorithm_check"
-    remove_index :audit_logs, :hash_value
-    remove_index :audit_logs, :chain_sequence
+    remove_index :audit_logs, :hash_value, algorithm: :concurrently
+    remove_index :audit_logs, :chain_sequence, algorithm: :concurrently
     remove_column :audit_logs, :hash_algorithm
     remove_column :audit_logs, :hash_value
     remove_column :audit_logs, :previous_hash

@@ -26,3 +26,13 @@ Partitioning should be introduced with a copy/swap plan:
 3. Dual-write only if required and carefully reconciled.
 4. Lock briefly for final rename.
 5. Validate counts, sums, hash-chain boundaries, and reconciliation snapshots.
+
+## Generated Plan
+
+Generate future partition DDL with:
+
+```bash
+bin/rails 'database:partition_plan[6]'
+```
+
+The task writes SQL to `benchmarks/database/partitioning/next_partitions.sql`. The generated SQL assumes the parent tables have already been converted to partitioned tables through the copy/swap migration approach above.

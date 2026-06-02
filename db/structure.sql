@@ -635,6 +635,7 @@ CREATE TABLE public.journal_entries (
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT journal_entries_idempotency_key_required_check CHECK ((idempotency_key IS NOT NULL)),
     CONSTRAINT journal_entries_reference_required_check CHECK (((reference_type IS NOT NULL) AND (reference_id IS NOT NULL)))
 );
 
@@ -675,8 +676,8 @@ CREATE TABLE public.ledger_accounts (
     status character varying DEFAULT 'active'::character varying NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    CONSTRAINT ledger_accounts_account_type_check CHECK (((account_type)::text = ANY ((ARRAY['asset'::character varying, 'liability'::character varying, 'revenue'::character varying, 'expense'::character varying, 'equity'::character varying])::text[]))),
-    CONSTRAINT ledger_accounts_normal_balance_check CHECK (((normal_balance)::text = ANY ((ARRAY['debit'::character varying, 'credit'::character varying])::text[])))
+    CONSTRAINT ledger_accounts_account_type_check CHECK (((account_type)::text = ANY (ARRAY[('asset'::character varying)::text, ('liability'::character varying)::text, ('revenue'::character varying)::text, ('expense'::character varying)::text, ('equity'::character varying)::text]))),
+    CONSTRAINT ledger_accounts_normal_balance_check CHECK (((normal_balance)::text = ANY (ARRAY[('debit'::character varying)::text, ('credit'::character varying)::text])))
 );
 
 
@@ -716,7 +717,7 @@ CREATE TABLE public.ledger_lines (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     CONSTRAINT ledger_lines_amount_positive_check CHECK ((amount_cents > 0)),
-    CONSTRAINT ledger_lines_direction_check CHECK (((direction)::text = ANY ((ARRAY['debit'::character varying, 'credit'::character varying])::text[])))
+    CONSTRAINT ledger_lines_direction_check CHECK (((direction)::text = ANY (ARRAY[('debit'::character varying)::text, ('credit'::character varying)::text])))
 );
 
 
@@ -762,7 +763,7 @@ CREATE TABLE public.med_cases (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     CONSTRAINT med_cases_amount_positive_check CHECK ((amount_cents > 0)),
-    CONSTRAINT med_cases_status_check CHECK (((status)::text = ANY ((ARRAY['opened'::character varying, 'rejected'::character varying, 'refunded'::character varying])::text[])))
+    CONSTRAINT med_cases_status_check CHECK (((status)::text = ANY (ARRAY[('opened'::character varying)::text, ('rejected'::character varying)::text, ('refunded'::character varying)::text])))
 );
 
 
@@ -806,7 +807,7 @@ CREATE TABLE public.operator_approvals (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     CONSTRAINT operator_approvals_dual_control_check CHECK (((approved_by_id IS NULL) OR (approved_by_id <> requested_by_id))),
-    CONSTRAINT operator_approvals_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying])::text[])))
+    CONSTRAINT operator_approvals_status_check CHECK (((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('approved'::character varying)::text, ('rejected'::character varying)::text])))
 );
 
 
@@ -943,7 +944,7 @@ CREATE TABLE public.payouts (
     updated_at timestamp(6) without time zone NOT NULL,
     CONSTRAINT payouts_amount_positive_check CHECK ((amount_cents > 0)),
     CONSTRAINT payouts_settlement_delay_non_negative_check CHECK ((settlement_delay_days >= 0)),
-    CONSTRAINT payouts_status_check CHECK (((status)::text = ANY ((ARRAY['scheduled'::character varying, 'settled'::character varying, 'failed'::character varying])::text[])))
+    CONSTRAINT payouts_status_check CHECK (((status)::text = ANY (ARRAY[('scheduled'::character varying)::text, ('settled'::character varying)::text, ('failed'::character varying)::text])))
 );
 
 
@@ -994,7 +995,7 @@ CREATE TABLE public.pix_payments (
     reversed_at timestamp(6) without time zone,
     reversal_reason character varying,
     CONSTRAINT pix_payments_amount_positive_check CHECK ((amount_cents > 0)),
-    CONSTRAINT pix_payments_status_check CHECK (((status)::text = ANY ((ARRAY['created'::character varying, 'pending_review'::character varying, 'approved'::character varying, 'rejected'::character varying, 'settled'::character varying, 'failed'::character varying, 'reversed'::character varying])::text[])))
+    CONSTRAINT pix_payments_status_check CHECK (((status)::text = ANY (ARRAY[('created'::character varying)::text, ('pending_review'::character varying)::text, ('approved'::character varying)::text, ('rejected'::character varying)::text, ('settled'::character varying)::text, ('failed'::character varying)::text, ('reversed'::character varying)::text])))
 );
 
 
@@ -1037,7 +1038,7 @@ CREATE TABLE public.processed_events (
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    CONSTRAINT processed_events_status_check CHECK (((status)::text = ANY ((ARRAY['processing'::character varying, 'processed'::character varying, 'failed'::character varying])::text[])))
+    CONSTRAINT processed_events_status_check CHECK (((status)::text = ANY (ARRAY[('processing'::character varying)::text, ('processed'::character varying)::text, ('failed'::character varying)::text])))
 );
 
 
@@ -1124,7 +1125,7 @@ CREATE TABLE public.refunds (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     CONSTRAINT refunds_amount_positive_check CHECK ((amount_cents > 0)),
-    CONSTRAINT refunds_status_check CHECK (((status)::text = ANY ((ARRAY['settled'::character varying, 'failed'::character varying])::text[])))
+    CONSTRAINT refunds_status_check CHECK (((status)::text = ANY (ARRAY[('settled'::character varying)::text, ('failed'::character varying)::text])))
 );
 
 
@@ -1248,7 +1249,7 @@ CREATE TABLE public.split_payments (
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    CONSTRAINT split_payments_status_check CHECK (((status)::text = ANY ((ARRAY['posted'::character varying, 'failed'::character varying])::text[]))),
+    CONSTRAINT split_payments_status_check CHECK (((status)::text = ANY (ARRAY[('posted'::character varying)::text, ('failed'::character varying)::text]))),
     CONSTRAINT split_payments_total_amount_positive_check CHECK ((total_amount_cents > 0))
 );
 
@@ -1328,7 +1329,7 @@ CREATE TABLE public.users (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     role character varying DEFAULT 'operator'::character varying NOT NULL,
-    CONSTRAINT users_role_check CHECK (((role)::text = ANY ((ARRAY['viewer'::character varying, 'operator'::character varying, 'admin'::character varying])::text[])))
+    CONSTRAINT users_role_check CHECK (((role)::text = ANY (ARRAY[('viewer'::character varying)::text, ('operator'::character varying)::text, ('admin'::character varying)::text])))
 );
 
 
