@@ -58,6 +58,15 @@ namespace :database do
     abort "Database consistency verification failed: #{failed.map(&:name).join(", ")}" if failed.any?
   end
 
+  desc "Run PostgreSQL logical backup/restore drill into a temporary database"
+  task backup_restore_drill: :environment do
+    result = Database::BackupRestoreDrill.call
+    failed_checks = result.checks.reject { |check| check.fetch(:ok) }
+    abort "Backup restore drill consistency failed: #{failed_checks.to_json}" if failed_checks.any?
+
+    puts "Backup restore drill ok source=#{result.source_database} restored=#{result.restored_database} dump=#{result.dump_path}"
+  end
+
   desc "Write EXPLAIN plans for critical financial queries into benchmarks/database/explain"
   task :explain_queries, [ :organization_slug ] => :environment do |_task, args|
     organization = if args[:organization_slug].present?

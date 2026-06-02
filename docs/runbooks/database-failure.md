@@ -20,6 +20,7 @@
 
 ```bash
 bin/rails database:verify_consistency
+bin/rails database:backup_restore_drill
 bin/rails database:rebuild_balance_projections
 bin/rails database:explain_queries
 ```
