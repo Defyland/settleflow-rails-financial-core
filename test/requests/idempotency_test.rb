@@ -94,7 +94,7 @@ class IdempotencyTest < ActionDispatch::IntegrationTest
         key: "idem-atomicity-001",
         request_method: "POST",
         request_path: "/v1/customers",
-        request_hash: "stable-hash"
+        request_hash: "a" * 64
       ) do
         customer = @organization.customers.create!(
           external_id: "atomicity-customer",
@@ -119,7 +119,7 @@ class IdempotencyTest < ActionDispatch::IntegrationTest
       key: "idem-stale-processing",
       request_method: "POST",
       request_path: "/v1/customers",
-      request_hash: "same-hash",
+      request_hash: "b" * 64,
       status: "processing",
       locked_at: 30.minutes.ago
     )
@@ -129,7 +129,7 @@ class IdempotencyTest < ActionDispatch::IntegrationTest
       key: "idem-stale-processing",
       request_method: "POST",
       request_path: "/v1/customers",
-      request_hash: "same-hash"
+      request_hash: "b" * 64
     ) do
       Idempotency::Response.new(status: 201, body: { data: { id: "retried" } }, replayed: false)
     end
@@ -143,7 +143,7 @@ class IdempotencyTest < ActionDispatch::IntegrationTest
       key: "idem-active-processing",
       request_method: "POST",
       request_path: "/v1/customers",
-      request_hash: "same-hash",
+      request_hash: "c" * 64,
       status: "processing",
       locked_at: Time.current
     )
@@ -154,7 +154,7 @@ class IdempotencyTest < ActionDispatch::IntegrationTest
         key: "idem-active-processing",
         request_method: "POST",
         request_path: "/v1/customers",
-        request_hash: "same-hash"
+        request_hash: "c" * 64
       ) do
         Idempotency::Response.new(status: 201, body: {}, replayed: false)
       end

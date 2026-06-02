@@ -109,6 +109,50 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     assert_database_constraint_violation { event.update_columns(payload_sha256: "b" * 64) }
   end
 
+  test "database rejects direct idempotency replay evidence tampering" do
+    Idempotency::Runner.call(
+      organization: @organization,
+      key: "db-invariant-idempotency",
+      request_method: "POST",
+      request_path: "/v1/fundings",
+      request_hash: "d" * 64
+    ) do
+      Idempotency::Response.new(status: 201, body: { data: { id: "first-response" } }, replayed: false)
+    end
+    idempotency_key = @organization.idempotency_keys.find_by!(key: "db-invariant-idempotency")
+
+    assert idempotency_key.succeeded?
+    assert_database_constraint_violation { idempotency_key.update_columns(request_hash: "e" * 64) }
+    assert_database_constraint_violation { idempotency_key.update_columns(status: "processing", response_status: nil, locked_at: Time.current) }
+    assert_database_constraint_violation { IdempotencyKey.where(id: idempotency_key.id).delete_all }
+    assert_database_constraint_violation do
+      IdempotencyKey.insert!({
+        organization_id: @organization.id,
+        key: "db-invariant-bad-idempotency-hash",
+        request_method: "POST",
+        request_path: "/v1/fundings",
+        request_hash: "not-a-sha",
+        status: "processing",
+        locked_at: Time.current,
+        created_at: Time.current,
+        updated_at: Time.current
+      })
+    end
+    assert_database_constraint_violation do
+      IdempotencyKey.insert!({
+        organization_id: @organization.id,
+        key: "db-invariant-direct-success-idempotency",
+        request_method: "POST",
+        request_path: "/v1/fundings",
+        request_hash: "f" * 64,
+        status: "succeeded",
+        response_status: 201,
+        created_at: Time.current,
+        updated_at: Time.current
+      })
+    end
+  end
+
   test "database rejects direct financial status changes without journal evidence" do
     fund_wallet(
       organization: @organization,

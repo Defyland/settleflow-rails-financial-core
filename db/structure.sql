@@ -642,6 +642,51 @@ $$;
 
 
 --
+-- Name: prevent_idempotency_key_evidence_mutation(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.prevent_idempotency_key_evidence_mutation() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.status <> 'processing' THEN
+      RAISE EXCEPTION 'idempotency records must start processing';
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.status = 'succeeded' THEN
+      RAISE EXCEPTION 'succeeded idempotency records are replay evidence';
+    END IF;
+    RETURN OLD;
+  END IF;
+
+  IF OLD.organization_id IS DISTINCT FROM NEW.organization_id
+    OR OLD.public_id IS DISTINCT FROM NEW.public_id
+    OR OLD.key IS DISTINCT FROM NEW.key
+    OR OLD.request_method IS DISTINCT FROM NEW.request_method
+    OR OLD.request_path IS DISTINCT FROM NEW.request_path
+    OR OLD.request_hash IS DISTINCT FROM NEW.request_hash
+    OR OLD.created_at IS DISTINCT FROM NEW.created_at THEN
+    RAISE EXCEPTION 'idempotency command identity is immutable';
+  END IF;
+
+  IF OLD.status = 'succeeded' THEN
+    RAISE EXCEPTION 'succeeded idempotency records are immutable replay evidence';
+  END IF;
+
+  IF NEW.status = 'succeeded' AND OLD.status <> 'processing' THEN
+    RAISE EXCEPTION 'idempotency records can only succeed from processing';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
 -- Name: prevent_ledger_record_mutation(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -1067,7 +1112,11 @@ CREATE TABLE public.idempotency_keys (
     response_body jsonb DEFAULT '{}'::jsonb NOT NULL,
     locked_at timestamp(6) without time zone,
     created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT idempotency_keys_identity_present_check CHECK (((btrim((key)::text) <> ''::text) AND (btrim((request_method)::text) <> ''::text) AND (btrim((request_path)::text) <> ''::text))),
+    CONSTRAINT idempotency_keys_request_hash_sha256_check CHECK (((request_hash)::text ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT idempotency_keys_response_state_check CHECK (((((status)::text = 'processing'::text) AND (locked_at IS NOT NULL) AND (response_status IS NULL)) OR (((status)::text = 'succeeded'::text) AND ((response_status >= 100) AND (response_status <= 599))) OR (((status)::text = 'failed'::text) AND (response_status IS NULL)))),
+    CONSTRAINT idempotency_keys_status_check CHECK (((status)::text = ANY ((ARRAY['processing'::character varying, 'succeeded'::character varying, 'failed'::character varying])::text[])))
 );
 
 
@@ -3436,6 +3485,13 @@ CREATE CONSTRAINT TRIGGER fundings_state_evidence_after_write AFTER INSERT OR UP
 
 
 --
+-- Name: idempotency_keys idempotency_keys_prevent_evidence_mutation; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER idempotency_keys_prevent_evidence_mutation BEFORE INSERT OR DELETE OR UPDATE ON public.idempotency_keys FOR EACH ROW EXECUTE FUNCTION public.prevent_idempotency_key_evidence_mutation();
+
+
+--
 -- Name: journal_entries journal_entry_balanced_after_journal_insert; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -4006,6 +4062,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602183000'),
 ('20260602180000'),
 ('20260602173000'),
 ('20260602170000'),

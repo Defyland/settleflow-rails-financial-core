@@ -12,6 +12,15 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     outbox_guard_check = checks.find { |check| check.name == :outbox_evidence_guards }
     assert outbox_guard_check.details.fetch(:mutation_trigger_present)
     assert outbox_guard_check.details.fetch(:payload_hash_check_present)
+    idempotency_guard_check = checks.find { |check| check.name == :idempotency_evidence_guards }
+    assert idempotency_guard_check.details.fetch(:mutation_trigger_present)
+    assert_empty idempotency_guard_check.details.fetch(:missing_constraints)
+    assert_equal %w[
+      idempotency_keys_identity_present_check
+      idempotency_keys_request_hash_sha256_check
+      idempotency_keys_response_state_check
+      idempotency_keys_status_check
+    ], idempotency_guard_check.details.fetch(:present_constraints)
     state_guard_check = checks.find { |check| check.name == :financial_state_evidence_guards }
     assert_empty state_guard_check.details.fetch(:missing_triggers)
     assert_equal %w[

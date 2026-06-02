@@ -15,6 +15,7 @@ module Database
         audit_hash_chain_check,
         audit_anchor_chain_check,
         outbox_evidence_guards_check,
+        idempotency_evidence_guards_check,
         financial_state_evidence_guards_check,
         journal_balance_check,
         negative_projection_check,
@@ -96,6 +97,42 @@ module Database
         details: {
           mutation_trigger_present: trigger_present,
           payload_hash_check_present:
+        }
+      )
+    end
+
+    def idempotency_evidence_guards_check
+      expected_constraints = %w[
+        idempotency_keys_status_check
+        idempotency_keys_request_hash_sha256_check
+        idempotency_keys_identity_present_check
+        idempotency_keys_response_state_check
+      ]
+      enabled_constraints = ActiveRecord::Base.connection.select_values(<<~SQL.squish)
+        SELECT conname
+        FROM pg_constraint
+        WHERE conrelid = 'idempotency_keys'::regclass
+      SQL
+      present_constraints = enabled_constraints & expected_constraints
+      trigger_present = catalog_value(<<~SQL.squish)
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_trigger
+          WHERE tgname = 'idempotency_keys_prevent_evidence_mutation'
+            AND tgrelid = 'idempotency_keys'::regclass
+            AND NOT tgisinternal
+            AND tgenabled <> 'D'
+        )
+      SQL
+      missing_constraints = expected_constraints - present_constraints
+
+      Check.new(
+        name: :idempotency_evidence_guards,
+        ok: trigger_present && missing_constraints.empty?,
+        details: {
+          mutation_trigger_present: trigger_present,
+          present_constraints: present_constraints.sort,
+          missing_constraints:
         }
       )
     end
