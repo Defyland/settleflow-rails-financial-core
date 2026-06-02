@@ -12,12 +12,8 @@ class ClickHouseSyncTest < ActiveSupport::TestCase
 
   setup do
     @organization = create_organization
-    @event = create_published_outbox_event(
-      aggregate_type: "Funding",
-      aggregate_id: 123,
-      event_type: "wallet.funded",
-      payload: { wallet_id: SecureRandom.uuid, amount_cents: 1_000 }
-    )
+    wallet = create_wallet(organization: @organization)
+    @event = create_published_funding_event(wallet:)
   end
 
   test "syncs a published outbox event once and records processed event" do
@@ -63,12 +59,8 @@ class ClickHouseSyncTest < ActiveSupport::TestCase
   end
 
   test "rejects unpublished outbox events" do
-    event = @organization.outbox_events.create!(
-      aggregate_type: "Funding",
-      aggregate_id: 123,
-      event_type: "wallet.funded",
-      payload: { wallet_id: SecureRandom.uuid, amount_cents: 1_000 }
-    )
+    wallet = create_wallet(organization: @organization)
+    event = create_pending_funding_event(wallet:)
 
     assert_raises(Errors::ValidationError) do
       Analytics::ClickHouseSync.call(outbox_event: event, client: FakeClient.new(events: []))
@@ -77,8 +69,8 @@ class ClickHouseSyncTest < ActiveSupport::TestCase
 
   private
 
-  def create_published_outbox_event(**attributes)
-    event = @organization.outbox_events.create!(attributes)
+  def create_published_funding_event(wallet:)
+    event = create_pending_funding_event(wallet:)
     event.claim_for_publish!
     envelope = Outbox::Publisher.envelope_for(event)
     event.publish!(
@@ -86,5 +78,19 @@ class ClickHouseSyncTest < ActiveSupport::TestCase
       payload_sha256: Outbox::Publisher.payload_sha256(envelope)
     )
     event
+  end
+
+  def create_pending_funding_event(wallet:)
+    funding = fund_wallet(
+      organization: @organization,
+      wallet:,
+      external_id: "clickhouse-sync-funding-#{SecureRandom.hex(4)}",
+      amount_cents: 1_000
+    )
+    @organization.outbox_events.find_by!(
+      aggregate_type: "Funding",
+      aggregate_id: funding.id,
+      event_type: "wallet.funded"
+    )
   end
 end

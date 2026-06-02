@@ -6,22 +6,15 @@ class OutboxPublishJobTest < ActiveJob::TestCase
   end
 
   test "publishes through the configured adapter before marking events as published" do
-    organization = create_organization
-    wallet = create_wallet(organization:)
     publisher = RecordingOutboxPublisher.new
     Rails.application.config.x.outbox.publisher = publisher
-    event = OutboxEvents::Emit.call(
-      organization:,
-      aggregate: wallet,
-      event_type: "wallet.created",
-      payload: { wallet_id: wallet.public_id }
-    )
+    event = create_pending_funding_event
 
     OutboxPublishJob.perform_now(event.id)
 
     assert_equal 1, publisher.envelopes.size
     assert_equal event.public_id, publisher.envelopes.first.fetch(:id)
-    assert_equal "wallet.created", publisher.envelopes.first.fetch(:event_type)
+    assert_equal "wallet.funded", publisher.envelopes.first.fetch(:event_type)
     assert event.reload.published?
     assert_equal 1, event.attempts
     assert event.published_at.present?
@@ -31,15 +24,8 @@ class OutboxPublishJobTest < ActiveJob::TestCase
   end
 
   test "enqueues ClickHouse sync after publishing when analytics is configured" do
-    organization = create_organization
-    wallet = create_wallet(organization:)
     Rails.application.config.x.outbox.publisher = RecordingOutboxPublisher.new
-    event = OutboxEvents::Emit.call(
-      organization:,
-      aggregate: wallet,
-      event_type: "wallet.created",
-      payload: { wallet_id: wallet.public_id }
-    )
+    event = create_pending_funding_event
     clear_enqueued_jobs
 
     original_configured = Analytics::ClickHouseClient.method(:configured?)
@@ -53,15 +39,8 @@ class OutboxPublishJobTest < ActiveJob::TestCase
   end
 
   test "keeps transient failures pending with a scheduled retry" do
-    organization = create_organization
-    wallet = create_wallet(organization:)
     Rails.application.config.x.outbox.publisher = FailingOutboxPublisher.new
-    event = OutboxEvents::Emit.call(
-      organization:,
-      aggregate: wallet,
-      event_type: "wallet.created",
-      payload: { wallet_id: wallet.public_id }
-    )
+    event = create_pending_funding_event
     clear_enqueued_jobs
 
     OutboxPublishJob.perform_now(event.id)
@@ -75,16 +54,9 @@ class OutboxPublishJobTest < ActiveJob::TestCase
   end
 
   test "does not publish an event currently claimed by another worker" do
-    organization = create_organization
-    wallet = create_wallet(organization:)
     publisher = RecordingOutboxPublisher.new
     Rails.application.config.x.outbox.publisher = publisher
-    event = OutboxEvents::Emit.call(
-      organization:,
-      aggregate: wallet,
-      event_type: "wallet.created",
-      payload: { wallet_id: wallet.public_id }
-    )
+    event = create_pending_funding_event
     event.update!(status: "publishing", last_attempted_at: Time.current)
 
     OutboxPublishJob.perform_now(event.id)
@@ -95,16 +67,9 @@ class OutboxPublishJobTest < ActiveJob::TestCase
   end
 
   test "reclaims stale publishing events" do
-    organization = create_organization
-    wallet = create_wallet(organization:)
     publisher = RecordingOutboxPublisher.new
     Rails.application.config.x.outbox.publisher = publisher
-    event = OutboxEvents::Emit.call(
-      organization:,
-      aggregate: wallet,
-      event_type: "wallet.created",
-      payload: { wallet_id: wallet.public_id }
-    )
+    event = create_pending_funding_event
     event.update!(status: "publishing", last_attempted_at: 30.minutes.ago)
 
     OutboxPublishJob.perform_now(event.id)
@@ -115,15 +80,8 @@ class OutboxPublishJobTest < ActiveJob::TestCase
   end
 
   test "dead letters after the retry budget is exhausted" do
-    organization = create_organization
-    wallet = create_wallet(organization:)
     Rails.application.config.x.outbox.publisher = FailingOutboxPublisher.new
-    event = OutboxEvents::Emit.call(
-      organization:,
-      aggregate: wallet,
-      event_type: "wallet.created",
-      payload: { wallet_id: wallet.public_id }
-    )
+    event = create_pending_funding_event
     event.update!(attempts: OutboxEvent::MAX_ATTEMPTS - 1)
     clear_enqueued_jobs
 
@@ -136,6 +94,22 @@ class OutboxPublishJobTest < ActiveJob::TestCase
   end
 
   private
+
+  def create_pending_funding_event
+    organization = create_organization
+    wallet = create_wallet(organization:)
+    funding = fund_wallet(
+      organization:,
+      wallet:,
+      external_id: "outbox-publish-funding-#{SecureRandom.hex(4)}",
+      amount_cents: 100
+    )
+    organization.outbox_events.find_by!(
+      aggregate_type: "Funding",
+      aggregate_id: funding.id,
+      event_type: "wallet.funded"
+    )
+  end
 
   class RecordingOutboxPublisher
     attr_reader :envelopes

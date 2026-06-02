@@ -81,31 +81,51 @@ module Database
         outbox_events_status_check
         outbox_events_delivery_state_check
       ]
-      trigger_present = catalog_value(<<~SQL.squish)
-        SELECT EXISTS (
-          SELECT 1
-          FROM pg_trigger
-          WHERE tgname = 'outbox_events_prevent_evidence_mutation'
-            AND tgrelid = 'outbox_events'::regclass
-            AND NOT tgisinternal
-            AND tgenabled <> 'D'
-        )
-      SQL
+      expected_triggers = %w[
+        outbox_events_prevent_evidence_mutation
+        outbox_events_aggregate_evidence_before_write
+      ]
       enabled_constraints = ActiveRecord::Base.connection.select_values(<<~SQL.squish)
         SELECT conname
         FROM pg_constraint
         WHERE conrelid = 'outbox_events'::regclass
       SQL
+      enabled_triggers = ActiveRecord::Base.connection.select_values(<<~SQL.squish)
+        SELECT tgname
+        FROM pg_trigger
+        WHERE tgrelid = 'outbox_events'::regclass
+          AND NOT tgisinternal
+          AND tgenabled <> 'D'
+      SQL
+      aggregate_function_present = catalog_value(<<~SQL.squish)
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_proc
+          WHERE proname = 'outbox_event_has_aggregate_evidence'
+        )
+      SQL
+      aggregate_evidence_mismatches = if aggregate_function_present
+        ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
+          SELECT COUNT(*)
+          FROM outbox_events
+          WHERE NOT outbox_event_has_aggregate_evidence(outbox_events)
+        SQL
+      end
       present_constraints = enabled_constraints & expected_constraints
+      present_triggers = enabled_triggers & expected_triggers
       missing_constraints = expected_constraints - present_constraints
+      missing_triggers = expected_triggers - present_triggers
 
       Check.new(
         name: :outbox_evidence_guards,
-        ok: trigger_present && missing_constraints.empty?,
+        ok: aggregate_function_present && aggregate_evidence_mismatches.to_i.zero? && missing_constraints.empty? && missing_triggers.empty?,
         details: {
-          mutation_trigger_present: trigger_present,
+          aggregate_function_present:,
           present_constraints: present_constraints.sort,
-          missing_constraints:
+          missing_constraints:,
+          present_triggers: present_triggers.sort,
+          missing_triggers:,
+          aggregate_evidence_mismatches: aggregate_evidence_mismatches.to_i
         }
       )
     end

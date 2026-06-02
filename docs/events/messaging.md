@@ -46,6 +46,7 @@ Future RabbitMQ mapping:
 - `OutboxEvent.public_id` is the message ID.
 - `correlation_id` is copied from request context.
 - Consumers must use message ID for idempotency.
+- PostgreSQL accepts outbox rows only for known financial aggregate/event pairs and checks that the aggregate row, organization, and key payload identifiers match.
 - Workers claim events by moving them to `publishing` before adapter calls.
 - Concurrent workers skip fresh `publishing` rows.
 - Stale `publishing` leases can be reclaimed after the configured timeout.

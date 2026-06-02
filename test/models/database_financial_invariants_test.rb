@@ -215,14 +215,13 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
   end
 
   test "database rejects direct outbox evidence tampering and deletion" do
-    event = OutboxEvents::Emit.call(
+    funding = fund_wallet(
       organization: @organization,
-      aggregate: @wallet,
-      event_type: "wallet.test_event",
-      payload: { wallet_id: @wallet.public_id, amount_cents: 10 },
-      correlation_id: "db-invariant-outbox",
-      idempotency_key: "db-invariant-outbox"
+      wallet: @wallet,
+      external_id: "db-invariant-outbox-funding",
+      amount_cents: 10
     )
+    event = outbox_event_for(funding, "wallet.funded")
     publish_outbox_event(event)
 
     assert_database_constraint_violation { event.update_columns(payload: { tampered: true }) }
@@ -245,27 +244,83 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
         updated_at: Time.current
       })
     end
+    assert_database_constraint_violation do
+      OutboxEvent.insert!({
+        organization_id: @organization.id,
+        aggregate_type: "Funding",
+        aggregate_id: funding.id,
+        event_type: "wallet.fake_published",
+        status: "pending",
+        attempts: 0,
+        payload: {
+          funding_id: funding.public_id,
+          wallet_id: @wallet.public_id,
+          amount_cents: funding.amount_cents,
+          currency: funding.currency
+        },
+        created_at: Time.current,
+        updated_at: Time.current
+      })
+    end
+    assert_database_constraint_violation do
+      OutboxEvent.insert!({
+        organization_id: @organization.id,
+        aggregate_type: "Funding",
+        aggregate_id: -1,
+        event_type: "wallet.funded",
+        status: "pending",
+        attempts: 0,
+        payload: {
+          funding_id: SecureRandom.uuid,
+          wallet_id: @wallet.public_id,
+          amount_cents: funding.amount_cents,
+          currency: funding.currency
+        },
+        created_at: Time.current,
+        updated_at: Time.current
+      })
+    end
+    assert_database_constraint_violation do
+      OutboxEvent.insert!({
+        organization_id: @organization.id,
+        aggregate_type: "Funding",
+        aggregate_id: funding.id,
+        event_type: "wallet.funded",
+        status: "pending",
+        attempts: 0,
+        payload: {
+          funding_id: funding.public_id,
+          wallet_id: @wallet.public_id,
+          amount_cents: funding.amount_cents + 1,
+          currency: funding.currency
+        },
+        created_at: Time.current,
+        updated_at: Time.current
+      })
+    end
   end
 
   test "database rejects malformed outbox payload hashes" do
-    event = OutboxEvents::Emit.call(
+    funding = fund_wallet(
       organization: @organization,
-      aggregate: @wallet,
-      event_type: "wallet.bad_hash",
-      payload: { wallet_id: @wallet.public_id }
+      wallet: @wallet,
+      external_id: "db-invariant-bad-hash-funding",
+      amount_cents: 10
     )
+    event = outbox_event_for(funding, "wallet.funded")
 
     assert_database_constraint_violation { event.update_columns(payload_sha256: "not-a-sha") }
     assert_database_constraint_violation { event.update_columns(payload_sha256: "b" * 64) }
   end
 
   test "database rejects direct processed event evidence tampering" do
-    event = OutboxEvents::Emit.call(
+    funding = fund_wallet(
       organization: @organization,
-      aggregate: @wallet,
-      event_type: "wallet.processed_event_test",
-      payload: { wallet_id: @wallet.public_id }
+      wallet: @wallet,
+      external_id: "db-invariant-processed-event-funding",
+      amount_cents: 10
     )
+    event = outbox_event_for(funding, "wallet.funded")
     publish_outbox_event(event)
     processed_event = @organization.processed_events.create!(
       outbox_event: event,
@@ -490,6 +545,14 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     )
 
     transfer.journal_entry
+  end
+
+  def outbox_event_for(aggregate, event_type)
+    @organization.outbox_events.find_by!(
+      aggregate_type: aggregate.class.name,
+      aggregate_id: aggregate.id,
+      event_type:
+    )
   end
 
   def assert_database_constraint_violation

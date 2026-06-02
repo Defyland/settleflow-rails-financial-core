@@ -188,6 +188,23 @@ $$;
 
 
 --
+-- Name: assert_outbox_event_aggregate_evidence(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_outbox_event_aggregate_evidence() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NOT outbox_event_has_aggregate_evidence(NEW) THEN
+    RAISE EXCEPTION 'outbox event aggregate evidence is invalid';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
 -- Name: assert_payout_state_evidence(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -784,6 +801,206 @@ BEGIN
   END IF;
 
   RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: outbox_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.outbox_events (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    aggregate_type character varying NOT NULL,
+    aggregate_id bigint NOT NULL,
+    event_type character varying NOT NULL,
+    status character varying DEFAULT 'pending'::character varying NOT NULL,
+    correlation_id character varying,
+    idempotency_key character varying,
+    attempts integer DEFAULT 0 NOT NULL,
+    published_at timestamp(6) without time zone,
+    last_error character varying,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    next_attempt_at timestamp(6) without time zone,
+    last_attempted_at timestamp(6) without time zone,
+    dead_lettered_at timestamp(6) without time zone,
+    error_class character varying,
+    publisher character varying,
+    published_to character varying,
+    publisher_message_id character varying,
+    payload_sha256 character varying,
+    CONSTRAINT outbox_events_delivery_state_check CHECK (((((status)::text = 'pending'::text) AND (published_at IS NULL) AND (dead_lettered_at IS NULL) AND (payload_sha256 IS NULL)) OR (((status)::text = 'publishing'::text) AND (last_attempted_at IS NOT NULL) AND (published_at IS NULL) AND (dead_lettered_at IS NULL) AND (payload_sha256 IS NULL)) OR (((status)::text = 'published'::text) AND (published_at IS NOT NULL) AND (payload_sha256 IS NOT NULL) AND (dead_lettered_at IS NULL)) OR (((status)::text = 'dead_lettered'::text) AND (published_at IS NULL) AND (payload_sha256 IS NULL) AND (dead_lettered_at IS NOT NULL) AND (error_class IS NOT NULL) AND (btrim((error_class)::text) <> ''::text) AND (last_error IS NOT NULL) AND (btrim((last_error)::text) <> ''::text)))),
+    CONSTRAINT outbox_events_payload_sha256_hex_check CHECK (((payload_sha256 IS NULL) OR ((payload_sha256)::text ~ '^[0-9a-f]{64}$'::text))),
+    CONSTRAINT outbox_events_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'publishing'::character varying, 'published'::character varying, 'dead_lettered'::character varying])::text[])))
+);
+
+
+--
+-- Name: outbox_event_has_aggregate_evidence(public.outbox_events); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.outbox_event_has_aggregate_evidence(event_row public.outbox_events) RETURNS boolean
+    LANGUAGE plpgsql STABLE
+    AS $$
+DECLARE
+  has_evidence boolean;
+BEGIN
+  IF event_row.aggregate_type = 'Funding' THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM fundings
+      WHERE fundings.id = event_row.aggregate_id
+        AND fundings.organization_id = event_row.organization_id
+        AND event_row.event_type = 'wallet.funded'
+        AND event_row.payload @> jsonb_build_object(
+          'funding_id', fundings.public_id::text,
+          'wallet_id', (SELECT wallets.public_id::text FROM wallets WHERE wallets.id = fundings.wallet_id),
+          'amount_cents', fundings.amount_cents,
+          'currency', fundings.currency
+        )
+    ) INTO has_evidence;
+    RETURN has_evidence;
+  END IF;
+
+  IF event_row.aggregate_type = 'Transfer' THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM transfers
+      JOIN wallets source_wallets ON source_wallets.id = transfers.source_wallet_id
+      JOIN wallets destination_wallets ON destination_wallets.id = transfers.destination_wallet_id
+      WHERE transfers.id = event_row.aggregate_id
+        AND transfers.organization_id = event_row.organization_id
+        AND event_row.event_type = 'wallet.transfer.posted'
+        AND event_row.payload @> jsonb_build_object(
+          'transfer_id', transfers.public_id::text,
+          'source_wallet_id', source_wallets.public_id::text,
+          'destination_wallet_id', destination_wallets.public_id::text,
+          'amount_cents', transfers.amount_cents,
+          'currency', transfers.currency
+        )
+    ) INTO has_evidence;
+    RETURN has_evidence;
+  END IF;
+
+  IF event_row.aggregate_type = 'SplitPayment' THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM split_payments
+      JOIN wallets source_wallets ON source_wallets.id = split_payments.source_wallet_id
+      WHERE split_payments.id = event_row.aggregate_id
+        AND split_payments.organization_id = event_row.organization_id
+        AND event_row.event_type = 'split.posted'
+        AND event_row.payload @> jsonb_build_object(
+          'split_payment_id', split_payments.public_id::text,
+          'source_wallet_id', source_wallets.public_id::text,
+          'total_amount_cents', split_payments.total_amount_cents,
+          'currency', split_payments.currency
+        )
+    ) INTO has_evidence;
+    RETURN has_evidence;
+  END IF;
+
+  IF event_row.aggregate_type = 'PixPayment' THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM pix_payments
+      WHERE pix_payments.id = event_row.aggregate_id
+        AND pix_payments.organization_id = event_row.organization_id
+        AND event_row.event_type IN (
+          'pix.payment.approved',
+          'pix.payment.pending_review',
+          'pix.payment.rejected',
+          'pix.payment.settled',
+          'pix.payment.reversed'
+        )
+        AND event_row.payload @> jsonb_build_object(
+          'pix_payment_id', pix_payments.public_id::text,
+          'amount_cents', pix_payments.amount_cents,
+          'currency', pix_payments.currency
+        )
+    ) INTO has_evidence;
+    RETURN has_evidence;
+  END IF;
+
+  IF event_row.aggregate_type = 'Payout' THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM payouts
+      JOIN wallets ON wallets.id = payouts.wallet_id
+      WHERE payouts.id = event_row.aggregate_id
+        AND payouts.organization_id = event_row.organization_id
+        AND event_row.event_type IN ('payout.scheduled', 'payout.settled')
+        AND event_row.payload @> jsonb_build_object(
+          'payout_id', payouts.public_id::text,
+          'wallet_id', wallets.public_id::text,
+          'amount_cents', payouts.amount_cents,
+          'currency', payouts.currency
+        )
+    ) INTO has_evidence;
+    RETURN has_evidence;
+  END IF;
+
+  IF event_row.aggregate_type = 'Refund' THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM refunds
+      JOIN pix_payments ON pix_payments.id = refunds.pix_payment_id
+      JOIN wallets ON wallets.id = refunds.wallet_id
+      WHERE refunds.id = event_row.aggregate_id
+        AND refunds.organization_id = event_row.organization_id
+        AND event_row.event_type = 'refund.settled'
+        AND event_row.payload @> jsonb_build_object(
+          'refund_id', refunds.public_id::text,
+          'pix_payment_id', pix_payments.public_id::text,
+          'wallet_id', wallets.public_id::text,
+          'amount_cents', refunds.amount_cents,
+          'currency', refunds.currency
+        )
+    ) INTO has_evidence;
+    RETURN has_evidence;
+  END IF;
+
+  IF event_row.aggregate_type = 'MedCase' THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM med_cases
+      JOIN pix_payments ON pix_payments.id = med_cases.pix_payment_id
+      WHERE med_cases.id = event_row.aggregate_id
+        AND med_cases.organization_id = event_row.organization_id
+        AND event_row.event_type IN ('med.case.opened', 'med.case.rejected', 'med.case.refunded')
+        AND event_row.payload @> jsonb_build_object(
+          'med_case_id', med_cases.public_id::text,
+          'pix_payment_id', pix_payments.public_id::text,
+          'amount_cents', med_cases.amount_cents,
+          'currency', med_cases.currency
+        )
+    ) INTO has_evidence;
+    RETURN has_evidence;
+  END IF;
+
+  IF event_row.aggregate_type = 'ReconciliationRun' THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM reconciliation_runs
+      WHERE reconciliation_runs.id = event_row.aggregate_id
+        AND reconciliation_runs.organization_id = event_row.organization_id
+        AND event_row.event_type = 'reconciliation.' || reconciliation_runs.status
+        AND event_row.payload @> jsonb_build_object(
+          'reconciliation_run_id', reconciliation_runs.public_id::text,
+          'provider', reconciliation_runs.provider,
+          'ledger_balance_cents', reconciliation_runs.ledger_balance_cents,
+          'provider_balance_cents', reconciliation_runs.provider_balance_cents,
+          'discrepancy_cents', reconciliation_runs.discrepancy_cents
+        )
+    ) INTO has_evidence;
+    RETURN has_evidence;
+  END IF;
+
+  RETURN false;
 END;
 $$;
 
@@ -1802,40 +2019,6 @@ CREATE SEQUENCE public.organizations_id_seq
 --
 
 ALTER SEQUENCE public.organizations_id_seq OWNED BY public.organizations.id;
-
-
---
--- Name: outbox_events; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.outbox_events (
-    id bigint NOT NULL,
-    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
-    organization_id bigint NOT NULL,
-    aggregate_type character varying NOT NULL,
-    aggregate_id bigint NOT NULL,
-    event_type character varying NOT NULL,
-    status character varying DEFAULT 'pending'::character varying NOT NULL,
-    correlation_id character varying,
-    idempotency_key character varying,
-    attempts integer DEFAULT 0 NOT NULL,
-    published_at timestamp(6) without time zone,
-    last_error character varying,
-    payload jsonb DEFAULT '{}'::jsonb NOT NULL,
-    created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL,
-    next_attempt_at timestamp(6) without time zone,
-    last_attempted_at timestamp(6) without time zone,
-    dead_lettered_at timestamp(6) without time zone,
-    error_class character varying,
-    publisher character varying,
-    published_to character varying,
-    publisher_message_id character varying,
-    payload_sha256 character varying,
-    CONSTRAINT outbox_events_delivery_state_check CHECK (((((status)::text = 'pending'::text) AND (published_at IS NULL) AND (dead_lettered_at IS NULL) AND (payload_sha256 IS NULL)) OR (((status)::text = 'publishing'::text) AND (last_attempted_at IS NOT NULL) AND (published_at IS NULL) AND (dead_lettered_at IS NULL) AND (payload_sha256 IS NULL)) OR (((status)::text = 'published'::text) AND (published_at IS NOT NULL) AND (payload_sha256 IS NOT NULL) AND (dead_lettered_at IS NULL)) OR (((status)::text = 'dead_lettered'::text) AND (published_at IS NULL) AND (payload_sha256 IS NULL) AND (dead_lettered_at IS NOT NULL) AND (error_class IS NOT NULL) AND (btrim((error_class)::text) <> ''::text) AND (last_error IS NOT NULL) AND (btrim((last_error)::text) <> ''::text)))),
-    CONSTRAINT outbox_events_payload_sha256_hex_check CHECK (((payload_sha256 IS NULL) OR ((payload_sha256)::text ~ '^[0-9a-f]{64}$'::text))),
-    CONSTRAINT outbox_events_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'publishing'::character varying, 'published'::character varying, 'dead_lettered'::character varying])::text[])))
-);
 
 
 --
@@ -3933,6 +4116,13 @@ CREATE TRIGGER operator_approvals_prevent_evidence_mutation BEFORE INSERT OR DEL
 
 
 --
+-- Name: outbox_events outbox_events_aggregate_evidence_before_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER outbox_events_aggregate_evidence_before_write BEFORE INSERT OR UPDATE OF organization_id, aggregate_type, aggregate_id, event_type, payload ON public.outbox_events FOR EACH ROW EXECUTE FUNCTION public.assert_outbox_event_aggregate_evidence();
+
+
+--
 -- Name: outbox_events outbox_events_prevent_evidence_mutation; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -4517,6 +4707,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602201500'),
 ('20260602200000'),
 ('20260602194500'),
 ('20260602193000'),
