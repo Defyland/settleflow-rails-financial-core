@@ -17,9 +17,9 @@ class PixPayment < ApplicationRecord
     reversed: "reversed"
   }
 
-  validates :external_id, :pix_key, :receiver_name, :amount_cents, :currency, presence: true
+  validates :external_id, :pix_key, :receiver_name, :amount_cents, :currency, :idempotency_key, presence: true
   validates :external_id, uniqueness: { scope: :organization_id }
-  validates :idempotency_key, uniqueness: { scope: :organization_id }, allow_nil: true
+  validates :idempotency_key, uniqueness: { scope: :organization_id }
   validates :amount_cents, numericality: { greater_than: 0, only_integer: true }
   validates :risk_score, numericality: { greater_than_or_equal_to: 0, less_than_or_equal_to: 100, only_integer: true }
 end

@@ -164,6 +164,138 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     end
   end
 
+  test "database rejects financial command rows without idempotency evidence" do
+    destination_wallet = create_wallet(organization: @organization)
+    fund_wallet(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-command-identity-base-funding",
+      amount_cents: 1_000
+    )
+    pix_payment = create_pix_payment(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-command-identity-pix-source",
+      amount_cents: 100
+    )
+
+    command_rows = [
+      [
+        Funding,
+        {
+          organization_id: @organization.id,
+          wallet_id: @wallet.id,
+          external_id: "db-invariant-command-identity-funding",
+          amount_cents: 100,
+          currency: "BRL",
+          status: "failed",
+          failure_code: "missing_idempotency"
+        }
+      ],
+      [
+        Transfer,
+        {
+          organization_id: @organization.id,
+          source_wallet_id: @wallet.id,
+          destination_wallet_id: destination_wallet.id,
+          external_id: "db-invariant-command-identity-transfer",
+          amount_cents: 100,
+          currency: "BRL",
+          status: "failed",
+          failure_code: "missing_idempotency"
+        }
+      ],
+      [
+        SplitPayment,
+        {
+          organization_id: @organization.id,
+          source_wallet_id: @wallet.id,
+          external_id: "db-invariant-command-identity-split",
+          total_amount_cents: 100,
+          currency: "BRL",
+          status: "failed",
+          failure_code: "missing_idempotency"
+        }
+      ],
+      [
+        PixPayment,
+        {
+          organization_id: @organization.id,
+          wallet_id: @wallet.id,
+          external_id: "db-invariant-command-identity-pix",
+          pix_key: "db-invariant-command-identity@example.com",
+          receiver_name: "Receiver",
+          amount_cents: 100,
+          currency: "BRL",
+          status: "failed",
+          risk_score: 0,
+          failure_code: "missing_idempotency"
+        }
+      ],
+      [
+        Payout,
+        {
+          organization_id: @organization.id,
+          wallet_id: @wallet.id,
+          external_id: "db-invariant-command-identity-payout",
+          amount_cents: 100,
+          currency: "BRL",
+          status: "failed",
+          settlement_delay_days: 0,
+          settlement_due_on: Date.current,
+          destination_kind: "bank_account",
+          destination_reference: "bank-account",
+          failure_code: "missing_idempotency"
+        }
+      ],
+      [
+        Refund,
+        {
+          organization_id: @organization.id,
+          wallet_id: @wallet.id,
+          pix_payment_id: pix_payment.id,
+          external_id: "db-invariant-command-identity-refund",
+          amount_cents: 100,
+          currency: "BRL",
+          status: "failed",
+          reason: "customer_request",
+          failure_code: "missing_idempotency"
+        }
+      ],
+      [
+        MedCase,
+        {
+          organization_id: @organization.id,
+          pix_payment_id: pix_payment.id,
+          external_id: "db-invariant-command-identity-med",
+          amount_cents: 100,
+          currency: "BRL",
+          status: "opened",
+          reason: "fraud_report",
+          opened_at: Time.current
+        }
+      ]
+    ]
+
+    command_rows.each do |model, attributes|
+      assert_database_constraint_violation do
+        model.insert!(attributes.merge(
+          idempotency_key: nil,
+          created_at: Time.current,
+          updated_at: Time.current
+        ))
+      end
+
+      assert_database_constraint_violation do
+        model.insert!(attributes.merge(
+          idempotency_key: " ",
+          created_at: Time.current,
+          updated_at: Time.current
+        ))
+      end
+    end
+  end
+
   test "database rejects direct unbalanced journal inserts" do
     destination_wallet = create_wallet(organization: @organization)
     assert_raises(ActiveRecord::StatementInvalid) do

@@ -28,12 +28,22 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     idempotency_guard_check = checks.find { |check| check.name == :idempotency_evidence_guards }
     assert idempotency_guard_check.details.fetch(:mutation_trigger_present)
     assert_empty idempotency_guard_check.details.fetch(:missing_constraints)
+    assert_empty idempotency_guard_check.details.fetch(:missing_command_constraints)
     assert_equal %w[
       idempotency_keys_identity_present_check
       idempotency_keys_request_hash_sha256_check
       idempotency_keys_response_state_check
       idempotency_keys_status_check
     ], idempotency_guard_check.details.fetch(:present_constraints)
+    assert_equal %w[
+      fundings_idempotency_key_required_check
+      med_cases_idempotency_key_required_check
+      payouts_idempotency_key_required_check
+      pix_payments_idempotency_key_required_check
+      refunds_idempotency_key_required_check
+      split_payments_idempotency_key_required_check
+      transfers_idempotency_key_required_check
+    ], idempotency_guard_check.details.fetch(:present_command_constraints)
     processed_event_guard_check = checks.find { |check| check.name == :processed_event_evidence_guards }
     assert processed_event_guard_check.details.fetch(:mutation_trigger_present)
     assert_empty processed_event_guard_check.details.fetch(:missing_constraints)

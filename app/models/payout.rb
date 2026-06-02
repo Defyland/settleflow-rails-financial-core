@@ -6,9 +6,9 @@ class Payout < ApplicationRecord
 
   enum :status, { scheduled: "scheduled", settled: "settled", failed: "failed" }
 
-  validates :external_id, :amount_cents, :currency, :settlement_due_on, :destination_kind, :destination_reference, presence: true
+  validates :external_id, :amount_cents, :currency, :settlement_due_on, :destination_kind, :destination_reference, :idempotency_key, presence: true
   validates :external_id, uniqueness: { scope: :organization_id }
-  validates :idempotency_key, uniqueness: { scope: :organization_id }, allow_nil: true
+  validates :idempotency_key, uniqueness: { scope: :organization_id }
   validates :amount_cents, numericality: { greater_than: 0, only_integer: true }
   validates :settlement_delay_days, numericality: { greater_than_or_equal_to: 0, only_integer: true }
   validate :wallet_belongs_to_organization

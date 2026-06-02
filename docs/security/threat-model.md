@@ -44,7 +44,7 @@ Out of scope for the MVP:
 | Threat | Scenario | Impact | Current controls | Production follow-up |
 | --- | --- | --- | --- | --- |
 | Negative balance | Concurrent debits read the same available balance and both commit | Wallet shows spend beyond available funds | Row locks, projection checks, positive amount constraints, ledger invariants, service-level insufficient-funds checks | Add high-concurrency load tests per hot wallet, lock-order documentation, database isolation review |
-| Duplicate money movement | Client retries a timed-out funding, transfer, Pix payment, payout, or refund request | Customer is debited or credited more than once | Organization-scoped idempotency keys, unique tenant references, request hash conflict detection | Add retention policy, replay dashboard, provider idempotency key mapping |
+| Duplicate money movement | Client retries a timed-out funding, transfer, Pix payment, payout, or refund request | Customer is debited or credited more than once | Nonblank command idempotency keys enforced by PostgreSQL, organization-scoped idempotency uniqueness, unique tenant references, request hash conflict detection | Add replay dashboard and provider idempotency key mapping |
 | Cross-tenant access | API key or query bug allows tenant A to read or mutate tenant B data | Financial data leak or unauthorized movement | Every v1 query scoped by authenticated organization, service-level organization ownership checks, tenant unique indexes | Add row-level security evaluation, tenant isolation fuzz tests, security review before multi-tenant launch |
 | Audit immutability failure | Operator or compromised process changes audit history after a sensitive action | Incident investigation cannot prove who did what | Audit logs are written for API/operator actions with actor, subject, request, correlation, IP, user agent, and metadata | Replicate audit stream to append-only/WORM storage, add tamper-evident hashes, restrict direct DB access |
 | Reconciliation mismatch | Provider statement and internal ledger disagree | Platform cash, clearing, or liability accounts cannot be trusted | Explicit reconciliation runs, discrepancy status, ledger as source of truth, runbook evidence | Automate daily reconciliation jobs, add provider file ingestion, alert on mismatches, add aging report |
@@ -62,7 +62,7 @@ Residual risk remains around hot-wallet contention and isolation-level assumptio
 
 ### Duplicate Money Movement
 
-Duplicate money movement can happen when clients retry after network timeouts or when a background job is re-run. SettleFlow treats idempotency as a financial control, not a convenience feature. Write endpoints require or support command identity, and idempotency records are scoped by organization.
+Duplicate money movement can happen when clients retry after network timeouts or when a background job is re-run. SettleFlow treats idempotency as a financial control, not a convenience feature. Write endpoints require command identity, command tables reject blank idempotency keys in PostgreSQL, and replay records are scoped by organization.
 
 The main production follow-up is retention and replay policy. High-risk endpoints should retain idempotency records long enough to cover client retry windows, provider callbacks, and operational replay scenarios.
 

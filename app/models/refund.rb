@@ -7,9 +7,9 @@ class Refund < ApplicationRecord
 
   enum :status, { settled: "settled", failed: "failed" }
 
-  validates :external_id, :amount_cents, :currency, :reason, presence: true
+  validates :external_id, :amount_cents, :currency, :reason, :idempotency_key, presence: true
   validates :external_id, uniqueness: { scope: :organization_id }
-  validates :idempotency_key, uniqueness: { scope: :organization_id }, allow_nil: true
+  validates :idempotency_key, uniqueness: { scope: :organization_id }
   validates :amount_cents, numericality: { greater_than: 0, only_integer: true }
   validate :records_belong_to_organization
   validate :currency_matches_wallet_and_pix

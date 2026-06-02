@@ -2826,6 +2826,7 @@ CREATE TABLE public.fundings (
     updated_at timestamp(6) without time zone NOT NULL,
     failure_code character varying,
     CONSTRAINT fundings_amount_positive_check CHECK ((amount_cents > 0)),
+    CONSTRAINT fundings_idempotency_key_required_check CHECK (((idempotency_key IS NOT NULL) AND (btrim((idempotency_key)::text) <> ''::text))),
     CONSTRAINT fundings_status_check CHECK (((status)::text = ANY ((ARRAY['posted'::character varying, 'failed'::character varying])::text[])))
 );
 
@@ -3040,6 +3041,7 @@ CREATE TABLE public.med_cases (
     updated_at timestamp(6) without time zone NOT NULL,
     operator_approval_id bigint,
     CONSTRAINT med_cases_amount_positive_check CHECK ((amount_cents > 0)),
+    CONSTRAINT med_cases_idempotency_key_required_check CHECK (((idempotency_key IS NOT NULL) AND (btrim((idempotency_key)::text) <> ''::text))),
     CONSTRAINT med_cases_status_check CHECK (((status)::text = ANY ((ARRAY['opened'::character varying, 'rejected'::character varying, 'refunded'::character varying])::text[])))
 );
 
@@ -3191,6 +3193,7 @@ CREATE TABLE public.payouts (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     CONSTRAINT payouts_amount_positive_check CHECK ((amount_cents > 0)),
+    CONSTRAINT payouts_idempotency_key_required_check CHECK (((idempotency_key IS NOT NULL) AND (btrim((idempotency_key)::text) <> ''::text))),
     CONSTRAINT payouts_settlement_delay_non_negative_check CHECK ((settlement_delay_days >= 0)),
     CONSTRAINT payouts_status_check CHECK (((status)::text = ANY ((ARRAY['scheduled'::character varying, 'settled'::character varying, 'failed'::character varying])::text[])))
 );
@@ -3243,6 +3246,7 @@ CREATE TABLE public.pix_payments (
     reversed_at timestamp(6) without time zone,
     reversal_reason character varying,
     CONSTRAINT pix_payments_amount_positive_check CHECK ((amount_cents > 0)),
+    CONSTRAINT pix_payments_idempotency_key_required_check CHECK (((idempotency_key IS NOT NULL) AND (btrim((idempotency_key)::text) <> ''::text))),
     CONSTRAINT pix_payments_status_check CHECK (((status)::text = ANY ((ARRAY['created'::character varying, 'pending_review'::character varying, 'approved'::character varying, 'rejected'::character varying, 'settled'::character varying, 'failed'::character varying, 'reversed'::character varying])::text[])))
 );
 
@@ -3401,6 +3405,7 @@ CREATE TABLE public.refunds (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     CONSTRAINT refunds_amount_positive_check CHECK ((amount_cents > 0)),
+    CONSTRAINT refunds_idempotency_key_required_check CHECK (((idempotency_key IS NOT NULL) AND (btrim((idempotency_key)::text) <> ''::text))),
     CONSTRAINT refunds_status_check CHECK (((status)::text = ANY ((ARRAY['settled'::character varying, 'failed'::character varying])::text[])))
 );
 
@@ -3525,6 +3530,7 @@ CREATE TABLE public.split_payments (
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT split_payments_idempotency_key_required_check CHECK (((idempotency_key IS NOT NULL) AND (btrim((idempotency_key)::text) <> ''::text))),
     CONSTRAINT split_payments_status_check CHECK (((status)::text = ANY ((ARRAY['posted'::character varying, 'failed'::character varying])::text[]))),
     CONSTRAINT split_payments_total_amount_positive_check CHECK ((total_amount_cents > 0))
 );
@@ -3572,6 +3578,7 @@ CREATE TABLE public.transfers (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     CONSTRAINT transfers_amount_positive_check CHECK ((amount_cents > 0)),
+    CONSTRAINT transfers_idempotency_key_required_check CHECK (((idempotency_key IS NOT NULL) AND (btrim((idempotency_key)::text) <> ''::text))),
     CONSTRAINT transfers_status_check CHECK (((status)::text = ANY ((ARRAY['posted'::character varying, 'failed'::character varying])::text[])))
 );
 
@@ -5965,6 +5972,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602214500'),
 ('20260602213000'),
 ('20260602211500'),
 ('20260602210000'),

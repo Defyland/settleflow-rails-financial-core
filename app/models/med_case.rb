@@ -6,9 +6,9 @@ class MedCase < ApplicationRecord
 
   enum :status, { opened: "opened", rejected: "rejected", refunded: "refunded" }
 
-  validates :external_id, :amount_cents, :currency, :reason, :opened_at, presence: true
+  validates :external_id, :amount_cents, :currency, :reason, :opened_at, :idempotency_key, presence: true
   validates :external_id, uniqueness: { scope: :organization_id }
-  validates :idempotency_key, uniqueness: { scope: :organization_id }, allow_nil: true
+  validates :idempotency_key, uniqueness: { scope: :organization_id }
   validates :amount_cents, numericality: { greater_than: 0, only_integer: true }
   validate :pix_payment_belongs_to_organization
   validate :currency_matches_pix_payment

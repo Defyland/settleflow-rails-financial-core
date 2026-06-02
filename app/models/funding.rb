@@ -5,9 +5,9 @@ class Funding < ApplicationRecord
 
   enum :status, { posted: "posted", failed: "failed" }
 
-  validates :external_id, :amount_cents, :currency, presence: true
+  validates :external_id, :amount_cents, :currency, :idempotency_key, presence: true
   validates :external_id, uniqueness: { scope: :organization_id }
-  validates :idempotency_key, uniqueness: { scope: :organization_id }, allow_nil: true
+  validates :idempotency_key, uniqueness: { scope: :organization_id }
   validates :amount_cents, numericality: { greater_than: 0, only_integer: true }
   validate :wallet_belongs_to_organization
   validate :currency_matches_wallet

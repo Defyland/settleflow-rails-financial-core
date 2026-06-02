@@ -2,7 +2,7 @@
 
 Financial services must complete domain state, ledger entries, balance projections, and outbox rows in one PostgreSQL transaction.
 
-API idempotency records are part of the same transaction boundary. PostgreSQL guards the request hash, response state, immutable command identity, and succeeded replay evidence.
+API idempotency records are part of the same transaction boundary. PostgreSQL guards the request hash, response state, immutable request identity, and succeeded replay evidence. The financial command tables also require nonblank `idempotency_key` values at the database layer, so direct inserts cannot create funding, transfer, split, Pix, payout, refund, or MED rows outside replay identity controls.
 
 Deferrable PostgreSQL state-evidence triggers validate funding, transfer, split, Pix, payout, refund, and MED rows at commit, after the service has filled journal/refund/split/approval references. Intermediate rows inside the transaction may be incomplete; committed rows may not be.
 

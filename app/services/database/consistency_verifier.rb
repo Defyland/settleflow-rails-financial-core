@@ -148,11 +148,37 @@ module Database
         idempotency_keys_identity_present_check
         idempotency_keys_response_state_check
       ]
+      expected_command_constraints = {
+        "fundings" => "fundings_idempotency_key_required_check",
+        "transfers" => "transfers_idempotency_key_required_check",
+        "split_payments" => "split_payments_idempotency_key_required_check",
+        "pix_payments" => "pix_payments_idempotency_key_required_check",
+        "payouts" => "payouts_idempotency_key_required_check",
+        "refunds" => "refunds_idempotency_key_required_check",
+        "med_cases" => "med_cases_idempotency_key_required_check"
+      }
       enabled_constraints = ActiveRecord::Base.connection.select_values(<<~SQL.squish)
         SELECT conname
         FROM pg_constraint
         WHERE conrelid = 'idempotency_keys'::regclass
       SQL
+      command_constraints = ActiveRecord::Base.connection.exec_query(<<~SQL.squish).to_a.to_h do |row|
+        SELECT cls.relname AS table_name, con.conname AS constraint_name
+        FROM pg_constraint con
+        JOIN pg_class cls ON cls.oid = con.conrelid
+        WHERE cls.relname IN ('fundings', 'transfers', 'split_payments', 'pix_payments', 'payouts', 'refunds', 'med_cases')
+          AND con.conname IN (
+            'fundings_idempotency_key_required_check',
+            'transfers_idempotency_key_required_check',
+            'split_payments_idempotency_key_required_check',
+            'pix_payments_idempotency_key_required_check',
+            'payouts_idempotency_key_required_check',
+            'refunds_idempotency_key_required_check',
+            'med_cases_idempotency_key_required_check'
+          )
+      SQL
+        [ row.fetch("table_name"), row.fetch("constraint_name") ]
+      end
       present_constraints = enabled_constraints & expected_constraints
       trigger_present = catalog_value(<<~SQL.squish)
         SELECT EXISTS (
@@ -165,14 +191,20 @@ module Database
         )
       SQL
       missing_constraints = expected_constraints - present_constraints
+      present_command_constraints = expected_command_constraints.select do |table_name, constraint_name|
+        command_constraints[table_name] == constraint_name
+      end
+      missing_command_constraints = expected_command_constraints.except(*present_command_constraints.keys)
 
       Check.new(
         name: :idempotency_evidence_guards,
-        ok: trigger_present && missing_constraints.empty?,
+        ok: trigger_present && missing_constraints.empty? && missing_command_constraints.empty?,
         details: {
           mutation_trigger_present: trigger_present,
           present_constraints: present_constraints.sort,
-          missing_constraints:
+          missing_constraints:,
+          present_command_constraints: present_command_constraints.values.sort,
+          missing_command_constraints: missing_command_constraints.values.sort
         }
       )
     end

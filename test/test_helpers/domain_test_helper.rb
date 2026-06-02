@@ -63,6 +63,7 @@ module DomainTestHelper
       currency: "BRL",
       status:,
       risk_score: 10,
+      idempotency_key: external_id,
       metadata: {}
     )
   end
