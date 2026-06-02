@@ -12,6 +12,17 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     end
   end
 
+  test "database rejects direct positive balance projection amount tampering" do
+    fund_wallet(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-projection-tamper",
+      amount_cents: 1_000
+    )
+
+    assert_database_constraint_violation { @wallet.balance_projection.reload.update_columns(available_cents: 999) }
+  end
+
   test "database rejects balance projection wallet evidence drift" do
     other_organization = create_organization
     other_wallet = create_wallet(organization: other_organization)

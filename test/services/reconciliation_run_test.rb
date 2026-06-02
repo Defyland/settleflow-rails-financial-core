@@ -41,7 +41,7 @@ class ReconciliationRunTest < ActiveSupport::TestCase
       external_id: "recon-projection-funding",
       amount_cents: 12_345
     )
-    wallet.balance_projection.reload.update!(available_cents: 12_000)
+    force_balance_projection_drift!(wallet.balance_projection, available_cents: 12_000)
 
     run = Reconciliation::Run.call(
       organization:,

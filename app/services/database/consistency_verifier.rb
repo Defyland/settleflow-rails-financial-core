@@ -302,6 +302,7 @@ module Database
         balance_snapshots_source_present_check
       ]
       expected_triggers = %w[
+        balance_projections_amount_write_gate_before_update
         balance_projections_wallet_evidence_before_write
         balance_snapshots_prevent_evidence_mutation
       ]
@@ -335,6 +336,13 @@ module Database
            OR bs.difference_cents <> bs.available_cents - bs.ledger_available_cents
            OR btrim(bs.source) = ''
       SQL
+      write_gate_function_present = catalog_value(<<~SQL.squish)
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_proc
+          WHERE proname = 'assert_balance_projection_amount_write_context'
+        )
+      SQL
       present_constraints = enabled_constraints & expected_constraints
       present_triggers = enabled_triggers & expected_triggers
       missing_constraints = expected_constraints - present_constraints
@@ -342,8 +350,10 @@ module Database
 
       Check.new(
         name: :balance_evidence_guards,
-        ok: missing_constraints.empty? && missing_triggers.empty? && projection_mismatches.zero? && snapshot_mismatches.zero?,
+        ok: write_gate_function_present && missing_constraints.empty? && missing_triggers.empty? &&
+          projection_mismatches.zero? && snapshot_mismatches.zero?,
         details: {
+          write_gate_function_present:,
           present_constraints: present_constraints.sort,
           missing_constraints:,
           present_triggers: present_triggers.sort,

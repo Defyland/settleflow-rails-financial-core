@@ -24,6 +24,27 @@ COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
 
 
 --
+-- Name: assert_balance_projection_amount_write_context(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_balance_projection_amount_write_context() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  write_context text;
+BEGIN
+  write_context := current_setting('settleflow.balance_projection_write_context', true);
+
+  IF COALESCE(NULLIF(btrim(write_context), ''), 'none') NOT IN ('ledger_journal_poster', 'balance_projection_rebuilder') THEN
+    RAISE EXCEPTION 'balance projection amount updates require ledger or rebuild write context';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
 -- Name: assert_balance_projection_wallet_evidence(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -5501,6 +5522,13 @@ CREATE TRIGGER audit_logs_prevent_update_delete BEFORE DELETE OR UPDATE ON publi
 
 
 --
+-- Name: balance_projections balance_projections_amount_write_gate_before_update; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER balance_projections_amount_write_gate_before_update BEFORE UPDATE OF available_cents, pending_cents, blocked_cents ON public.balance_projections FOR EACH ROW WHEN (((old.available_cents IS DISTINCT FROM new.available_cents) OR (old.pending_cents IS DISTINCT FROM new.pending_cents) OR (old.blocked_cents IS DISTINCT FROM new.blocked_cents))) EXECUTE FUNCTION public.assert_balance_projection_amount_write_context();
+
+
+--
 -- Name: balance_projections balance_projections_wallet_evidence_before_write; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -6318,6 +6346,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602223500'),
 ('20260602222500'),
 ('20260602221500'),
 ('20260602220500'),

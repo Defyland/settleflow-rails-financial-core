@@ -27,7 +27,7 @@ class BalanceSnapshotAndRebuildTest < ActiveSupport::TestCase
   end
 
   test "rebuilds projection from ledger in dry-run and apply modes" do
-    @wallet.balance_projection.reload.update!(available_cents: 9_000)
+    force_balance_projection_drift!(@wallet.balance_projection, available_cents: 9_000)
 
     dry_run = BalanceProjections::Rebuilder.call(organization: @organization, wallet: @wallet).fetch(0)
     assert_equal 9_000, dry_run.current_available_cents

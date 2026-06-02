@@ -58,11 +58,13 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
       processed_events_status_check
     ], processed_event_guard_check.details.fetch(:present_constraints)
     balance_guard_check = checks.find { |check| check.name == :balance_evidence_guards }
+    assert balance_guard_check.details.fetch(:write_gate_function_present)
     assert_empty balance_guard_check.details.fetch(:missing_constraints)
     assert_empty balance_guard_check.details.fetch(:missing_triggers)
     assert_equal 0, balance_guard_check.details.fetch(:projection_wallet_mismatches)
     assert_equal 0, balance_guard_check.details.fetch(:snapshot_evidence_mismatches)
     assert_equal %w[
+      balance_projections_amount_write_gate_before_update
       balance_projections_wallet_evidence_before_write
       balance_snapshots_prevent_evidence_mutation
     ], balance_guard_check.details.fetch(:present_triggers)
@@ -136,7 +138,7 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     organization = create_organization
     wallet = create_wallet(organization:)
     fund_wallet(organization:, wallet:, external_id: "consistency-drift-funding", amount_cents: 5_000)
-    wallet.balance_projection.reload.update!(available_cents: 4_500)
+    force_balance_projection_drift!(wallet.balance_projection, available_cents: 4_500)
 
     checks = Database::ConsistencyVerifier.call(organizations: Organization.where(id: organization.id))
     projection_check = checks.find { |check| check.name == :projection_rebuild }

@@ -29,7 +29,13 @@ module BalanceProjections
       rebuilt_available_cents = record.liability_account.balance_cents
       difference_cents = projection.available_cents - rebuilt_available_cents
 
-      projection.update!(available_cents: rebuilt_available_cents) if apply && difference_cents != 0
+      if apply && difference_cents != 0
+        ActiveRecord::Base.transaction do
+          BalanceProjections::WriteGate.with_context("balance_projection_rebuilder") do
+            projection.update!(available_cents: rebuilt_available_cents)
+          end
+        end
+      end
 
       Result.new(
         wallet_id: record.public_id,

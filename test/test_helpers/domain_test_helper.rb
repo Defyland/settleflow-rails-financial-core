@@ -67,6 +67,14 @@ module DomainTestHelper
       metadata: {}
     )
   end
+
+  def force_balance_projection_drift!(projection, available_cents:)
+    ActiveRecord::Base.transaction do
+      BalanceProjections::WriteGate.with_context("balance_projection_rebuilder") do
+        projection.reload.update!(available_cents:)
+      end
+    end
+  end
 end
 
 ActiveSupport.on_load(:active_support_test_case) do
