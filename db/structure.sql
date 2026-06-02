@@ -24,6 +24,37 @@ COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
 
 
 --
+-- Name: assert_balance_projection_wallet_evidence(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_balance_projection_wallet_evidence() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  wallet_row wallets%ROWTYPE;
+BEGIN
+  SELECT * INTO wallet_row
+  FROM wallets
+  WHERE id = NEW.wallet_id;
+
+  IF wallet_row.id IS NULL THEN
+    RAISE EXCEPTION 'balance projection must reference an existing wallet';
+  END IF;
+
+  IF wallet_row.organization_id <> NEW.organization_id THEN
+    RAISE EXCEPTION 'balance projection organization must match wallet organization';
+  END IF;
+
+  IF wallet_row.currency <> NEW.currency THEN
+    RAISE EXCEPTION 'balance projection currency must match wallet currency';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
 -- Name: assert_funding_state_evidence(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -694,6 +725,49 @@ $$;
 
 
 --
+-- Name: prevent_balance_snapshot_evidence_mutation(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.prevent_balance_snapshot_evidence_mutation() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  wallet_row wallets%ROWTYPE;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'balance snapshots are append-only evidence';
+  END IF;
+
+  IF TG_OP = 'UPDATE' THEN
+    RAISE EXCEPTION 'balance snapshots are immutable evidence';
+  END IF;
+
+  SELECT * INTO wallet_row
+  FROM wallets
+  WHERE id = NEW.wallet_id;
+
+  IF wallet_row.id IS NULL THEN
+    RAISE EXCEPTION 'balance snapshot must reference an existing wallet';
+  END IF;
+
+  IF wallet_row.organization_id <> NEW.organization_id THEN
+    RAISE EXCEPTION 'balance snapshot organization must match wallet organization';
+  END IF;
+
+  IF wallet_row.currency <> NEW.currency THEN
+    RAISE EXCEPTION 'balance snapshot currency must match wallet currency';
+  END IF;
+
+  IF NEW.difference_cents <> NEW.available_cents - NEW.ledger_available_cents THEN
+    RAISE EXCEPTION 'balance snapshot difference must match projection minus ledger';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
 -- Name: prevent_idempotency_key_evidence_mutation(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -1111,7 +1185,9 @@ CREATE TABLE public.balance_snapshots (
     updated_at timestamp(6) without time zone NOT NULL,
     CONSTRAINT balance_snapshots_available_non_negative_check CHECK ((available_cents >= 0)),
     CONSTRAINT balance_snapshots_blocked_non_negative_check CHECK ((blocked_cents >= 0)),
-    CONSTRAINT balance_snapshots_pending_non_negative_check CHECK ((pending_cents >= 0))
+    CONSTRAINT balance_snapshots_difference_matches_projection_check CHECK ((difference_cents = (available_cents - ledger_available_cents))),
+    CONSTRAINT balance_snapshots_pending_non_negative_check CHECK ((pending_cents >= 0)),
+    CONSTRAINT balance_snapshots_source_present_check CHECK ((btrim((source)::text) <> ''::text))
 );
 
 
@@ -3570,6 +3646,20 @@ CREATE TRIGGER audit_logs_prevent_update_delete BEFORE DELETE OR UPDATE ON publi
 
 
 --
+-- Name: balance_projections balance_projections_wallet_evidence_before_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER balance_projections_wallet_evidence_before_write BEFORE INSERT OR UPDATE OF organization_id, wallet_id, currency ON public.balance_projections FOR EACH ROW EXECUTE FUNCTION public.assert_balance_projection_wallet_evidence();
+
+
+--
+-- Name: balance_snapshots balance_snapshots_prevent_evidence_mutation; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER balance_snapshots_prevent_evidence_mutation BEFORE INSERT OR DELETE OR UPDATE ON public.balance_snapshots FOR EACH ROW EXECUTE FUNCTION public.prevent_balance_snapshot_evidence_mutation();
+
+
+--
 -- Name: ledger_lines enforce_ledger_line_account_consistency; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -4168,6 +4258,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602193000'),
 ('20260602190000'),
 ('20260602183000'),
 ('20260602180000'),

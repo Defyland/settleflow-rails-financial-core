@@ -35,6 +35,15 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
       processed_events_state_evidence_check
       processed_events_status_check
     ], processed_event_guard_check.details.fetch(:present_constraints)
+    balance_guard_check = checks.find { |check| check.name == :balance_evidence_guards }
+    assert_empty balance_guard_check.details.fetch(:missing_constraints)
+    assert_empty balance_guard_check.details.fetch(:missing_triggers)
+    assert_equal 0, balance_guard_check.details.fetch(:projection_wallet_mismatches)
+    assert_equal 0, balance_guard_check.details.fetch(:snapshot_evidence_mismatches)
+    assert_equal %w[
+      balance_projections_wallet_evidence_before_write
+      balance_snapshots_prevent_evidence_mutation
+    ], balance_guard_check.details.fetch(:present_triggers)
     state_guard_check = checks.find { |check| check.name == :financial_state_evidence_guards }
     assert_empty state_guard_check.details.fetch(:missing_triggers)
     assert_equal %w[

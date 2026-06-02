@@ -22,16 +22,16 @@ module BalanceSnapshots
           currency: wallet.currency,
           captured_on:
         )
-        if snapshot.new_record?
-          snapshot.captured_at = captured_at
-          snapshot.available_cents = projection.available_cents
-          snapshot.pending_cents = projection.pending_cents
-          snapshot.blocked_cents = projection.blocked_cents
-          snapshot.ledger_available_cents = ledger_available_cents
-          snapshot.difference_cents = projection.available_cents - ledger_available_cents
-          snapshot.source = source
-          snapshot.metadata = metadata
-        end
+        next snapshot unless snapshot.new_record?
+
+        snapshot.captured_at = captured_at
+        snapshot.available_cents = projection.available_cents
+        snapshot.pending_cents = projection.pending_cents
+        snapshot.blocked_cents = projection.blocked_cents
+        snapshot.ledger_available_cents = ledger_available_cents
+        snapshot.difference_cents = projection.available_cents - ledger_available_cents
+        snapshot.source = source
+        snapshot.metadata = metadata
         snapshot.save!
         snapshot
       end

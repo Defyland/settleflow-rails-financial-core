@@ -15,7 +15,8 @@
 - Journal entries require idempotency keys and domain references.
 - Idempotency replay records are guarded in PostgreSQL: command identity is immutable, request hashes must be SHA-256 hex, succeeded responses need an HTTP status, and succeeded evidence cannot be mutated or deleted directly.
 - Funding, transfer, split, Pix, payout, refund, and MED final statuses require matching PostgreSQL evidence through deferrable state triggers.
-- Balance projections cannot go negative.
+- Balance projections cannot go negative and must match their wallet organization/currency in PostgreSQL.
+- Balance snapshots are append-only projection-vs-ledger evidence; PostgreSQL enforces their wallet organization/currency and difference calculation.
 - Outbox event envelopes are immutable in PostgreSQL after insert; events must start pending/unpublished, and published delivery evidence is terminal.
 - Processed-event rows must match a published outbox event by organization, public event ID, event type, and payload hash before they can drive ClickHouse ingestion state.
 - Audit logs are append-only and hash-chained.

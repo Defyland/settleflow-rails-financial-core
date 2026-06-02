@@ -12,6 +12,54 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     end
   end
 
+  test "database rejects balance projection wallet evidence drift" do
+    other_organization = create_organization
+    other_wallet = create_wallet(organization: other_organization)
+    projection = @wallet.balance_projection
+
+    assert_database_constraint_violation { projection.update_columns(organization_id: other_organization.id) }
+    assert_database_constraint_violation { projection.update_columns(wallet_id: other_wallet.id) }
+    assert_database_constraint_violation { projection.update_columns(currency: "USD") }
+  end
+
+  test "database rejects balance snapshot evidence tampering" do
+    fund_wallet(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-snapshot-funding",
+      amount_cents: 100
+    )
+    snapshot = BalanceSnapshots::Capture.call(
+      organization: @organization,
+      captured_on: Date.current,
+      source: "db_invariant"
+    ).sole
+    other_organization = create_organization
+    other_wallet = create_wallet(organization: other_organization)
+
+    assert_database_constraint_violation { snapshot.update_columns(difference_cents: snapshot.difference_cents + 1) }
+    assert_database_constraint_violation { snapshot.update_columns(wallet_id: other_wallet.id) }
+    assert_database_constraint_violation { snapshot.update_columns(organization_id: other_organization.id) }
+    assert_database_constraint_violation { BalanceSnapshot.where(id: snapshot.id).delete_all }
+    assert_database_constraint_violation do
+      BalanceSnapshot.insert!({
+        organization_id: @organization.id,
+        wallet_id: @wallet.id,
+        currency: @wallet.currency,
+        captured_on: Date.current.next_day,
+        captured_at: Time.current,
+        available_cents: 100,
+        pending_cents: 0,
+        blocked_cents: 0,
+        ledger_available_cents: 100,
+        difference_cents: 1,
+        source: "db_invariant",
+        created_at: Time.current,
+        updated_at: Time.current
+      })
+    end
+  end
+
   test "database rejects journal entries without command identity" do
     assert_raises(ActiveRecord::StatementInvalid) do
       JournalEntry.insert!({
