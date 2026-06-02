@@ -8,6 +8,8 @@ Deferrable PostgreSQL state-evidence triggers validate funding, transfer, split,
 
 Mutation guards run before updates/deletes on those command tables. Identity and value fields are immutable after insert, rows with ledger/outbox evidence cannot be deleted, and state changes after evidence are limited to the documented lifecycle transitions that add settlement, reversal, refund, or rejection evidence.
 
+Financial journal-evidence triggers are also deferrable. They allow the service to create the aggregate, journal entry, ledger lines, and aggregate journal pointer in one transaction, then reject the commit unless the known financial journal event type matches the aggregate reference, deterministic idempotency key, expected accounts, debit/credit directions, amount, and currency.
+
 ## Required pattern
 
 1. Validate tenant and currency.

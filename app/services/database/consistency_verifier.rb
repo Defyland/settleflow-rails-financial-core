@@ -21,6 +21,7 @@ module Database
         operator_approval_evidence_guards_check,
         reconciliation_evidence_guards_check,
         financial_state_evidence_guards_check,
+        financial_journal_evidence_guards_check,
         journal_balance_check,
         negative_projection_check,
         projection_rebuild_check
@@ -468,6 +469,84 @@ module Database
           aggregate_function_present:,
           present_triggers: present_triggers.sort,
           missing_triggers:
+        }
+      )
+    end
+
+    def financial_journal_evidence_guards_check
+      expected_triggers = %w[
+        journal_entries_financial_evidence_after_write
+        ledger_lines_financial_evidence_after_write
+        fundings_journal_evidence_after_write
+        transfers_journal_evidence_after_write
+        split_payments_journal_evidence_after_write
+        pix_payments_journal_evidence_after_write
+        payouts_journal_evidence_after_write
+        refunds_journal_evidence_after_write
+      ]
+      enabled_triggers = ActiveRecord::Base.connection.select_values(<<~SQL.squish)
+        SELECT tgname
+        FROM pg_trigger
+        WHERE NOT tgisinternal
+          AND tgenabled <> 'D'
+      SQL
+      evidence_functions_present = catalog_value(<<~SQL.squish)
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_proc
+          WHERE proname = 'financial_journal_event_type_requires_evidence'
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM pg_proc
+          WHERE proname = 'financial_journal_has_aggregate_evidence'
+        )
+      SQL
+      evidence_mismatches = if evidence_functions_present
+        ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
+          SELECT
+            (
+              SELECT COUNT(*)
+              FROM journal_entries
+              WHERE financial_journal_event_type_requires_evidence(event_type)
+                AND NOT financial_journal_has_aggregate_evidence(id)
+            )
+            +
+            (
+              SELECT COUNT(*)
+              FROM (
+                SELECT journal_entry_id FROM fundings WHERE journal_entry_id IS NOT NULL AND NOT financial_journal_has_aggregate_evidence(journal_entry_id)
+                UNION ALL
+                SELECT journal_entry_id FROM transfers WHERE journal_entry_id IS NOT NULL AND NOT financial_journal_has_aggregate_evidence(journal_entry_id)
+                UNION ALL
+                SELECT journal_entry_id FROM split_payments WHERE journal_entry_id IS NOT NULL AND NOT financial_journal_has_aggregate_evidence(journal_entry_id)
+                UNION ALL
+                SELECT journal_entry_id FROM pix_payments WHERE journal_entry_id IS NOT NULL AND NOT financial_journal_has_aggregate_evidence(journal_entry_id)
+                UNION ALL
+                SELECT settlement_journal_entry_id FROM pix_payments WHERE settlement_journal_entry_id IS NOT NULL AND NOT financial_journal_has_aggregate_evidence(settlement_journal_entry_id)
+                UNION ALL
+                SELECT reversal_journal_entry_id FROM pix_payments WHERE reversal_journal_entry_id IS NOT NULL AND NOT financial_journal_has_aggregate_evidence(reversal_journal_entry_id)
+                UNION ALL
+                SELECT journal_entry_id FROM payouts WHERE journal_entry_id IS NOT NULL AND NOT financial_journal_has_aggregate_evidence(journal_entry_id)
+                UNION ALL
+                SELECT settlement_journal_entry_id FROM payouts WHERE settlement_journal_entry_id IS NOT NULL AND NOT financial_journal_has_aggregate_evidence(settlement_journal_entry_id)
+                UNION ALL
+                SELECT journal_entry_id FROM refunds WHERE journal_entry_id IS NOT NULL AND NOT financial_journal_has_aggregate_evidence(journal_entry_id)
+              ) mismatches
+            )
+        SQL
+      end
+      present_triggers = enabled_triggers & expected_triggers
+      missing_triggers = expected_triggers - present_triggers
+
+      Check.new(
+        name: :financial_journal_evidence_guards,
+        ok: evidence_functions_present && evidence_mismatches.to_i.zero? && missing_triggers.empty?,
+        details: {
+          evidence_functions_present:,
+          present_triggers: present_triggers.sort,
+          missing_triggers:,
+          evidence_mismatches: evidence_mismatches.to_i
         }
       )
     end

@@ -86,6 +86,20 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
       transfers_prevent_evidence_mutation
       transfers_state_evidence_after_write
     ], state_guard_check.details.fetch(:present_triggers)
+    journal_guard_check = checks.find { |check| check.name == :financial_journal_evidence_guards }
+    assert journal_guard_check.details.fetch(:evidence_functions_present)
+    assert_empty journal_guard_check.details.fetch(:missing_triggers)
+    assert_equal 0, journal_guard_check.details.fetch(:evidence_mismatches)
+    assert_equal %w[
+      fundings_journal_evidence_after_write
+      journal_entries_financial_evidence_after_write
+      ledger_lines_financial_evidence_after_write
+      payouts_journal_evidence_after_write
+      pix_payments_journal_evidence_after_write
+      refunds_journal_evidence_after_write
+      split_payments_journal_evidence_after_write
+      transfers_journal_evidence_after_write
+    ], journal_guard_check.details.fetch(:present_triggers)
   end
 
   test "detects balance projection drift from ledger" do

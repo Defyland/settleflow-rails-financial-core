@@ -214,6 +214,45 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     assert_database_constraint_violation { JournalEntry.where(id: journal.id).delete_all }
   end
 
+  test "database rejects financial journal entries that do not match aggregate evidence" do
+    assert_database_constraint_violation do
+      journal_id = insert_balanced_journal!(
+        event_type: "wallet.funded",
+        reference_type: "Funding",
+        reference_id: -1,
+        idempotency_key: "db-invariant-fake-financial-journal",
+        debit_account: Ledger::AccountLocator.platform_cash(organization: @organization, currency: @wallet.currency),
+        credit_account: @wallet.liability_account,
+        amount_cents: 100
+      )
+      assert journal_id
+    end
+
+    assert_database_constraint_violation do
+      wrong_journal_id = insert_balanced_journal!(
+        event_type: "test.detached_financial_journal",
+        reference_type: "Funding",
+        reference_id: 0,
+        idempotency_key: "db-invariant-detached-financial-journal",
+        debit_account: Ledger::AccountLocator.platform_cash(organization: @organization, currency: @wallet.currency),
+        credit_account: @wallet.liability_account,
+        amount_cents: 100
+      )
+      Funding.insert!({
+        organization_id: @organization.id,
+        wallet_id: @wallet.id,
+        journal_entry_id: wrong_journal_id,
+        external_id: "db-invariant-wrong-journal-funding",
+        amount_cents: 100,
+        currency: @wallet.currency,
+        status: "posted",
+        idempotency_key: "db-invariant-wrong-journal-funding",
+        created_at: Time.current,
+        updated_at: Time.current
+      })
+    end
+  end
+
   test "database rejects direct outbox evidence tampering and deletion" do
     funding = fund_wallet(
       organization: @organization,
@@ -637,6 +676,44 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     )
 
     transfer.journal_entry
+  end
+
+  def insert_balanced_journal!(event_type:, reference_type:, reference_id:, idempotency_key:, debit_account:, credit_account:, amount_cents:)
+    journal_id = JournalEntry.insert!({
+      organization_id: @organization.id,
+      event_type:,
+      reference_type:,
+      reference_id:,
+      idempotency_key:,
+      occurred_at: Time.current,
+      created_at: Time.current,
+      updated_at: Time.current
+    }).first.fetch("id")
+
+    LedgerLine.insert_all!([
+      {
+        organization_id: @organization.id,
+        journal_entry_id: journal_id,
+        ledger_account_id: debit_account.id,
+        direction: "debit",
+        amount_cents:,
+        currency: debit_account.currency,
+        created_at: Time.current,
+        updated_at: Time.current
+      },
+      {
+        organization_id: @organization.id,
+        journal_entry_id: journal_id,
+        ledger_account_id: credit_account.id,
+        direction: "credit",
+        amount_cents:,
+        currency: credit_account.currency,
+        created_at: Time.current,
+        updated_at: Time.current
+      }
+    ])
+
+    journal_id
   end
 
   def outbox_event_for(aggregate, event_type)
