@@ -1,0 +1,3027 @@
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: pgcrypto; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION pgcrypto; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
+
+
+--
+-- Name: assert_inserted_journal_entry_balanced(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_inserted_journal_entry_balanced() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  PERFORM assert_journal_entry_balanced(NEW.id);
+  RETURN NULL;
+END;
+$$;
+
+
+--
+-- Name: assert_journal_entry_balanced(bigint); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_journal_entry_balanced(journal_entry_id_to_check bigint) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  line_count integer;
+  imbalance_count integer;
+BEGIN
+  SELECT COUNT(*) INTO line_count
+  FROM ledger_lines
+  WHERE journal_entry_id = journal_entry_id_to_check;
+
+  IF line_count < 2 THEN
+    RAISE EXCEPTION 'journal entry must have at least two ledger lines';
+  END IF;
+
+  SELECT COUNT(*) INTO imbalance_count
+  FROM (
+    SELECT currency
+    FROM ledger_lines
+    WHERE journal_entry_id = journal_entry_id_to_check
+    GROUP BY currency
+    HAVING
+      SUM(CASE WHEN direction = 'debit' THEN amount_cents ELSE 0 END) <>
+      SUM(CASE WHEN direction = 'credit' THEN amount_cents ELSE 0 END)
+  ) imbalances;
+
+  IF imbalance_count > 0 THEN
+    RAISE EXCEPTION 'journal entry is not balanced';
+  END IF;
+END;
+$$;
+
+
+--
+-- Name: assert_ledger_line_journal_entry_balanced(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_ledger_line_journal_entry_balanced() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  PERFORM assert_journal_entry_balanced(NEW.journal_entry_id);
+  RETURN NULL;
+END;
+$$;
+
+
+--
+-- Name: assign_audit_log_hash_chain(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assign_audit_log_hash_chain() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  last_sequence bigint;
+  last_hash text;
+BEGIN
+  PERFORM pg_advisory_xact_lock(860029001);
+
+  SELECT chain_sequence, hash_value
+    INTO last_sequence, last_hash
+    FROM audit_logs
+   ORDER BY chain_sequence DESC
+   LIMIT 1;
+
+  NEW.chain_sequence := COALESCE(last_sequence, 0) + 1;
+  NEW.previous_hash := last_hash;
+  NEW.hash_algorithm := 'sha256';
+  NEW.hash_value := audit_log_chain_hash(NEW);
+
+  RETURN NEW;
+END;
+$$;
+
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: audit_logs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_logs (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint,
+    actor_type character varying NOT NULL,
+    actor_id bigint,
+    action character varying NOT NULL,
+    subject_type character varying NOT NULL,
+    subject_id bigint,
+    request_id character varying,
+    correlation_id character varying,
+    ip_address character varying,
+    user_agent character varying,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    chain_sequence bigint NOT NULL,
+    previous_hash character varying,
+    hash_value character varying NOT NULL,
+    hash_algorithm character varying DEFAULT 'sha256'::character varying NOT NULL,
+    CONSTRAINT audit_logs_hash_algorithm_check CHECK (((hash_algorithm)::text = 'sha256'::text)),
+    CONSTRAINT audit_logs_hash_value_format_check CHECK (((hash_value)::text ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT audit_logs_previous_hash_required_check CHECK (((chain_sequence = 1) OR (previous_hash IS NOT NULL)))
+);
+
+
+--
+-- Name: audit_log_chain_hash(public.audit_logs); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.audit_log_chain_hash(log_row public.audit_logs) RETURNS text
+    LANGUAGE sql IMMUTABLE
+    AS $$
+  SELECT encode(digest(audit_log_chain_payload(log_row)::text, 'sha256'), 'hex')
+$$;
+
+
+--
+-- Name: audit_log_chain_payload(public.audit_logs); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.audit_log_chain_payload(log_row public.audit_logs) RETURNS jsonb
+    LANGUAGE plpgsql IMMUTABLE
+    AS $$
+BEGIN
+  RETURN jsonb_build_object(
+    'chain_sequence', log_row.chain_sequence,
+    'previous_hash', log_row.previous_hash,
+    'hash_algorithm', log_row.hash_algorithm,
+    'public_id', log_row.public_id,
+    'organization_id', log_row.organization_id,
+    'actor_type', log_row.actor_type,
+    'actor_id', log_row.actor_id,
+    'action', log_row.action,
+    'subject_type', log_row.subject_type,
+    'subject_id', log_row.subject_id,
+    'request_id', log_row.request_id,
+    'correlation_id', log_row.correlation_id,
+    'ip_address', log_row.ip_address,
+    'user_agent', log_row.user_agent,
+    'metadata', log_row.metadata,
+    'created_at', log_row.created_at
+  );
+END;
+$$;
+
+
+--
+-- Name: enforce_ledger_line_account_consistency(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.enforce_ledger_line_account_consistency() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM ledger_accounts
+    WHERE ledger_accounts.id = NEW.ledger_account_id
+      AND ledger_accounts.organization_id = NEW.organization_id
+      AND ledger_accounts.currency = NEW.currency
+  ) THEN
+    RAISE EXCEPTION 'ledger line account must match organization and currency';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: prevent_audit_log_mutation(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.prevent_audit_log_mutation() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  RAISE EXCEPTION 'audit logs are append-only and cannot be mutated'
+    USING ERRCODE = 'integrity_constraint_violation';
+END;
+$$;
+
+
+--
+-- Name: prevent_ledger_record_mutation(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.prevent_ledger_record_mutation() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  RAISE EXCEPTION 'ledger records are append-only';
+END;
+$$;
+
+
+--
+-- Name: active_storage_attachments; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.active_storage_attachments (
+    id bigint NOT NULL,
+    name character varying NOT NULL,
+    record_type character varying NOT NULL,
+    record_id bigint NOT NULL,
+    blob_id bigint NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: active_storage_attachments_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.active_storage_attachments_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: active_storage_attachments_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.active_storage_attachments_id_seq OWNED BY public.active_storage_attachments.id;
+
+
+--
+-- Name: active_storage_blobs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.active_storage_blobs (
+    id bigint NOT NULL,
+    key character varying NOT NULL,
+    filename character varying NOT NULL,
+    content_type character varying,
+    metadata text,
+    service_name character varying NOT NULL,
+    byte_size bigint NOT NULL,
+    checksum character varying,
+    created_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: active_storage_blobs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.active_storage_blobs_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: active_storage_blobs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.active_storage_blobs_id_seq OWNED BY public.active_storage_blobs.id;
+
+
+--
+-- Name: active_storage_variant_records; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.active_storage_variant_records (
+    id bigint NOT NULL,
+    blob_id bigint NOT NULL,
+    variation_digest character varying NOT NULL
+);
+
+
+--
+-- Name: active_storage_variant_records_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.active_storage_variant_records_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: active_storage_variant_records_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.active_storage_variant_records_id_seq OWNED BY public.active_storage_variant_records.id;
+
+
+--
+-- Name: api_credentials; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.api_credentials (
+    id bigint NOT NULL,
+    organization_id bigint NOT NULL,
+    name character varying NOT NULL,
+    key_prefix character varying NOT NULL,
+    key_digest character varying NOT NULL,
+    scopes jsonb DEFAULT '[]'::jsonb NOT NULL,
+    last_used_at timestamp(6) without time zone,
+    expires_at timestamp(6) without time zone,
+    revoked_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: api_credentials_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.api_credentials_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: api_credentials_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.api_credentials_id_seq OWNED BY public.api_credentials.id;
+
+
+--
+-- Name: ar_internal_metadata; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ar_internal_metadata (
+    key character varying NOT NULL,
+    value character varying,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: audit_logs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.audit_logs_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: audit_logs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.audit_logs_id_seq OWNED BY public.audit_logs.id;
+
+
+--
+-- Name: balance_projections; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.balance_projections (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    wallet_id bigint NOT NULL,
+    currency character varying DEFAULT 'BRL'::character varying NOT NULL,
+    available_cents bigint DEFAULT 0 NOT NULL,
+    pending_cents bigint DEFAULT 0 NOT NULL,
+    blocked_cents bigint DEFAULT 0 NOT NULL,
+    lock_version integer DEFAULT 0 NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT balance_projections_available_non_negative_check CHECK ((available_cents >= 0)),
+    CONSTRAINT balance_projections_blocked_non_negative_check CHECK ((blocked_cents >= 0)),
+    CONSTRAINT balance_projections_pending_non_negative_check CHECK ((pending_cents >= 0))
+);
+
+
+--
+-- Name: balance_projections_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.balance_projections_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: balance_projections_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.balance_projections_id_seq OWNED BY public.balance_projections.id;
+
+
+--
+-- Name: customers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.customers (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    external_id character varying NOT NULL,
+    legal_name character varying NOT NULL,
+    document_kind character varying NOT NULL,
+    document_number character varying NOT NULL,
+    status character varying DEFAULT 'active'::character varying NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: customers_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.customers_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: customers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.customers_id_seq OWNED BY public.customers.id;
+
+
+--
+-- Name: fundings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.fundings (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    wallet_id bigint NOT NULL,
+    journal_entry_id bigint,
+    external_id character varying NOT NULL,
+    amount_cents bigint NOT NULL,
+    currency character varying DEFAULT 'BRL'::character varying NOT NULL,
+    status character varying DEFAULT 'posted'::character varying NOT NULL,
+    idempotency_key character varying,
+    correlation_id character varying,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT fundings_amount_positive_check CHECK ((amount_cents > 0))
+);
+
+
+--
+-- Name: fundings_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.fundings_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: fundings_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.fundings_id_seq OWNED BY public.fundings.id;
+
+
+--
+-- Name: idempotency_keys; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.idempotency_keys (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    key character varying NOT NULL,
+    request_method character varying NOT NULL,
+    request_path character varying NOT NULL,
+    request_hash character varying NOT NULL,
+    status character varying DEFAULT 'processing'::character varying NOT NULL,
+    response_status integer,
+    response_body jsonb DEFAULT '{}'::jsonb NOT NULL,
+    locked_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: idempotency_keys_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.idempotency_keys_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: idempotency_keys_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.idempotency_keys_id_seq OWNED BY public.idempotency_keys.id;
+
+
+--
+-- Name: journal_entries; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.journal_entries (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    event_type character varying NOT NULL,
+    status character varying DEFAULT 'posted'::character varying NOT NULL,
+    reference_type character varying,
+    reference_id bigint,
+    idempotency_key character varying NOT NULL,
+    correlation_id character varying,
+    occurred_at timestamp(6) without time zone NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT journal_entries_reference_required_check CHECK (((reference_type IS NOT NULL) AND (reference_id IS NOT NULL)))
+);
+
+
+--
+-- Name: journal_entries_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.journal_entries_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: journal_entries_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.journal_entries_id_seq OWNED BY public.journal_entries.id;
+
+
+--
+-- Name: ledger_accounts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ledger_accounts (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    wallet_id bigint,
+    code character varying NOT NULL,
+    name character varying NOT NULL,
+    account_type character varying NOT NULL,
+    normal_balance character varying NOT NULL,
+    currency character varying DEFAULT 'BRL'::character varying NOT NULL,
+    status character varying DEFAULT 'active'::character varying NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT ledger_accounts_account_type_check CHECK (((account_type)::text = ANY ((ARRAY['asset'::character varying, 'liability'::character varying, 'revenue'::character varying, 'expense'::character varying, 'equity'::character varying])::text[]))),
+    CONSTRAINT ledger_accounts_normal_balance_check CHECK (((normal_balance)::text = ANY ((ARRAY['debit'::character varying, 'credit'::character varying])::text[])))
+);
+
+
+--
+-- Name: ledger_accounts_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.ledger_accounts_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: ledger_accounts_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.ledger_accounts_id_seq OWNED BY public.ledger_accounts.id;
+
+
+--
+-- Name: ledger_lines; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ledger_lines (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    journal_entry_id bigint NOT NULL,
+    ledger_account_id bigint NOT NULL,
+    direction character varying NOT NULL,
+    amount_cents bigint NOT NULL,
+    currency character varying DEFAULT 'BRL'::character varying NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT ledger_lines_amount_positive_check CHECK ((amount_cents > 0)),
+    CONSTRAINT ledger_lines_direction_check CHECK (((direction)::text = ANY ((ARRAY['debit'::character varying, 'credit'::character varying])::text[])))
+);
+
+
+--
+-- Name: ledger_lines_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.ledger_lines_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: ledger_lines_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.ledger_lines_id_seq OWNED BY public.ledger_lines.id;
+
+
+--
+-- Name: med_cases; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.med_cases (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    pix_payment_id bigint NOT NULL,
+    refund_id bigint,
+    external_id character varying NOT NULL,
+    amount_cents bigint NOT NULL,
+    currency character varying DEFAULT 'BRL'::character varying NOT NULL,
+    status character varying DEFAULT 'opened'::character varying NOT NULL,
+    reason character varying NOT NULL,
+    opened_at timestamp(6) without time zone NOT NULL,
+    resolved_at timestamp(6) without time zone,
+    idempotency_key character varying,
+    correlation_id character varying,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT med_cases_amount_positive_check CHECK ((amount_cents > 0)),
+    CONSTRAINT med_cases_status_check CHECK (((status)::text = ANY ((ARRAY['opened'::character varying, 'rejected'::character varying, 'refunded'::character varying])::text[])))
+);
+
+
+--
+-- Name: med_cases_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.med_cases_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: med_cases_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.med_cases_id_seq OWNED BY public.med_cases.id;
+
+
+--
+-- Name: operator_approvals; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.operator_approvals (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    action character varying NOT NULL,
+    subject_type character varying NOT NULL,
+    subject_id bigint NOT NULL,
+    status character varying DEFAULT 'pending'::character varying NOT NULL,
+    requested_by_id bigint NOT NULL,
+    approved_by_id bigint,
+    approved_at timestamp(6) without time zone,
+    reason character varying,
+    correlation_id character varying,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT operator_approvals_dual_control_check CHECK (((approved_by_id IS NULL) OR (approved_by_id <> requested_by_id))),
+    CONSTRAINT operator_approvals_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying])::text[])))
+);
+
+
+--
+-- Name: operator_approvals_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.operator_approvals_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: operator_approvals_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.operator_approvals_id_seq OWNED BY public.operator_approvals.id;
+
+
+--
+-- Name: organizations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.organizations (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name character varying NOT NULL,
+    slug character varying NOT NULL,
+    status character varying DEFAULT 'active'::character varying NOT NULL,
+    api_key_digest character varying NOT NULL,
+    rate_limit_per_minute integer DEFAULT 120 NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: organizations_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.organizations_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: organizations_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.organizations_id_seq OWNED BY public.organizations.id;
+
+
+--
+-- Name: outbox_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.outbox_events (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    aggregate_type character varying NOT NULL,
+    aggregate_id bigint NOT NULL,
+    event_type character varying NOT NULL,
+    status character varying DEFAULT 'pending'::character varying NOT NULL,
+    correlation_id character varying,
+    idempotency_key character varying,
+    attempts integer DEFAULT 0 NOT NULL,
+    published_at timestamp(6) without time zone,
+    last_error character varying,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    next_attempt_at timestamp(6) without time zone,
+    last_attempted_at timestamp(6) without time zone,
+    dead_lettered_at timestamp(6) without time zone,
+    error_class character varying,
+    publisher character varying,
+    published_to character varying,
+    publisher_message_id character varying,
+    payload_sha256 character varying
+);
+
+
+--
+-- Name: outbox_events_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.outbox_events_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: outbox_events_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.outbox_events_id_seq OWNED BY public.outbox_events.id;
+
+
+--
+-- Name: payouts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.payouts (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    wallet_id bigint NOT NULL,
+    journal_entry_id bigint,
+    settlement_journal_entry_id bigint,
+    external_id character varying NOT NULL,
+    amount_cents bigint NOT NULL,
+    currency character varying DEFAULT 'BRL'::character varying NOT NULL,
+    status character varying DEFAULT 'scheduled'::character varying NOT NULL,
+    settlement_delay_days integer DEFAULT 1 NOT NULL,
+    settlement_due_on date NOT NULL,
+    settled_at timestamp(6) without time zone,
+    destination_kind character varying DEFAULT 'bank_account'::character varying NOT NULL,
+    destination_reference character varying NOT NULL,
+    failure_code character varying,
+    idempotency_key character varying,
+    correlation_id character varying,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT payouts_amount_positive_check CHECK ((amount_cents > 0)),
+    CONSTRAINT payouts_settlement_delay_non_negative_check CHECK ((settlement_delay_days >= 0)),
+    CONSTRAINT payouts_status_check CHECK (((status)::text = ANY ((ARRAY['scheduled'::character varying, 'settled'::character varying, 'failed'::character varying])::text[])))
+);
+
+
+--
+-- Name: payouts_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.payouts_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: payouts_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.payouts_id_seq OWNED BY public.payouts.id;
+
+
+--
+-- Name: pix_payments; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.pix_payments (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    wallet_id bigint NOT NULL,
+    journal_entry_id bigint,
+    settlement_journal_entry_id bigint,
+    external_id character varying NOT NULL,
+    pix_key character varying NOT NULL,
+    receiver_name character varying NOT NULL,
+    amount_cents bigint NOT NULL,
+    currency character varying DEFAULT 'BRL'::character varying NOT NULL,
+    status character varying DEFAULT 'created'::character varying NOT NULL,
+    risk_score integer DEFAULT 0 NOT NULL,
+    idempotency_key character varying,
+    correlation_id character varying,
+    failure_code character varying,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    reversal_journal_entry_id bigint,
+    reversed_at timestamp(6) without time zone,
+    reversal_reason character varying,
+    CONSTRAINT pix_payments_amount_positive_check CHECK ((amount_cents > 0)),
+    CONSTRAINT pix_payments_status_check CHECK (((status)::text = ANY ((ARRAY['created'::character varying, 'pending_review'::character varying, 'approved'::character varying, 'rejected'::character varying, 'settled'::character varying, 'failed'::character varying, 'reversed'::character varying])::text[])))
+);
+
+
+--
+-- Name: pix_payments_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.pix_payments_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: pix_payments_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.pix_payments_id_seq OWNED BY public.pix_payments.id;
+
+
+--
+-- Name: reconciliation_runs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.reconciliation_runs (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    provider character varying NOT NULL,
+    statement_date date NOT NULL,
+    provider_balance_cents bigint NOT NULL,
+    ledger_balance_cents bigint NOT NULL,
+    discrepancy_cents bigint NOT NULL,
+    status character varying NOT NULL,
+    correlation_id character varying,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: reconciliation_runs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.reconciliation_runs_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: reconciliation_runs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.reconciliation_runs_id_seq OWNED BY public.reconciliation_runs.id;
+
+
+--
+-- Name: refunds; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.refunds (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    wallet_id bigint NOT NULL,
+    pix_payment_id bigint NOT NULL,
+    journal_entry_id bigint,
+    external_id character varying NOT NULL,
+    amount_cents bigint NOT NULL,
+    currency character varying DEFAULT 'BRL'::character varying NOT NULL,
+    status character varying DEFAULT 'settled'::character varying NOT NULL,
+    reason character varying NOT NULL,
+    settled_at timestamp(6) without time zone,
+    failure_code character varying,
+    idempotency_key character varying,
+    correlation_id character varying,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT refunds_amount_positive_check CHECK ((amount_cents > 0)),
+    CONSTRAINT refunds_status_check CHECK (((status)::text = ANY ((ARRAY['settled'::character varying, 'failed'::character varying])::text[])))
+);
+
+
+--
+-- Name: refunds_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.refunds_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: refunds_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.refunds_id_seq OWNED BY public.refunds.id;
+
+
+--
+-- Name: schema_migrations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.schema_migrations (
+    version character varying NOT NULL
+);
+
+
+--
+-- Name: sessions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.sessions (
+    id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    ip_address character varying,
+    user_agent character varying,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: sessions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.sessions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: sessions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.sessions_id_seq OWNED BY public.sessions.id;
+
+
+--
+-- Name: split_entries; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.split_entries (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    split_payment_id bigint NOT NULL,
+    destination_wallet_id bigint NOT NULL,
+    amount_cents bigint NOT NULL,
+    currency character varying DEFAULT 'BRL'::character varying NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT split_entries_amount_positive_check CHECK ((amount_cents > 0))
+);
+
+
+--
+-- Name: split_entries_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.split_entries_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: split_entries_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.split_entries_id_seq OWNED BY public.split_entries.id;
+
+
+--
+-- Name: split_payments; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.split_payments (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    source_wallet_id bigint NOT NULL,
+    journal_entry_id bigint,
+    external_id character varying NOT NULL,
+    total_amount_cents bigint NOT NULL,
+    currency character varying DEFAULT 'BRL'::character varying NOT NULL,
+    status character varying DEFAULT 'posted'::character varying NOT NULL,
+    memo character varying,
+    failure_code character varying,
+    idempotency_key character varying,
+    correlation_id character varying,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT split_payments_status_check CHECK (((status)::text = ANY ((ARRAY['posted'::character varying, 'failed'::character varying])::text[]))),
+    CONSTRAINT split_payments_total_amount_positive_check CHECK ((total_amount_cents > 0))
+);
+
+
+--
+-- Name: split_payments_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.split_payments_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: split_payments_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.split_payments_id_seq OWNED BY public.split_payments.id;
+
+
+--
+-- Name: transfers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.transfers (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    source_wallet_id bigint NOT NULL,
+    destination_wallet_id bigint NOT NULL,
+    journal_entry_id bigint,
+    external_id character varying NOT NULL,
+    amount_cents bigint NOT NULL,
+    currency character varying DEFAULT 'BRL'::character varying NOT NULL,
+    status character varying DEFAULT 'posted'::character varying NOT NULL,
+    idempotency_key character varying,
+    correlation_id character varying,
+    memo character varying,
+    failure_code character varying,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT transfers_amount_positive_check CHECK ((amount_cents > 0))
+);
+
+
+--
+-- Name: transfers_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.transfers_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: transfers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.transfers_id_seq OWNED BY public.transfers.id;
+
+
+--
+-- Name: users; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.users (
+    id bigint NOT NULL,
+    email_address character varying NOT NULL,
+    password_digest character varying NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    role character varying DEFAULT 'operator'::character varying NOT NULL,
+    CONSTRAINT users_role_check CHECK (((role)::text = ANY ((ARRAY['viewer'::character varying, 'operator'::character varying, 'admin'::character varying])::text[])))
+);
+
+
+--
+-- Name: users_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.users_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: users_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.users_id_seq OWNED BY public.users.id;
+
+
+--
+-- Name: wallets; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.wallets (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    customer_id bigint NOT NULL,
+    external_id character varying NOT NULL,
+    currency character varying DEFAULT 'BRL'::character varying NOT NULL,
+    status character varying DEFAULT 'active'::character varying NOT NULL,
+    lock_version integer DEFAULT 0 NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: wallets_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.wallets_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: wallets_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.wallets_id_seq OWNED BY public.wallets.id;
+
+
+--
+-- Name: active_storage_attachments id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.active_storage_attachments ALTER COLUMN id SET DEFAULT nextval('public.active_storage_attachments_id_seq'::regclass);
+
+
+--
+-- Name: active_storage_blobs id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.active_storage_blobs ALTER COLUMN id SET DEFAULT nextval('public.active_storage_blobs_id_seq'::regclass);
+
+
+--
+-- Name: active_storage_variant_records id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.active_storage_variant_records ALTER COLUMN id SET DEFAULT nextval('public.active_storage_variant_records_id_seq'::regclass);
+
+
+--
+-- Name: api_credentials id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_credentials ALTER COLUMN id SET DEFAULT nextval('public.api_credentials_id_seq'::regclass);
+
+
+--
+-- Name: audit_logs id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_logs ALTER COLUMN id SET DEFAULT nextval('public.audit_logs_id_seq'::regclass);
+
+
+--
+-- Name: balance_projections id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.balance_projections ALTER COLUMN id SET DEFAULT nextval('public.balance_projections_id_seq'::regclass);
+
+
+--
+-- Name: customers id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.customers ALTER COLUMN id SET DEFAULT nextval('public.customers_id_seq'::regclass);
+
+
+--
+-- Name: fundings id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.fundings ALTER COLUMN id SET DEFAULT nextval('public.fundings_id_seq'::regclass);
+
+
+--
+-- Name: idempotency_keys id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.idempotency_keys ALTER COLUMN id SET DEFAULT nextval('public.idempotency_keys_id_seq'::regclass);
+
+
+--
+-- Name: journal_entries id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.journal_entries ALTER COLUMN id SET DEFAULT nextval('public.journal_entries_id_seq'::regclass);
+
+
+--
+-- Name: ledger_accounts id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ledger_accounts ALTER COLUMN id SET DEFAULT nextval('public.ledger_accounts_id_seq'::regclass);
+
+
+--
+-- Name: ledger_lines id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ledger_lines ALTER COLUMN id SET DEFAULT nextval('public.ledger_lines_id_seq'::regclass);
+
+
+--
+-- Name: med_cases id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.med_cases ALTER COLUMN id SET DEFAULT nextval('public.med_cases_id_seq'::regclass);
+
+
+--
+-- Name: operator_approvals id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.operator_approvals ALTER COLUMN id SET DEFAULT nextval('public.operator_approvals_id_seq'::regclass);
+
+
+--
+-- Name: organizations id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.organizations ALTER COLUMN id SET DEFAULT nextval('public.organizations_id_seq'::regclass);
+
+
+--
+-- Name: outbox_events id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.outbox_events ALTER COLUMN id SET DEFAULT nextval('public.outbox_events_id_seq'::regclass);
+
+
+--
+-- Name: payouts id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payouts ALTER COLUMN id SET DEFAULT nextval('public.payouts_id_seq'::regclass);
+
+
+--
+-- Name: pix_payments id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pix_payments ALTER COLUMN id SET DEFAULT nextval('public.pix_payments_id_seq'::regclass);
+
+
+--
+-- Name: reconciliation_runs id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reconciliation_runs ALTER COLUMN id SET DEFAULT nextval('public.reconciliation_runs_id_seq'::regclass);
+
+
+--
+-- Name: refunds id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.refunds ALTER COLUMN id SET DEFAULT nextval('public.refunds_id_seq'::regclass);
+
+
+--
+-- Name: sessions id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sessions ALTER COLUMN id SET DEFAULT nextval('public.sessions_id_seq'::regclass);
+
+
+--
+-- Name: split_entries id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.split_entries ALTER COLUMN id SET DEFAULT nextval('public.split_entries_id_seq'::regclass);
+
+
+--
+-- Name: split_payments id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.split_payments ALTER COLUMN id SET DEFAULT nextval('public.split_payments_id_seq'::regclass);
+
+
+--
+-- Name: transfers id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.transfers ALTER COLUMN id SET DEFAULT nextval('public.transfers_id_seq'::regclass);
+
+
+--
+-- Name: users id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.users ALTER COLUMN id SET DEFAULT nextval('public.users_id_seq'::regclass);
+
+
+--
+-- Name: wallets id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallets ALTER COLUMN id SET DEFAULT nextval('public.wallets_id_seq'::regclass);
+
+
+--
+-- Name: active_storage_attachments active_storage_attachments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.active_storage_attachments
+    ADD CONSTRAINT active_storage_attachments_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: active_storage_blobs active_storage_blobs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.active_storage_blobs
+    ADD CONSTRAINT active_storage_blobs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: active_storage_variant_records active_storage_variant_records_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.active_storage_variant_records
+    ADD CONSTRAINT active_storage_variant_records_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: api_credentials api_credentials_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_credentials
+    ADD CONSTRAINT api_credentials_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: ar_internal_metadata ar_internal_metadata_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ar_internal_metadata
+    ADD CONSTRAINT ar_internal_metadata_pkey PRIMARY KEY (key);
+
+
+--
+-- Name: audit_logs audit_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_logs
+    ADD CONSTRAINT audit_logs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: balance_projections balance_projections_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.balance_projections
+    ADD CONSTRAINT balance_projections_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: customers customers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.customers
+    ADD CONSTRAINT customers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: fundings fundings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.fundings
+    ADD CONSTRAINT fundings_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: idempotency_keys idempotency_keys_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.idempotency_keys
+    ADD CONSTRAINT idempotency_keys_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: journal_entries journal_entries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.journal_entries
+    ADD CONSTRAINT journal_entries_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: ledger_accounts ledger_accounts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ledger_accounts
+    ADD CONSTRAINT ledger_accounts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: ledger_lines ledger_lines_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ledger_lines
+    ADD CONSTRAINT ledger_lines_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: med_cases med_cases_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.med_cases
+    ADD CONSTRAINT med_cases_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: operator_approvals operator_approvals_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.operator_approvals
+    ADD CONSTRAINT operator_approvals_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: organizations organizations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.organizations
+    ADD CONSTRAINT organizations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: outbox_events outbox_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.outbox_events
+    ADD CONSTRAINT outbox_events_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: payouts payouts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payouts
+    ADD CONSTRAINT payouts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: pix_payments pix_payments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pix_payments
+    ADD CONSTRAINT pix_payments_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: reconciliation_runs reconciliation_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reconciliation_runs
+    ADD CONSTRAINT reconciliation_runs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: refunds refunds_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.refunds
+    ADD CONSTRAINT refunds_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schema_migrations
+    ADD CONSTRAINT schema_migrations_pkey PRIMARY KEY (version);
+
+
+--
+-- Name: sessions sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sessions
+    ADD CONSTRAINT sessions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: split_entries split_entries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.split_entries
+    ADD CONSTRAINT split_entries_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: split_payments split_payments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.split_payments
+    ADD CONSTRAINT split_payments_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: transfers transfers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.transfers
+    ADD CONSTRAINT transfers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: wallets wallets_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallets
+    ADD CONSTRAINT wallets_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: idx_balance_projection_wallet_currency; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_balance_projection_wallet_currency ON public.balance_projections USING btree (organization_id, wallet_id, currency);
+
+
+--
+-- Name: idx_on_split_payment_id_destination_wallet_id_3ed8360afa; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_on_split_payment_id_destination_wallet_id_3ed8360afa ON public.split_entries USING btree (split_payment_id, destination_wallet_id);
+
+
+--
+-- Name: idx_operator_approvals_one_pending_action; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_operator_approvals_one_pending_action ON public.operator_approvals USING btree (action, subject_type, subject_id) WHERE ((status)::text = 'pending'::text);
+
+
+--
+-- Name: idx_outbox_status_next_attempt; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_outbox_status_next_attempt ON public.outbox_events USING btree (status, next_attempt_at);
+
+
+--
+-- Name: idx_reconciliation_provider_day; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_reconciliation_provider_day ON public.reconciliation_runs USING btree (organization_id, provider, statement_date);
+
+
+--
+-- Name: index_active_storage_attachments_on_blob_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_active_storage_attachments_on_blob_id ON public.active_storage_attachments USING btree (blob_id);
+
+
+--
+-- Name: index_active_storage_attachments_uniqueness; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_active_storage_attachments_uniqueness ON public.active_storage_attachments USING btree (record_type, record_id, name, blob_id);
+
+
+--
+-- Name: index_active_storage_blobs_on_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_active_storage_blobs_on_key ON public.active_storage_blobs USING btree (key);
+
+
+--
+-- Name: index_active_storage_variant_records_uniqueness; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_active_storage_variant_records_uniqueness ON public.active_storage_variant_records USING btree (blob_id, variation_digest);
+
+
+--
+-- Name: index_api_credentials_on_key_digest; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_api_credentials_on_key_digest ON public.api_credentials USING btree (key_digest);
+
+
+--
+-- Name: index_api_credentials_on_key_prefix; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_api_credentials_on_key_prefix ON public.api_credentials USING btree (key_prefix);
+
+
+--
+-- Name: index_api_credentials_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_api_credentials_on_organization_id ON public.api_credentials USING btree (organization_id);
+
+
+--
+-- Name: index_api_credentials_on_organization_id_and_revoked_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_api_credentials_on_organization_id_and_revoked_at ON public.api_credentials USING btree (organization_id, revoked_at);
+
+
+--
+-- Name: index_audit_logs_on_chain_sequence; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_audit_logs_on_chain_sequence ON public.audit_logs USING btree (chain_sequence);
+
+
+--
+-- Name: index_audit_logs_on_hash_value; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_audit_logs_on_hash_value ON public.audit_logs USING btree (hash_value);
+
+
+--
+-- Name: index_audit_logs_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_audit_logs_on_organization_id ON public.audit_logs USING btree (organization_id);
+
+
+--
+-- Name: index_audit_logs_on_organization_id_and_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_audit_logs_on_organization_id_and_created_at ON public.audit_logs USING btree (organization_id, created_at);
+
+
+--
+-- Name: index_audit_logs_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_audit_logs_on_public_id ON public.audit_logs USING btree (public_id);
+
+
+--
+-- Name: index_audit_logs_on_subject_type_and_subject_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_audit_logs_on_subject_type_and_subject_id ON public.audit_logs USING btree (subject_type, subject_id);
+
+
+--
+-- Name: index_balance_projections_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_balance_projections_on_organization_id ON public.balance_projections USING btree (organization_id);
+
+
+--
+-- Name: index_balance_projections_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_balance_projections_on_public_id ON public.balance_projections USING btree (public_id);
+
+
+--
+-- Name: index_balance_projections_on_wallet_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_balance_projections_on_wallet_id ON public.balance_projections USING btree (wallet_id);
+
+
+--
+-- Name: index_customers_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_customers_on_organization_id ON public.customers USING btree (organization_id);
+
+
+--
+-- Name: index_customers_on_organization_id_and_document_number; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_customers_on_organization_id_and_document_number ON public.customers USING btree (organization_id, document_number);
+
+
+--
+-- Name: index_customers_on_organization_id_and_external_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_customers_on_organization_id_and_external_id ON public.customers USING btree (organization_id, external_id);
+
+
+--
+-- Name: index_customers_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_customers_on_public_id ON public.customers USING btree (public_id);
+
+
+--
+-- Name: index_fundings_on_journal_entry_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_fundings_on_journal_entry_id ON public.fundings USING btree (journal_entry_id);
+
+
+--
+-- Name: index_fundings_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_fundings_on_organization_id ON public.fundings USING btree (organization_id);
+
+
+--
+-- Name: index_fundings_on_organization_id_and_external_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_fundings_on_organization_id_and_external_id ON public.fundings USING btree (organization_id, external_id);
+
+
+--
+-- Name: index_fundings_on_organization_id_and_idempotency_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_fundings_on_organization_id_and_idempotency_key ON public.fundings USING btree (organization_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
+
+
+--
+-- Name: index_fundings_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_fundings_on_public_id ON public.fundings USING btree (public_id);
+
+
+--
+-- Name: index_fundings_on_wallet_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_fundings_on_wallet_id ON public.fundings USING btree (wallet_id);
+
+
+--
+-- Name: index_idempotency_keys_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_idempotency_keys_on_organization_id ON public.idempotency_keys USING btree (organization_id);
+
+
+--
+-- Name: index_idempotency_keys_on_organization_id_and_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_idempotency_keys_on_organization_id_and_key ON public.idempotency_keys USING btree (organization_id, key);
+
+
+--
+-- Name: index_idempotency_keys_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_idempotency_keys_on_public_id ON public.idempotency_keys USING btree (public_id);
+
+
+--
+-- Name: index_journal_entries_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_journal_entries_on_organization_id ON public.journal_entries USING btree (organization_id);
+
+
+--
+-- Name: index_journal_entries_on_organization_id_and_event_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_journal_entries_on_organization_id_and_event_type ON public.journal_entries USING btree (organization_id, event_type);
+
+
+--
+-- Name: index_journal_entries_on_organization_id_and_idempotency_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_journal_entries_on_organization_id_and_idempotency_key ON public.journal_entries USING btree (organization_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
+
+
+--
+-- Name: index_journal_entries_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_journal_entries_on_public_id ON public.journal_entries USING btree (public_id);
+
+
+--
+-- Name: index_journal_entries_on_reference_type_and_reference_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_journal_entries_on_reference_type_and_reference_id ON public.journal_entries USING btree (reference_type, reference_id);
+
+
+--
+-- Name: index_ledger_accounts_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_ledger_accounts_on_organization_id ON public.ledger_accounts USING btree (organization_id);
+
+
+--
+-- Name: index_ledger_accounts_on_organization_id_and_code; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_ledger_accounts_on_organization_id_and_code ON public.ledger_accounts USING btree (organization_id, code);
+
+
+--
+-- Name: index_ledger_accounts_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_ledger_accounts_on_public_id ON public.ledger_accounts USING btree (public_id);
+
+
+--
+-- Name: index_ledger_accounts_on_wallet_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_ledger_accounts_on_wallet_id ON public.ledger_accounts USING btree (wallet_id);
+
+
+--
+-- Name: index_ledger_lines_on_journal_entry_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_ledger_lines_on_journal_entry_id ON public.ledger_lines USING btree (journal_entry_id);
+
+
+--
+-- Name: index_ledger_lines_on_ledger_account_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_ledger_lines_on_ledger_account_id ON public.ledger_lines USING btree (ledger_account_id);
+
+
+--
+-- Name: index_ledger_lines_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_ledger_lines_on_organization_id ON public.ledger_lines USING btree (organization_id);
+
+
+--
+-- Name: index_ledger_lines_on_organization_id_and_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_ledger_lines_on_organization_id_and_created_at ON public.ledger_lines USING btree (organization_id, created_at);
+
+
+--
+-- Name: index_ledger_lines_on_organization_id_and_ledger_account_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_ledger_lines_on_organization_id_and_ledger_account_id ON public.ledger_lines USING btree (organization_id, ledger_account_id);
+
+
+--
+-- Name: index_ledger_lines_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_ledger_lines_on_public_id ON public.ledger_lines USING btree (public_id);
+
+
+--
+-- Name: index_med_cases_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_med_cases_on_organization_id ON public.med_cases USING btree (organization_id);
+
+
+--
+-- Name: index_med_cases_on_organization_id_and_external_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_med_cases_on_organization_id_and_external_id ON public.med_cases USING btree (organization_id, external_id);
+
+
+--
+-- Name: index_med_cases_on_organization_id_and_idempotency_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_med_cases_on_organization_id_and_idempotency_key ON public.med_cases USING btree (organization_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
+
+
+--
+-- Name: index_med_cases_on_pix_payment_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_med_cases_on_pix_payment_id ON public.med_cases USING btree (pix_payment_id);
+
+
+--
+-- Name: index_med_cases_on_pix_payment_id_and_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_med_cases_on_pix_payment_id_and_status ON public.med_cases USING btree (pix_payment_id, status);
+
+
+--
+-- Name: index_med_cases_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_med_cases_on_public_id ON public.med_cases USING btree (public_id);
+
+
+--
+-- Name: index_med_cases_on_refund_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_med_cases_on_refund_id ON public.med_cases USING btree (refund_id);
+
+
+--
+-- Name: index_operator_approvals_on_approved_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_operator_approvals_on_approved_by_id ON public.operator_approvals USING btree (approved_by_id);
+
+
+--
+-- Name: index_operator_approvals_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_operator_approvals_on_organization_id ON public.operator_approvals USING btree (organization_id);
+
+
+--
+-- Name: index_operator_approvals_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_operator_approvals_on_public_id ON public.operator_approvals USING btree (public_id);
+
+
+--
+-- Name: index_operator_approvals_on_requested_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_operator_approvals_on_requested_by_id ON public.operator_approvals USING btree (requested_by_id);
+
+
+--
+-- Name: index_organizations_on_api_key_digest; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_organizations_on_api_key_digest ON public.organizations USING btree (api_key_digest);
+
+
+--
+-- Name: index_organizations_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_organizations_on_public_id ON public.organizations USING btree (public_id);
+
+
+--
+-- Name: index_organizations_on_slug; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_organizations_on_slug ON public.organizations USING btree (slug);
+
+
+--
+-- Name: index_outbox_events_on_aggregate_type_and_aggregate_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_outbox_events_on_aggregate_type_and_aggregate_id ON public.outbox_events USING btree (aggregate_type, aggregate_id);
+
+
+--
+-- Name: index_outbox_events_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_outbox_events_on_organization_id ON public.outbox_events USING btree (organization_id);
+
+
+--
+-- Name: index_outbox_events_on_payload_sha256; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_outbox_events_on_payload_sha256 ON public.outbox_events USING btree (payload_sha256);
+
+
+--
+-- Name: index_outbox_events_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_outbox_events_on_public_id ON public.outbox_events USING btree (public_id);
+
+
+--
+-- Name: index_outbox_events_on_publisher_message_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_outbox_events_on_publisher_message_id ON public.outbox_events USING btree (publisher_message_id);
+
+
+--
+-- Name: index_outbox_events_on_status_and_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_outbox_events_on_status_and_created_at ON public.outbox_events USING btree (status, created_at);
+
+
+--
+-- Name: index_payouts_on_journal_entry_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_payouts_on_journal_entry_id ON public.payouts USING btree (journal_entry_id);
+
+
+--
+-- Name: index_payouts_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_payouts_on_organization_id ON public.payouts USING btree (organization_id);
+
+
+--
+-- Name: index_payouts_on_organization_id_and_external_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_payouts_on_organization_id_and_external_id ON public.payouts USING btree (organization_id, external_id);
+
+
+--
+-- Name: index_payouts_on_organization_id_and_idempotency_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_payouts_on_organization_id_and_idempotency_key ON public.payouts USING btree (organization_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
+
+
+--
+-- Name: index_payouts_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_payouts_on_public_id ON public.payouts USING btree (public_id);
+
+
+--
+-- Name: index_payouts_on_settlement_journal_entry_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_payouts_on_settlement_journal_entry_id ON public.payouts USING btree (settlement_journal_entry_id);
+
+
+--
+-- Name: index_payouts_on_status_and_settlement_due_on; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_payouts_on_status_and_settlement_due_on ON public.payouts USING btree (status, settlement_due_on);
+
+
+--
+-- Name: index_payouts_on_wallet_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_payouts_on_wallet_id ON public.payouts USING btree (wallet_id);
+
+
+--
+-- Name: index_pix_payments_on_journal_entry_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_pix_payments_on_journal_entry_id ON public.pix_payments USING btree (journal_entry_id);
+
+
+--
+-- Name: index_pix_payments_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_pix_payments_on_organization_id ON public.pix_payments USING btree (organization_id);
+
+
+--
+-- Name: index_pix_payments_on_organization_id_and_external_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_pix_payments_on_organization_id_and_external_id ON public.pix_payments USING btree (organization_id, external_id);
+
+
+--
+-- Name: index_pix_payments_on_organization_id_and_idempotency_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_pix_payments_on_organization_id_and_idempotency_key ON public.pix_payments USING btree (organization_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
+
+
+--
+-- Name: index_pix_payments_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_pix_payments_on_public_id ON public.pix_payments USING btree (public_id);
+
+
+--
+-- Name: index_pix_payments_on_reversal_journal_entry_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_pix_payments_on_reversal_journal_entry_id ON public.pix_payments USING btree (reversal_journal_entry_id);
+
+
+--
+-- Name: index_pix_payments_on_settlement_journal_entry_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_pix_payments_on_settlement_journal_entry_id ON public.pix_payments USING btree (settlement_journal_entry_id);
+
+
+--
+-- Name: index_pix_payments_on_wallet_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_pix_payments_on_wallet_id ON public.pix_payments USING btree (wallet_id);
+
+
+--
+-- Name: index_reconciliation_runs_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_reconciliation_runs_on_organization_id ON public.reconciliation_runs USING btree (organization_id);
+
+
+--
+-- Name: index_reconciliation_runs_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_reconciliation_runs_on_public_id ON public.reconciliation_runs USING btree (public_id);
+
+
+--
+-- Name: index_refunds_on_journal_entry_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_refunds_on_journal_entry_id ON public.refunds USING btree (journal_entry_id);
+
+
+--
+-- Name: index_refunds_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_refunds_on_organization_id ON public.refunds USING btree (organization_id);
+
+
+--
+-- Name: index_refunds_on_organization_id_and_external_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_refunds_on_organization_id_and_external_id ON public.refunds USING btree (organization_id, external_id);
+
+
+--
+-- Name: index_refunds_on_organization_id_and_idempotency_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_refunds_on_organization_id_and_idempotency_key ON public.refunds USING btree (organization_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
+
+
+--
+-- Name: index_refunds_on_pix_payment_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_refunds_on_pix_payment_id ON public.refunds USING btree (pix_payment_id);
+
+
+--
+-- Name: index_refunds_on_pix_payment_id_and_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_refunds_on_pix_payment_id_and_status ON public.refunds USING btree (pix_payment_id, status);
+
+
+--
+-- Name: index_refunds_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_refunds_on_public_id ON public.refunds USING btree (public_id);
+
+
+--
+-- Name: index_refunds_on_wallet_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_refunds_on_wallet_id ON public.refunds USING btree (wallet_id);
+
+
+--
+-- Name: index_sessions_on_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_sessions_on_user_id ON public.sessions USING btree (user_id);
+
+
+--
+-- Name: index_split_entries_on_destination_wallet_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_split_entries_on_destination_wallet_id ON public.split_entries USING btree (destination_wallet_id);
+
+
+--
+-- Name: index_split_entries_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_split_entries_on_organization_id ON public.split_entries USING btree (organization_id);
+
+
+--
+-- Name: index_split_entries_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_split_entries_on_public_id ON public.split_entries USING btree (public_id);
+
+
+--
+-- Name: index_split_entries_on_split_payment_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_split_entries_on_split_payment_id ON public.split_entries USING btree (split_payment_id);
+
+
+--
+-- Name: index_split_payments_on_journal_entry_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_split_payments_on_journal_entry_id ON public.split_payments USING btree (journal_entry_id);
+
+
+--
+-- Name: index_split_payments_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_split_payments_on_organization_id ON public.split_payments USING btree (organization_id);
+
+
+--
+-- Name: index_split_payments_on_organization_id_and_external_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_split_payments_on_organization_id_and_external_id ON public.split_payments USING btree (organization_id, external_id);
+
+
+--
+-- Name: index_split_payments_on_organization_id_and_idempotency_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_split_payments_on_organization_id_and_idempotency_key ON public.split_payments USING btree (organization_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
+
+
+--
+-- Name: index_split_payments_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_split_payments_on_public_id ON public.split_payments USING btree (public_id);
+
+
+--
+-- Name: index_split_payments_on_source_wallet_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_split_payments_on_source_wallet_id ON public.split_payments USING btree (source_wallet_id);
+
+
+--
+-- Name: index_transfers_on_destination_wallet_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_transfers_on_destination_wallet_id ON public.transfers USING btree (destination_wallet_id);
+
+
+--
+-- Name: index_transfers_on_journal_entry_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_transfers_on_journal_entry_id ON public.transfers USING btree (journal_entry_id);
+
+
+--
+-- Name: index_transfers_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_transfers_on_organization_id ON public.transfers USING btree (organization_id);
+
+
+--
+-- Name: index_transfers_on_organization_id_and_external_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_transfers_on_organization_id_and_external_id ON public.transfers USING btree (organization_id, external_id);
+
+
+--
+-- Name: index_transfers_on_organization_id_and_idempotency_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_transfers_on_organization_id_and_idempotency_key ON public.transfers USING btree (organization_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
+
+
+--
+-- Name: index_transfers_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_transfers_on_public_id ON public.transfers USING btree (public_id);
+
+
+--
+-- Name: index_transfers_on_source_wallet_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_transfers_on_source_wallet_id ON public.transfers USING btree (source_wallet_id);
+
+
+--
+-- Name: index_users_on_email_address; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_users_on_email_address ON public.users USING btree (email_address);
+
+
+--
+-- Name: index_users_on_role; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_users_on_role ON public.users USING btree (role);
+
+
+--
+-- Name: index_wallets_on_customer_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_wallets_on_customer_id ON public.wallets USING btree (customer_id);
+
+
+--
+-- Name: index_wallets_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_wallets_on_organization_id ON public.wallets USING btree (organization_id);
+
+
+--
+-- Name: index_wallets_on_organization_id_and_external_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_wallets_on_organization_id_and_external_id ON public.wallets USING btree (organization_id, external_id);
+
+
+--
+-- Name: index_wallets_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_wallets_on_public_id ON public.wallets USING btree (public_id);
+
+
+--
+-- Name: audit_logs audit_logs_hash_chain_before_insert; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER audit_logs_hash_chain_before_insert BEFORE INSERT ON public.audit_logs FOR EACH ROW EXECUTE FUNCTION public.assign_audit_log_hash_chain();
+
+
+--
+-- Name: audit_logs audit_logs_prevent_update_delete; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER audit_logs_prevent_update_delete BEFORE DELETE OR UPDATE ON public.audit_logs FOR EACH ROW EXECUTE FUNCTION public.prevent_audit_log_mutation();
+
+
+--
+-- Name: ledger_lines enforce_ledger_line_account_consistency; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER enforce_ledger_line_account_consistency BEFORE INSERT ON public.ledger_lines FOR EACH ROW EXECUTE FUNCTION public.enforce_ledger_line_account_consistency();
+
+
+--
+-- Name: journal_entries journal_entry_balanced_after_journal_insert; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE CONSTRAINT TRIGGER journal_entry_balanced_after_journal_insert AFTER INSERT ON public.journal_entries DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_inserted_journal_entry_balanced();
+
+
+--
+-- Name: ledger_lines journal_entry_balanced_after_line_insert; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE CONSTRAINT TRIGGER journal_entry_balanced_after_line_insert AFTER INSERT ON public.ledger_lines DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_ledger_line_journal_entry_balanced();
+
+
+--
+-- Name: journal_entries prevent_journal_entry_mutation; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER prevent_journal_entry_mutation BEFORE DELETE OR UPDATE ON public.journal_entries FOR EACH ROW EXECUTE FUNCTION public.prevent_ledger_record_mutation();
+
+
+--
+-- Name: ledger_lines prevent_ledger_line_mutation; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER prevent_ledger_line_mutation BEFORE DELETE OR UPDATE ON public.ledger_lines FOR EACH ROW EXECUTE FUNCTION public.prevent_ledger_record_mutation();
+
+
+--
+-- Name: ledger_accounts fk_rails_022c225858; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ledger_accounts
+    ADD CONSTRAINT fk_rails_022c225858 FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: fundings fk_rails_096e1edeb5; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.fundings
+    ADD CONSTRAINT fk_rails_096e1edeb5 FOREIGN KEY (wallet_id) REFERENCES public.wallets(id);
+
+
+--
+-- Name: operator_approvals fk_rails_0da5ecbb86; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.operator_approvals
+    ADD CONSTRAINT fk_rails_0da5ecbb86 FOREIGN KEY (approved_by_id) REFERENCES public.users(id);
+
+
+--
+-- Name: audit_logs fk_rails_13aa3bd6ad; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_logs
+    ADD CONSTRAINT fk_rails_13aa3bd6ad FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: payouts fk_rails_14046417f7; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payouts
+    ADD CONSTRAINT fk_rails_14046417f7 FOREIGN KEY (settlement_journal_entry_id) REFERENCES public.journal_entries(id);
+
+
+--
+-- Name: idempotency_keys fk_rails_149452d765; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.idempotency_keys
+    ADD CONSTRAINT fk_rails_149452d765 FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: wallets fk_rails_28077d4aa2; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallets
+    ADD CONSTRAINT fk_rails_28077d4aa2 FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: ledger_lines fk_rails_28f5a6762e; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ledger_lines
+    ADD CONSTRAINT fk_rails_28f5a6762e FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: wallets fk_rails_2b35eef34b; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallets
+    ADD CONSTRAINT fk_rails_2b35eef34b FOREIGN KEY (customer_id) REFERENCES public.customers(id);
+
+
+--
+-- Name: refunds fk_rails_2e853887c5; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.refunds
+    ADD CONSTRAINT fk_rails_2e853887c5 FOREIGN KEY (pix_payment_id) REFERENCES public.pix_payments(id);
+
+
+--
+-- Name: split_entries fk_rails_3b1e99c548; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.split_entries
+    ADD CONSTRAINT fk_rails_3b1e99c548 FOREIGN KEY (split_payment_id) REFERENCES public.split_payments(id);
+
+
+--
+-- Name: med_cases fk_rails_4e3e5fe13a; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.med_cases
+    ADD CONSTRAINT fk_rails_4e3e5fe13a FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: ledger_accounts fk_rails_4f78b177f6; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ledger_accounts
+    ADD CONSTRAINT fk_rails_4f78b177f6 FOREIGN KEY (wallet_id) REFERENCES public.wallets(id);
+
+
+--
+-- Name: split_entries fk_rails_566956e892; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.split_entries
+    ADD CONSTRAINT fk_rails_566956e892 FOREIGN KEY (destination_wallet_id) REFERENCES public.wallets(id);
+
+
+--
+-- Name: pix_payments fk_rails_5808e88679; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pix_payments
+    ADD CONSTRAINT fk_rails_5808e88679 FOREIGN KEY (journal_entry_id) REFERENCES public.journal_entries(id);
+
+
+--
+-- Name: customers fk_rails_58234c715e; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.customers
+    ADD CONSTRAINT fk_rails_58234c715e FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: transfers fk_rails_5ac317b559; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.transfers
+    ADD CONSTRAINT fk_rails_5ac317b559 FOREIGN KEY (journal_entry_id) REFERENCES public.journal_entries(id);
+
+
+--
+-- Name: operator_approvals fk_rails_5dc7bdce6d; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.operator_approvals
+    ADD CONSTRAINT fk_rails_5dc7bdce6d FOREIGN KEY (requested_by_id) REFERENCES public.users(id);
+
+
+--
+-- Name: fundings fk_rails_655f0f53a2; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.fundings
+    ADD CONSTRAINT fk_rails_655f0f53a2 FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: balance_projections fk_rails_694db2a880; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.balance_projections
+    ADD CONSTRAINT fk_rails_694db2a880 FOREIGN KEY (wallet_id) REFERENCES public.wallets(id);
+
+
+--
+-- Name: fundings fk_rails_6d59ee71eb; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.fundings
+    ADD CONSTRAINT fk_rails_6d59ee71eb FOREIGN KEY (journal_entry_id) REFERENCES public.journal_entries(id);
+
+
+--
+-- Name: sessions fk_rails_758836b4f0; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sessions
+    ADD CONSTRAINT fk_rails_758836b4f0 FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: refunds fk_rails_778360c382; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.refunds
+    ADD CONSTRAINT fk_rails_778360c382 FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: balance_projections fk_rails_78556fc9c6; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.balance_projections
+    ADD CONSTRAINT fk_rails_78556fc9c6 FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: med_cases fk_rails_7e1be497a2; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.med_cases
+    ADD CONSTRAINT fk_rails_7e1be497a2 FOREIGN KEY (pix_payment_id) REFERENCES public.pix_payments(id);
+
+
+--
+-- Name: ledger_lines fk_rails_8577096259; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ledger_lines
+    ADD CONSTRAINT fk_rails_8577096259 FOREIGN KEY (ledger_account_id) REFERENCES public.ledger_accounts(id);
+
+
+--
+-- Name: split_payments fk_rails_85ba9e5558; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.split_payments
+    ADD CONSTRAINT fk_rails_85ba9e5558 FOREIGN KEY (journal_entry_id) REFERENCES public.journal_entries(id);
+
+
+--
+-- Name: refunds fk_rails_94ce031b15; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.refunds
+    ADD CONSTRAINT fk_rails_94ce031b15 FOREIGN KEY (journal_entry_id) REFERENCES public.journal_entries(id);
+
+
+--
+-- Name: med_cases fk_rails_98054f6c1b; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.med_cases
+    ADD CONSTRAINT fk_rails_98054f6c1b FOREIGN KEY (refund_id) REFERENCES public.refunds(id);
+
+
+--
+-- Name: active_storage_variant_records fk_rails_993965df05; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.active_storage_variant_records
+    ADD CONSTRAINT fk_rails_993965df05 FOREIGN KEY (blob_id) REFERENCES public.active_storage_blobs(id);
+
+
+--
+-- Name: operator_approvals fk_rails_9bf7a2138c; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.operator_approvals
+    ADD CONSTRAINT fk_rails_9bf7a2138c FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: journal_entries fk_rails_aad8a6d0fe; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.journal_entries
+    ADD CONSTRAINT fk_rails_aad8a6d0fe FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: split_entries fk_rails_afa7634697; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.split_entries
+    ADD CONSTRAINT fk_rails_afa7634697 FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: payouts fk_rails_b618081134; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payouts
+    ADD CONSTRAINT fk_rails_b618081134 FOREIGN KEY (wallet_id) REFERENCES public.wallets(id);
+
+
+--
+-- Name: outbox_events fk_rails_b6cb24ddb3; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.outbox_events
+    ADD CONSTRAINT fk_rails_b6cb24ddb3 FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: api_credentials fk_rails_be4b4015d9; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_credentials
+    ADD CONSTRAINT fk_rails_be4b4015d9 FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: active_storage_attachments fk_rails_c3b3935057; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.active_storage_attachments
+    ADD CONSTRAINT fk_rails_c3b3935057 FOREIGN KEY (blob_id) REFERENCES public.active_storage_blobs(id);
+
+
+--
+-- Name: split_payments fk_rails_c5d221ed22; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.split_payments
+    ADD CONSTRAINT fk_rails_c5d221ed22 FOREIGN KEY (source_wallet_id) REFERENCES public.wallets(id);
+
+
+--
+-- Name: transfers fk_rails_c5e21c21e1; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.transfers
+    ADD CONSTRAINT fk_rails_c5e21c21e1 FOREIGN KEY (destination_wallet_id) REFERENCES public.wallets(id);
+
+
+--
+-- Name: transfers fk_rails_c67feee3ec; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.transfers
+    ADD CONSTRAINT fk_rails_c67feee3ec FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: ledger_lines fk_rails_d088bea263; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ledger_lines
+    ADD CONSTRAINT fk_rails_d088bea263 FOREIGN KEY (journal_entry_id) REFERENCES public.journal_entries(id);
+
+
+--
+-- Name: pix_payments fk_rails_d12a3796e4; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pix_payments
+    ADD CONSTRAINT fk_rails_d12a3796e4 FOREIGN KEY (wallet_id) REFERENCES public.wallets(id);
+
+
+--
+-- Name: payouts fk_rails_d13fce3946; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payouts
+    ADD CONSTRAINT fk_rails_d13fce3946 FOREIGN KEY (journal_entry_id) REFERENCES public.journal_entries(id);
+
+
+--
+-- Name: pix_payments fk_rails_d3b180fc2a; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pix_payments
+    ADD CONSTRAINT fk_rails_d3b180fc2a FOREIGN KEY (reversal_journal_entry_id) REFERENCES public.journal_entries(id);
+
+
+--
+-- Name: pix_payments fk_rails_d74603299a; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pix_payments
+    ADD CONSTRAINT fk_rails_d74603299a FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: pix_payments fk_rails_dbda65b1d0; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pix_payments
+    ADD CONSTRAINT fk_rails_dbda65b1d0 FOREIGN KEY (settlement_journal_entry_id) REFERENCES public.journal_entries(id);
+
+
+--
+-- Name: transfers fk_rails_dfe4c7c78e; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.transfers
+    ADD CONSTRAINT fk_rails_dfe4c7c78e FOREIGN KEY (source_wallet_id) REFERENCES public.wallets(id);
+
+
+--
+-- Name: payouts fk_rails_e83f526e5a; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payouts
+    ADD CONSTRAINT fk_rails_e83f526e5a FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: split_payments fk_rails_ec6140c53b; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.split_payments
+    ADD CONSTRAINT fk_rails_ec6140c53b FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: reconciliation_runs fk_rails_fa7156f82b; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reconciliation_runs
+    ADD CONSTRAINT fk_rails_fa7156f82b FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: refunds fk_rails_fda274a516; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.refunds
+    ADD CONSTRAINT fk_rails_fda274a516 FOREIGN KEY (wallet_id) REFERENCES public.wallets(id);
+
+
+--
+-- PostgreSQL database dump complete
+--
+
+SET search_path TO "$user", public;
+
+INSERT INTO "schema_migrations" (version) VALUES
+('20260602100000'),
+('20260602095000'),
+('20260602094000'),
+('20260602093000'),
+('20260602090000'),
+('20260531001100'),
+('20260531001000'),
+('20260529170200'),
+('20260529170100'),
+('20260529170000'),
+('20260529155322'),
+('20260529155321'),
+('20260529155311'),
+('20260529102000');
+

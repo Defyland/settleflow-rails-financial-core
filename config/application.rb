@@ -42,5 +42,6 @@ module SettleflowRailsFinancialCore
     end
 
     config.active_storage.variant_processor = :disabled
+    config.active_record.schema_format = :sql
   end
 end
