@@ -34,3 +34,5 @@ ClickHouse table `settleflow.financial_events` receives JSONEachRow rows from pu
 - `synced_at`
 
 The analytics table is partitioned by event month and ordered by `(organization_id, event_type, occurred_at, event_id)`.
+
+`clickhouse:create_schema` also creates a daily rollup table and materialized view for event counts and amount sums by organization, event type, and day. These objects are analytical only and must not feed authoritative balance, settlement, refund, or reconciliation decisions.
