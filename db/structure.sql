@@ -311,6 +311,46 @@ $$;
 
 
 --
+-- Name: prevent_outbox_event_evidence_mutation(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.prevent_outbox_event_evidence_mutation() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'outbox events are append-only evidence';
+  END IF;
+
+  IF OLD.public_id IS DISTINCT FROM NEW.public_id
+    OR OLD.organization_id IS DISTINCT FROM NEW.organization_id
+    OR OLD.aggregate_type IS DISTINCT FROM NEW.aggregate_type
+    OR OLD.aggregate_id IS DISTINCT FROM NEW.aggregate_id
+    OR OLD.event_type IS DISTINCT FROM NEW.event_type
+    OR OLD.payload IS DISTINCT FROM NEW.payload
+    OR OLD.correlation_id IS DISTINCT FROM NEW.correlation_id
+    OR OLD.idempotency_key IS DISTINCT FROM NEW.idempotency_key
+    OR OLD.created_at IS DISTINCT FROM NEW.created_at THEN
+    RAISE EXCEPTION 'outbox event envelope is immutable';
+  END IF;
+
+  IF OLD.payload_sha256 IS NOT NULL
+    AND OLD.payload_sha256 IS DISTINCT FROM NEW.payload_sha256 THEN
+    RAISE EXCEPTION 'outbox event payload hash is immutable after publication';
+  END IF;
+
+  IF OLD.payload_sha256 IS NULL
+    AND NEW.payload_sha256 IS NOT NULL
+    AND NOT (OLD.status = 'publishing' AND NEW.status = 'published') THEN
+    RAISE EXCEPTION 'outbox event payload hash can only be set during publication';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
 -- Name: active_storage_attachments; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -979,7 +1019,8 @@ CREATE TABLE public.outbox_events (
     publisher character varying,
     published_to character varying,
     publisher_message_id character varying,
-    payload_sha256 character varying
+    payload_sha256 character varying,
+    CONSTRAINT outbox_events_payload_sha256_hex_check CHECK (((payload_sha256 IS NULL) OR ((payload_sha256)::text ~ '^[0-9a-f]{64}$'::text)))
 );
 
 
@@ -3055,6 +3096,13 @@ CREATE CONSTRAINT TRIGGER journal_entry_balanced_after_line_insert AFTER INSERT 
 
 
 --
+-- Name: outbox_events outbox_events_prevent_evidence_mutation; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER outbox_events_prevent_evidence_mutation BEFORE DELETE OR UPDATE ON public.outbox_events FOR EACH ROW EXECUTE FUNCTION public.prevent_outbox_event_evidence_mutation();
+
+
+--
 -- Name: journal_entries prevent_journal_entry_mutation; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -3555,6 +3603,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602170000'),
 ('20260602161000'),
 ('20260602130000'),
 ('20260602110000'),

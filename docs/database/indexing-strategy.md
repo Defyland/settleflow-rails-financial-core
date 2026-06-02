@@ -17,7 +17,7 @@ Indexes are designed around tenant-scoped financial reads, idempotent writes, qu
 
 ## Operations
 
-- `outbox_events` indexes `(status, created_at)` for publishable work and `(aggregate_type, aggregate_id)` for incident drill-down.
+- `outbox_events` indexes `(status, created_at)` for publishable work, `(aggregate_type, aggregate_id)` for incident drill-down, and `payload_sha256` for delivery evidence lookup.
 - `audit_logs` indexes `chain_sequence`, `hash_value`, `(organization_id, created_at)`, and `(subject_type, subject_id)`.
 - `operator_approvals` has a partial unique index to allow only one pending approval per action and subject.
 

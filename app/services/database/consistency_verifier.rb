@@ -14,6 +14,7 @@ module Database
       [
         audit_hash_chain_check,
         audit_anchor_chain_check,
+        outbox_evidence_guards_check,
         journal_balance_check,
         negative_projection_check,
         projection_rebuild_check
@@ -68,6 +69,36 @@ module Database
       )
     end
 
+    def outbox_evidence_guards_check
+      trigger_present = catalog_value(<<~SQL.squish)
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_trigger
+          WHERE tgname = 'outbox_events_prevent_evidence_mutation'
+            AND tgrelid = 'outbox_events'::regclass
+            AND NOT tgisinternal
+            AND tgenabled <> 'D'
+        )
+      SQL
+      payload_hash_check_present = catalog_value(<<~SQL.squish)
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conname = 'outbox_events_payload_sha256_hex_check'
+            AND conrelid = 'outbox_events'::regclass
+        )
+      SQL
+
+      Check.new(
+        name: :outbox_evidence_guards,
+        ok: trigger_present && payload_hash_check_present,
+        details: {
+          mutation_trigger_present: trigger_present,
+          payload_hash_check_present:
+        }
+      )
+    end
+
     def negative_projection_check
       count = BalanceProjection.where("available_cents < 0 OR pending_cents < 0 OR blocked_cents < 0").count
       Check.new(
@@ -90,6 +121,10 @@ module Database
           difference_cents_sum: differences.sum(&:difference_cents)
         }
       )
+    end
+
+    def catalog_value(sql)
+      ActiveRecord::Type::Boolean.new.cast(ActiveRecord::Base.connection.select_value(sql))
     end
   end
 end

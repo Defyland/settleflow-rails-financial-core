@@ -14,6 +14,7 @@
 - Ledger rows are append-only through Active Record and PostgreSQL triggers.
 - Journal entries require idempotency keys and domain references.
 - Balance projections cannot go negative.
+- Outbox event envelopes are immutable in PostgreSQL after insert; delivery status may change, but payload, event identity, and aggregate identity may not.
 - Audit logs are append-only and hash-chained.
 - Audit hash-chain anchors are append-only and can be exported to an external evidence sink.
 - Maker-checker approvals protect operator settlement and reversal actions.

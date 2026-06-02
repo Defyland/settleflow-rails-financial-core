@@ -9,7 +9,7 @@ class ClickHouseEventMapperTest < ActiveSupport::TestCase
       event_type: "wallet.funded",
       status: "published",
       published_at: Time.current,
-      payload_sha256: "abc123",
+      payload_sha256: "a" * 64,
       payload: { amount_cents: 1_000 },
       created_at: Time.utc(2026, 6, 2, 15, 10, 11, 123456)
     )

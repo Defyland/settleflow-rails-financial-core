@@ -18,7 +18,7 @@ class ClickHouseSyncTest < ActiveSupport::TestCase
       event_type: "wallet.funded",
       status: "published",
       published_at: Time.current,
-      payload_sha256: "abc123",
+      payload_sha256: "a" * 64,
       payload: { wallet_id: SecureRandom.uuid, amount_cents: 1_000 }
     )
   end
@@ -47,6 +47,25 @@ class ClickHouseSyncTest < ActiveSupport::TestCase
     assert processed_event.failed?
     assert_equal "RuntimeError", processed_event.error_class
     assert_equal "clickhouse unavailable", processed_event.last_error
+  end
+
+  test "rejects processed event drift before inserting analytics rows" do
+    @organization.processed_events.create!(
+      outbox_event: @event,
+      processor: "clickhouse_financial_events",
+      event_id: @event.public_id,
+      event_type: @event.event_type,
+      payload_sha256: "b" * 64,
+      status: "failed"
+    )
+    client = FakeClient.new(events: [])
+
+    assert_raises(Errors::ValidationError) do
+      Analytics::ClickHouseSync.call(outbox_event: @event, client:)
+    end
+
+    assert_empty client.events
+    assert @organization.processed_events.find_by!(event_id: @event.public_id).failed?
   end
 
   test "rejects unpublished outbox events" do

@@ -48,16 +48,61 @@ module Analytics
     end
 
     def find_or_create_processed_event
-      envelope = Outbox::Publisher.envelope_for(outbox_event)
-      outbox_event.organization.processed_events.find_or_create_by!(
-        processor: PROCESSOR,
-        event_id: outbox_event.public_id
-      ) do |processed_event|
-        processed_event.outbox_event = outbox_event
-        processed_event.event_type = outbox_event.event_type
-        processed_event.payload_sha256 = Outbox::Publisher.payload_sha256(envelope)
-        processed_event.status = "processing"
+      relation = outbox_event.organization.processed_events
+      processed_event = relation.find_by(processor: PROCESSOR, event_id: outbox_event.public_id)
+      return validate_processed_event!(processed_event) if processed_event.present?
+
+      validate_processed_event!(
+        relation.create!(
+          processor: PROCESSOR,
+          event_id: outbox_event.public_id,
+          outbox_event:,
+          event_type: outbox_event.event_type,
+          payload_sha256:,
+          status: "processing"
+        )
+      )
+    rescue ActiveRecord::RecordInvalid, ActiveRecord::RecordNotUnique => e
+      raise unless recoverable_processed_event_conflict?(e)
+
+      validate_processed_event!(
+        outbox_event.organization.processed_events.find_by!(
+          processor: PROCESSOR,
+          event_id: outbox_event.public_id
+        )
+      )
+    end
+
+    def validate_processed_event!(processed_event)
+      unless processed_event.outbox_event_id == outbox_event.id &&
+          processed_event.event_type == outbox_event.event_type &&
+          processed_event.payload_sha256 == payload_sha256
+        raise Errors::ValidationError.new(
+          "Processed event does not match outbox event",
+          details: {
+            processed_event_id: processed_event.public_id,
+            outbox_event_id: outbox_event.public_id
+          }
+        )
       end
+
+      processed_event
+    end
+
+    def recoverable_processed_event_conflict?(error)
+      return true if error.is_a?(ActiveRecord::RecordNotUnique)
+      return false unless error.record.is_a?(ProcessedEvent)
+
+      error.record.errors.added?(:event_id, :taken) ||
+        error.record.errors.added?(:outbox_event_id, :taken)
+    end
+
+    def payload_sha256
+      @payload_sha256 ||= Outbox::Publisher.payload_sha256(envelope)
+    end
+
+    def envelope
+      @envelope ||= Outbox::Publisher.envelope_for(outbox_event)
     end
 
     def mark_failed(error)

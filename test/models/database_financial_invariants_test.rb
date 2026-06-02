@@ -76,6 +76,39 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     assert_database_constraint_violation { JournalEntry.where(id: journal.id).delete_all }
   end
 
+  test "database rejects direct outbox evidence tampering and deletion" do
+    event = OutboxEvents::Emit.call(
+      organization: @organization,
+      aggregate: @wallet,
+      event_type: "wallet.test_event",
+      payload: { wallet_id: @wallet.public_id, amount_cents: 10 },
+      correlation_id: "db-invariant-outbox",
+      idempotency_key: "db-invariant-outbox"
+    )
+    event.claim_for_publish!
+    event.publish!(
+      Outbox::DeliveryResult.new(adapter: "test", destination: "memory://outbox", message_id: "msg-#{event.public_id}"),
+      payload_sha256: Outbox::Publisher.payload_sha256(Outbox::Publisher.envelope_for(event))
+    )
+
+    assert_database_constraint_violation { event.update_columns(payload: { tampered: true }) }
+    assert_database_constraint_violation { event.update_columns(event_type: "wallet.tampered") }
+    assert_database_constraint_violation { event.update_columns(payload_sha256: "b" * 64) }
+    assert_database_constraint_violation { OutboxEvent.where(id: event.id).delete_all }
+  end
+
+  test "database rejects malformed outbox payload hashes" do
+    event = OutboxEvents::Emit.call(
+      organization: @organization,
+      aggregate: @wallet,
+      event_type: "wallet.bad_hash",
+      payload: { wallet_id: @wallet.public_id }
+    )
+
+    assert_database_constraint_violation { event.update_columns(payload_sha256: "not-a-sha") }
+    assert_database_constraint_violation { event.update_columns(payload_sha256: "b" * 64) }
+  end
+
   test "database rejects ledger lines whose account belongs to another organization" do
     journal = post_test_journal
     other_organization = create_organization

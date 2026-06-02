@@ -9,6 +9,9 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     checks = Database::ConsistencyVerifier.call(organizations: Organization.where(id: organization.id))
 
     assert checks.all?(&:ok), checks.map { |check| [ check.name, check.details ] }.inspect
+    outbox_guard_check = checks.find { |check| check.name == :outbox_evidence_guards }
+    assert outbox_guard_check.details.fetch(:mutation_trigger_present)
+    assert outbox_guard_check.details.fetch(:payload_hash_check_present)
   end
 
   test "detects balance projection drift from ledger" do
