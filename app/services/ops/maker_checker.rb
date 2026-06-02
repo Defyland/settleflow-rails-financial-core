@@ -35,7 +35,7 @@ module Ops
             approved_at: Time.current
           )
 
-          Result.new(status: :approved, approval:, subject: block.call)
+          Result.new(status: :approved, approval:, subject: block.call(approval))
         end
       end
     end

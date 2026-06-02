@@ -89,14 +89,19 @@ class FinancialConcurrencyTest < ActiveSupport::TestCase
       reason: "fraud_report",
       idempotency_key: "med-concurrency"
     )
+    maker = users(:operator)
+    checker = users(:reviewer)
+    requested = MedCases::Accept.call(organization:, med_case:, operator: maker)
+    assert_equal :requested, requested.status
 
     results = run_concurrently do
-      MedCases::Accept.call(organization:, med_case: MedCase.find(med_case.id))
+      MedCases::Accept.call(organization:, med_case: MedCase.find(med_case.id), operator: checker)
     end
 
     assert_single_success(results)
     assert med_case.reload.refunded?
     assert_equal 1, organization.refunds.where(idempotency_key: "med_case.refund:#{med_case.id}").count
+    assert_equal requested.approval.id, med_case.operator_approval_id
   end
 
   private

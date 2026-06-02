@@ -137,7 +137,7 @@ curl -sS "$BASE_URL/v1/refunds" \
   }'
 ```
 
-Open and accept a fake MED case:
+Open a MED case through the public API:
 
 ```bash
 curl -sS "$BASE_URL/v1/med_cases" \
@@ -151,12 +151,9 @@ curl -sS "$BASE_URL/v1/med_cases" \
     "reason": "fraud_report"
   }'
 
-curl -sS "$BASE_URL/v1/med_cases/<med_case_uuid>/accept" \
-  -H "X-Api-Key: $API_KEY" \
-  -H "Idempotency-Key: med-001-accept" \
-  -H "Content-Type: application/json" \
-  -d '{}'
 ```
+
+MED acceptance and rejection are not public write commands. They require ops maker-checker approval in `/ops`; the public API returns `authorization_failed` for terminal MED resolution attempts.
 
 Inspect a wallet statement:
 

@@ -59,29 +59,72 @@ class RefundAndMedLifecycleTest < ActiveSupport::TestCase
   test "opens and accepts a MED case with exactly one linked refund" do
     med_case = open_med_case(external_id: "med-001", amount_cents: 3_000)
     stale_med_case = MedCase.find(med_case.id)
+    maker = create_operator("med-maker")
+    checker = create_operator("med-checker")
 
-    accepted = MedCases::Accept.call(organization: @organization, med_case:, correlation_id: "med-accept-corr")
+    requested = MedCases::Accept.call(
+      organization: @organization,
+      med_case:,
+      operator: maker,
+      reason: "fraud_confirmed",
+      correlation_id: "med-accept-corr"
+    )
+    assert_equal :requested, requested.status
+    assert med_case.reload.opened?
 
+    approved = MedCases::Accept.call(
+      organization: @organization,
+      med_case:,
+      operator: checker,
+      reason: "fraud_confirmed",
+      correlation_id: "med-accept-corr"
+    )
+    accepted = approved.subject
+
+    assert_equal :approved, approved.status
     assert accepted.refunded?
     assert accepted.refund.settled?
+    assert_equal requested.approval.id, accepted.operator_approval_id
+    assert_equal checker.id, accepted.operator_approval.approved_by_id
     assert_equal accepted.refund_id, accepted.reload.refund_id
     assert_equal 18_000, @wallet.balance_projection.reload.available_cents
     assert_equal "med.case.refunded", OutboxEvent.last.event_type
     assert_equal "med-accept-corr", OutboxEvent.last.correlation_id
+    assert_equal requested.approval.public_id, OutboxEvent.last.payload.fetch("operator_approval_id")
+    assert_equal accepted.refund.public_id, OutboxEvent.last.payload.fetch("refund_id")
 
     assert_raises(Errors::ValidationError) do
-      MedCases::Accept.call(organization: @organization, med_case: stale_med_case)
+      MedCases::Accept.call(organization: @organization, med_case: stale_med_case, operator: maker)
     end
     assert_equal 1, @organization.refunds.where(idempotency_key: "med_case.refund:#{med_case.id}").count
   end
 
   test "rejects a MED case without ledger mutation" do
     med_case = open_med_case(external_id: "med-rejected", amount_cents: 3_000)
+    maker = create_operator("med-reject-maker")
+    checker = create_operator("med-reject-checker")
 
-    rejected = MedCases::Reject.call(organization: @organization, med_case:, reason: "insufficient_evidence")
+    requested = MedCases::Reject.call(
+      organization: @organization,
+      med_case:,
+      operator: maker,
+      reason: "insufficient_evidence"
+    )
+    assert_equal :requested, requested.status
 
+    approved = MedCases::Reject.call(
+      organization: @organization,
+      med_case:,
+      operator: checker,
+      reason: "insufficient_evidence"
+    )
+    rejected = approved.subject
+
+    assert_equal :approved, approved.status
     assert rejected.rejected?
+    assert_equal requested.approval.id, rejected.operator_approval_id
     assert_nil rejected.refund
+    assert_equal requested.approval.public_id, OutboxEvent.last.payload.fetch("operator_approval_id")
     assert_equal "insufficient_evidence", rejected.metadata.fetch("rejection_reason")
     assert_equal 15_000, @wallet.balance_projection.reload.available_cents
     assert_empty @organization.refunds.where(metadata: { "med_case_id" => med_case.public_id })
@@ -131,6 +174,14 @@ class RefundAndMedLifecycleTest < ActiveSupport::TestCase
       amount_cents:,
       reason: "fraud_report",
       idempotency_key: external_id
+    )
+  end
+
+  def create_operator(email_prefix)
+    User.create!(
+      email_address: "#{email_prefix}-#{SecureRandom.hex(4)}@example.com",
+      password: "strong-password-123",
+      role: "admin"
     )
   end
 end

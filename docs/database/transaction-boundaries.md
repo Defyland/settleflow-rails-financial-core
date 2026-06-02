@@ -4,7 +4,7 @@ Financial services must complete domain state, ledger entries, balance projectio
 
 API idempotency records are part of the same transaction boundary. PostgreSQL guards the request hash, response state, immutable command identity, and succeeded replay evidence.
 
-Deferrable PostgreSQL state-evidence triggers validate funding, transfer, split, Pix, payout, refund, and MED rows at commit, after the service has filled journal/refund/split references. Intermediate rows inside the transaction may be incomplete; committed rows may not be.
+Deferrable PostgreSQL state-evidence triggers validate funding, transfer, split, Pix, payout, refund, and MED rows at commit, after the service has filled journal/refund/split/approval references. Intermediate rows inside the transaction may be incomplete; committed rows may not be.
 
 Mutation guards run before updates/deletes on those command tables. Identity and value fields are immutable after insert, rows with ledger/outbox evidence cannot be deleted, and state changes after evidence are limited to the documented lifecycle transitions that add settlement, reversal, refund, or rejection evidence.
 
@@ -28,7 +28,7 @@ Financial journal-evidence triggers are also deferrable. They allow the service 
 - Pix settlement locks `pix_payments`.
 - Payout settlement locks `payouts`.
 - Refund creation locks the source `pix_payments`.
-- MED acceptance locks `med_cases` and then uses refund locking on the source Pix payment.
+- MED acceptance/rejection requires ops maker-checker. The checker execution locks `med_cases`; acceptance then uses refund locking on the source Pix payment and stores the approved operator approval on the MED case.
 - Transfers, splits, Pix creation, and payout scheduling lock the source wallet projection before debiting.
 
 ## Non-transactional work

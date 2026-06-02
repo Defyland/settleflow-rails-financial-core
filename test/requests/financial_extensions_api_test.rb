@@ -10,7 +10,7 @@ class FinancialExtensionsApiTest < ActionDispatch::IntegrationTest
     fund_wallet(organization: @organization, wallet: @source_wallet, external_id: "api-extension-funding", amount_cents: 30_000)
   end
 
-  test "executes split, payout, refund, and MED flows through the API" do
+  test "executes financial extensions and blocks MED terminal resolution without ops approval" do
     post_json "/v1/split_payments", {
       source_wallet_id: @source_wallet.public_id,
       external_id: "api-split-001",
@@ -84,8 +84,9 @@ class FinancialExtensionsApiTest < ActionDispatch::IntegrationTest
 
     post_json "/v1/med_cases/#{med_case_id}/accept", {}, headers: auth_headers(@api_key, "Idempotency-Key" => "api-med-accept-001")
 
-    assert_response :ok
-    assert_equal "refunded", json_body.dig("data", "status")
+    assert_response :forbidden
+    assert_equal "authorization_failed", json_body.dig("error", "code")
+    assert_equal "opened", @organization.med_cases.find_by!(public_id: med_case_id).status
     assert AuditLog.hash_chain_intact?
   end
 end

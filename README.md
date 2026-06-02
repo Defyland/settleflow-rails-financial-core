@@ -23,8 +23,8 @@ Many fintech demos store mutable balances directly on an account row. That hides
 - Customers and BRL wallets.
 - Double-entry journal entries and immutable ledger lines.
 - Balance projections derived from wallet ledger accounts.
-- Funding, internal transfer, split, Pix approval/review/rejection, Pix settlement, Pix reversal, payout D+N, refund, fake MED dispute, and reconciliation flows.
-- Authenticated `/ops` backoffice for dashboard KPIs, paginated wallet statements, Pix manual review, maker-checker settlement/reversal approval, ledger drill-downs, reconciliation, outbox retry, and audit inspection.
+- Funding, internal transfer, split, Pix approval/review/rejection, Pix settlement, Pix reversal, payout D+N, refund, governed MED dispute, and reconciliation flows.
+- Authenticated `/ops` backoffice for dashboard KPIs, paginated wallet statements, Pix manual review, maker-checker settlement/reversal/MED approval, ledger drill-downs, reconciliation, outbox retry, and audit inspection.
 - Role-based operator capabilities for read-only, operator, and admin workflows.
 - Transactional outbox with pluggable log/HTTP publishers, claim leases, delivery metadata, payload hashes, retry backoff, next-attempt visibility, and dead-letter evidence.
 - Hash-chained audit logs, request IDs, correlation IDs, Prometheus metrics, readiness checks, and OpenTelemetry wiring.
@@ -186,7 +186,7 @@ Covered and documented scenarios include:
 - split balance movement across multiple destination wallets
 - outbox retry/dead-letter behavior
 - operator authorization denial
-- maker-checker settlement/reversal approval
+- maker-checker settlement/reversal/MED approval
 - audit hash-chain tamper detection
 - ClickHouse sync replay/failure handling
 - projection rebuild and balance snapshot drift detection
@@ -201,7 +201,7 @@ Operational steps are in [docs/runbooks/incident-response.md](docs/runbooks/inci
 
 - Add OIDC/SAML SSO, MFA, and finer-grained permission groups for operators.
 - Add real DICT provider adapters and webhook ingestion.
-- Replace the fake MED simulator with real provider protocol, deadlines, evidence workflow, and notification handling.
+- Add real provider MED protocol, deadlines, evidence upload workflow, and notification handling.
 - Add multi-currency ledger support.
 - Add RabbitMQ/Redpanda adapters when measured throughput or integration fanout exceeds the built-in log/HTTP outbox publishers.
 - Add selected browser tests for pagination and multi-role review queues as the Ops surface grows.

@@ -42,8 +42,8 @@ Every public financial event must include:
 | `payout_scheduled` | 1 | Payout is accepted for D+N settlement | Wallet liability was debited and payout clearing was credited | payout reference, wallet, schedule journal entry |
 | `payout_settled` | 1 | Payout settlement completes | External payout movement is financially settled | payout reference, wallet, journal entry |
 | `refund_settled` | 1 | Refund/reversal settlement completes | Customer-facing money return was financially settled | refund/reversal reference, wallet, journal entry |
-| `med_case_opened` | 1 | Fake MED dispute is opened | Dispute evidence was captured without ledger mutation | MED case, Pix payment, wallet |
-| `med_case_resolved` | 1 | Fake MED dispute is rejected or refunded | Dispute reached terminal state; accepted cases reference a refund | MED case, refund when present |
+| `med_case_opened` | 1 | MED dispute is opened | Dispute evidence was captured without ledger mutation | MED case, Pix payment, wallet |
+| `med_case_resolved` | 1 | MED dispute is rejected or refunded | Dispute reached terminal state through maker-checker; accepted cases reference a matching refund | MED case, operator approval, refund when present |
 
 ## Event Semantics
 
@@ -81,7 +81,7 @@ Emitted when a refund or reversal reaches settled state. It must reference the o
 
 ### `med_case_opened.v1` and `med_case_resolved.v1`
 
-Emitted for fake MED case state changes. Opening/rejection do not imply ledger movement; accepted cases must also produce a `refund_settled` event.
+Emitted for MED case state changes. Opening/rejection do not imply ledger movement; accepted cases must also produce a `refund_settled` event. Terminal MED resolution requires an approved `operator_approval` for the same case, and accepted cases must link to a settled refund with the deterministic key `med_case.refund:<id>`.
 
 ## Compatibility policy
 

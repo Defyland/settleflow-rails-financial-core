@@ -15,10 +15,11 @@
     "correlation_id": { "type": "string" },
     "payload": {
       "type": "object",
-      "required": ["med_case_id", "pix_payment_id", "amount_cents", "currency", "status", "resolved_at"],
+      "required": ["med_case_id", "pix_payment_id", "operator_approval_id", "amount_cents", "currency", "status", "resolved_at"],
       "properties": {
         "med_case_id": { "type": "string" },
         "pix_payment_id": { "type": "string" },
+        "operator_approval_id": { "type": "string" },
         "refund_id": { "type": ["string", "null"] },
         "amount_cents": { "type": "integer", "minimum": 1 },
         "currency": { "type": "string" },

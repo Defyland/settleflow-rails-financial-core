@@ -67,6 +67,7 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     ], reconciliation_guard_check.details.fetch(:present_triggers)
     state_guard_check = checks.find { |check| check.name == :financial_state_evidence_guards }
     assert state_guard_check.details.fetch(:aggregate_function_present)
+    assert state_guard_check.details.fetch(:med_resolution_functions_present)
     assert_empty state_guard_check.details.fetch(:missing_triggers)
     assert_equal %w[
       fundings_prevent_evidence_mutation

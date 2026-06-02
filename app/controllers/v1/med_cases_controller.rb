@@ -32,24 +32,13 @@ module V1
 
     def accept
       render_idempotent(status: :ok) do
-        accepted = MedCases::Accept.call(
-          organization: current_organization,
-          med_case:,
-          correlation_id: Current.correlation_id
-        )
-        { data: MedCaseSerializer.render(accepted) }
+        raise Errors::AuthorizationError.new("MED acceptance requires ops maker-checker approval")
       end
     end
 
     def reject
       render_idempotent(status: :ok) do
-        rejected = MedCases::Reject.call(
-          organization: current_organization,
-          med_case:,
-          reason: params.require(:reason),
-          correlation_id: Current.correlation_id
-        )
-        { data: MedCaseSerializer.render(rejected) }
+        raise Errors::AuthorizationError.new("MED rejection requires ops maker-checker approval")
       end
     end
 

@@ -60,6 +60,10 @@ class OpsConsoleRequestTest < ActionDispatch::IntegrationTest
     get ops_pix_payment_path(@pending_pix_payment.public_id)
     assert_includes response.body, "Risk score"
 
+    get ops_med_cases_path(status: "opened")
+    assert_response :ok
+    assert_includes response.body, "MED cases"
+
     get ops_outbox_events_path(status: "pending")
     assert_includes response.body, "Outbox events"
 
@@ -120,11 +124,46 @@ class OpsConsoleRequestTest < ActionDispatch::IntegrationTest
     assert @pending_pix_payment.reload.rejected?
     assert AuditLog.exists?(actor_type: "user", actor_id: @operator.id, action: "ops.pix_payment.reject")
 
+    med_pix_payment = create_pix_payment(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "ops-med-pix",
+      pix_key: "ops-med@example.com",
+      amount_cents: 5_000
+    )
+    PixPayments::Settle.call(organization: @organization, pix_payment: med_pix_payment)
+    med_case = MedCases::Open.call(
+      organization: @organization,
+      pix_payment: med_pix_payment,
+      external_id: "ops-med",
+      amount_cents: 2_000,
+      reason: "fraud_report",
+      idempotency_key: "ops-med"
+    )
+
+    post accept_ops_med_case_path(med_case.public_id), params: { reason: "fraud_confirmed" }
+    assert_redirected_to ops_med_case_path(med_case.public_id)
+    assert med_case.reload.opened?
+    med_approval = OperatorApproval.find_by!(action: "med_case.accept", subject_type: "MedCase", subject_id: med_case.id)
+    assert med_approval.pending?
+    assert_equal @operator.id, med_approval.requested_by_id
+    assert AuditLog.exists?(actor_type: "user", actor_id: @operator.id, action: "ops.med_case.accept.requested")
+
+    sign_in(@approver)
+    post accept_ops_med_case_path(med_case.public_id), params: { reason: "fraud_confirmed" }
+    assert_redirected_to ops_med_case_path(med_case.public_id)
+    assert med_case.reload.refunded?
+    assert med_case.refund.settled?
+    assert_equal med_approval.id, med_case.operator_approval_id
+    assert med_approval.reload.approved?
+    assert_equal @approver.id, med_approval.approved_by_id
+    assert AuditLog.exists?(actor_type: "user", actor_id: @approver.id, action: "ops.med_case.accept.approved")
+
     event = OutboxEvent.pending.first
     post retry_ops_outbox_event_path(event.public_id)
     assert_redirected_to ops_outbox_events_path(status: "pending")
     assert_includes enqueued_jobs.map { |job| job[:job] }, OutboxPublishJob
-    assert AuditLog.exists?(actor_type: "user", actor_id: @operator.id, action: "ops.outbox.retry")
+    assert AuditLog.exists?(actor_type: "user", actor_id: @approver.id, action: "ops.outbox.retry")
   end
 
   test "prevents the requester from approving their own financial action" do
@@ -183,6 +222,17 @@ class OpsConsoleRequestTest < ActionDispatch::IntegrationTest
       metadata: { capability: "reverse_pix_payment" }
     )
 
+    med_case = open_med_case_for_ops("ops-med-operator-blocked")
+    post accept_ops_med_case_path(med_case.public_id), params: { reason: "fraud_confirmed" }
+    assert_redirected_to ops_root_path
+    assert med_case.reload.opened?
+    assert AuditLog.exists?(
+      actor_type: "user",
+      actor_id: @operator.id,
+      action: "ops.authorization.denied",
+      metadata: { capability: "accept_med_case" }
+    )
+
     post reject_ops_pix_payment_path(@pending_pix_payment.public_id), params: { reason: "operator_rejected" }
     assert_redirected_to ops_pix_payment_path(@pending_pix_payment.public_id)
     assert @pending_pix_payment.reload.rejected?
@@ -217,6 +267,25 @@ class OpsConsoleRequestTest < ActionDispatch::IntegrationTest
     event.publish!(
       Outbox::DeliveryResult.new(adapter: "test", destination: "memory://outbox", message_id: "msg-#{event.public_id}"),
       payload_sha256: Outbox::Publisher.payload_sha256(Outbox::Publisher.envelope_for(event))
+    )
+  end
+
+  def open_med_case_for_ops(external_id)
+    pix_payment = create_pix_payment(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "#{external_id}-pix",
+      pix_key: "#{external_id}@example.com",
+      amount_cents: 1_000
+    )
+    PixPayments::Settle.call(organization: @organization, pix_payment:)
+    MedCases::Open.call(
+      organization: @organization,
+      pix_payment:,
+      external_id:,
+      amount_cents: 500,
+      reason: "fraud_report",
+      idempotency_key: external_id
     )
   end
 end

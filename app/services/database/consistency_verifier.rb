@@ -460,14 +460,27 @@ module Database
           WHERE proname = 'financial_aggregate_has_outbox_evidence'
         )
       SQL
+      med_resolution_functions_present = catalog_value(<<~SQL.squish)
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_proc
+          WHERE proname = 'med_case_has_resolution_approval'
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM pg_proc
+          WHERE proname = 'med_case_has_refund_evidence'
+        )
+      SQL
       present_triggers = enabled_triggers & expected_triggers
       missing_triggers = expected_triggers - present_triggers
 
       Check.new(
         name: :financial_state_evidence_guards,
-        ok: aggregate_function_present && missing_triggers.empty?,
+        ok: aggregate_function_present && med_resolution_functions_present && missing_triggers.empty?,
         details: {
           aggregate_function_present:,
+          med_resolution_functions_present:,
           present_triggers: present_triggers.sort,
           missing_triggers:
         }

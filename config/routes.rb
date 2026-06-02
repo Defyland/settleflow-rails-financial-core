@@ -14,6 +14,12 @@ Rails.application.routes.draw do
         post :reverse
       end
     end
+    resources :med_cases, only: [ :index, :show ] do
+      member do
+        post :accept
+        post :reject
+      end
+    end
     resources :outbox_events, only: [ :index ] do
       post :retry, on: :member
     end

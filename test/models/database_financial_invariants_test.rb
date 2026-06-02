@@ -534,6 +534,57 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     assert_database_constraint_violation { pix_payment.update_columns(status: "reversed", reversed_at: Time.current, reversal_reason: "tampered") }
   end
 
+  test "database rejects MED resolution with mismatched refund evidence" do
+    fund_wallet(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-med-approval-funding",
+      amount_cents: 1_000
+    )
+    pix_payment = create_pix_payment(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-med-approval-pix",
+      amount_cents: 100
+    )
+    PixPayments::Settle.call(organization: @organization, pix_payment:)
+    med_case = MedCases::Open.call(
+      organization: @organization,
+      pix_payment:,
+      external_id: "db-invariant-med-approval",
+      amount_cents: 50,
+      reason: "fraud_report",
+      idempotency_key: "db-invariant-med-approval"
+    )
+    wrong_refund = Refunds::Create.call(
+      organization: @organization,
+      pix_payment:,
+      external_id: "db-invariant-med-wrong-refund",
+      amount_cents: 25,
+      reason: "customer_request",
+      idempotency_key: "db-invariant-med-wrong-refund"
+    )
+    maker = create_operator("db-med-maker")
+    checker = create_operator("db-med-checker")
+    approval = @organization.operator_approvals.create!(
+      action: "med_case.accept",
+      subject_type: "MedCase",
+      subject_id: med_case.id,
+      requested_by: maker,
+      reason: "db_invariant"
+    )
+    approval.update!(status: "approved", approved_by: checker, approved_at: Time.current)
+
+    assert_database_constraint_violation do
+      med_case.update_columns(
+        status: "refunded",
+        refund_id: wrong_refund.id,
+        operator_approval_id: approval.id,
+        resolved_at: Time.current
+      )
+    end
+  end
+
   test "database rejects direct wallet command state and split entry tampering" do
     destination_one = create_wallet(organization: @organization)
     destination_two = create_wallet(organization: @organization)
@@ -758,6 +809,14 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
       aggregate_type: aggregate.class.name,
       aggregate_id: aggregate.id,
       event_type:
+    )
+  end
+
+  def create_operator(email_prefix)
+    User.create!(
+      email_address: "#{email_prefix}-#{SecureRandom.hex(4)}@example.com",
+      password: "strong-password-123",
+      role: "admin"
     )
   end
 

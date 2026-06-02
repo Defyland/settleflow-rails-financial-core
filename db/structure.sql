@@ -284,18 +284,33 @@ BEGIN
   SELECT * INTO med_case_row FROM med_cases WHERE id = NEW.id;
 
   IF med_case_row.status = 'opened'
-    AND (med_case_row.refund_id IS NOT NULL OR med_case_row.resolved_at IS NOT NULL) THEN
+    AND (
+      med_case_row.refund_id IS NOT NULL
+      OR med_case_row.resolved_at IS NOT NULL
+      OR med_case_row.operator_approval_id IS NOT NULL
+    ) THEN
     RAISE EXCEPTION 'opened MED case cannot have resolution evidence';
   END IF;
 
   IF med_case_row.status = 'rejected'
-    AND (med_case_row.refund_id IS NOT NULL OR med_case_row.resolved_at IS NULL) THEN
-    RAISE EXCEPTION 'rejected MED case requires rejection resolution without refund';
+    AND (
+      med_case_row.refund_id IS NOT NULL
+      OR med_case_row.resolved_at IS NULL
+      OR med_case_row.operator_approval_id IS NULL
+      OR NOT med_case_has_resolution_approval(med_case_row.id)
+    ) THEN
+    RAISE EXCEPTION 'rejected MED case requires approved rejection evidence without refund';
   END IF;
 
   IF med_case_row.status = 'refunded'
-    AND (med_case_row.refund_id IS NULL OR med_case_row.resolved_at IS NULL) THEN
-    RAISE EXCEPTION 'refunded MED case requires refund and resolution evidence';
+    AND (
+      med_case_row.refund_id IS NULL
+      OR med_case_row.resolved_at IS NULL
+      OR med_case_row.operator_approval_id IS NULL
+      OR NOT med_case_has_refund_evidence(med_case_row.id)
+      OR NOT med_case_has_resolution_approval(med_case_row.id)
+    ) THEN
+    RAISE EXCEPTION 'refunded MED case requires refund, resolution, and approved acceptance evidence';
   END IF;
 
   RETURN NEW;
@@ -1297,6 +1312,54 @@ $$;
 
 
 --
+-- Name: med_case_has_refund_evidence(bigint); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.med_case_has_refund_evidence(med_case_id_to_check bigint) RETURNS boolean
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM med_cases med_case
+    JOIN refunds refund
+      ON refund.id = med_case.refund_id
+    WHERE med_case.id = med_case_id_to_check
+      AND refund.organization_id = med_case.organization_id
+      AND refund.pix_payment_id = med_case.pix_payment_id
+      AND refund.amount_cents = med_case.amount_cents
+      AND refund.currency = med_case.currency
+      AND refund.status = 'settled'
+      AND refund.idempotency_key = 'med_case.refund:' || med_case.id::text
+  );
+$$;
+
+
+--
+-- Name: med_case_has_resolution_approval(bigint); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.med_case_has_resolution_approval(med_case_id_to_check bigint) RETURNS boolean
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM med_cases med_case
+    JOIN operator_approvals approval
+      ON approval.id = med_case.operator_approval_id
+    WHERE med_case.id = med_case_id_to_check
+      AND approval.organization_id = med_case.organization_id
+      AND approval.subject_type = 'MedCase'
+      AND approval.subject_id = med_case.id
+      AND approval.status = 'approved'
+      AND (
+        (med_case.status = 'rejected' AND approval.action = 'med_case.reject')
+        OR (med_case.status = 'refunded' AND approval.action = 'med_case.accept')
+      )
+  );
+$$;
+
+
+--
 -- Name: outbox_events; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1681,6 +1744,7 @@ DECLARE
 BEGIN
   has_evidence := OLD.refund_id IS NOT NULL
     OR OLD.resolved_at IS NOT NULL
+    OR OLD.operator_approval_id IS NOT NULL
     OR financial_aggregate_has_outbox_evidence('MedCase', OLD.id);
 
   IF TG_OP = 'DELETE' THEN
@@ -1711,6 +1775,8 @@ BEGIN
       AND NEW.refund_id IS NOT NULL
       AND OLD.resolved_at IS NULL
       AND NEW.resolved_at IS NOT NULL
+      AND OLD.operator_approval_id IS NULL
+      AND NEW.operator_approval_id IS NOT NULL
       AND OLD.metadata IS NOT DISTINCT FROM NEW.metadata
     )
     OR (
@@ -1718,6 +1784,8 @@ BEGIN
       AND OLD.refund_id IS NOT DISTINCT FROM NEW.refund_id
       AND OLD.resolved_at IS NULL
       AND NEW.resolved_at IS NOT NULL
+      AND OLD.operator_approval_id IS NULL
+      AND NEW.operator_approval_id IS NOT NULL
     )
   );
 
@@ -1727,10 +1795,11 @@ BEGIN
       OLD.status IS DISTINCT FROM NEW.status
       OR OLD.refund_id IS DISTINCT FROM NEW.refund_id
       OR OLD.resolved_at IS DISTINCT FROM NEW.resolved_at
+      OR OLD.operator_approval_id IS DISTINCT FROM NEW.operator_approval_id
       OR OLD.metadata IS DISTINCT FROM NEW.metadata
       OR OLD.updated_at IS DISTINCT FROM NEW.updated_at
     ) THEN
-    RAISE EXCEPTION 'MED case with outbox evidence only allows documented resolution transitions';
+    RAISE EXCEPTION 'MED case with outbox evidence only allows documented approval-backed resolution transitions';
   END IF;
 
   RETURN NEW;
@@ -2881,6 +2950,7 @@ CREATE TABLE public.med_cases (
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
+    operator_approval_id bigint,
     CONSTRAINT med_cases_amount_positive_check CHECK ((amount_cents > 0)),
     CONSTRAINT med_cases_status_check CHECK (((status)::text = ANY ((ARRAY['opened'::character varying, 'rejected'::character varying, 'refunded'::character varying])::text[])))
 );
@@ -4445,6 +4515,13 @@ CREATE UNIQUE INDEX index_ledger_lines_on_public_id ON public.ledger_lines USING
 
 
 --
+-- Name: index_med_cases_on_operator_approval_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_med_cases_on_operator_approval_id ON public.med_cases USING btree (operator_approval_id);
+
+
+--
 -- Name: index_med_cases_on_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -5539,6 +5616,14 @@ ALTER TABLE ONLY public.split_payments
 
 
 --
+-- Name: med_cases fk_rails_931e5c387a; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.med_cases
+    ADD CONSTRAINT fk_rails_931e5c387a FOREIGN KEY (operator_approval_id) REFERENCES public.operator_approvals(id);
+
+
+--
 -- Name: refunds fk_rails_94ce031b15; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -5785,6 +5870,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602211500'),
 ('20260602210000'),
 ('20260602204500'),
 ('20260602203000'),

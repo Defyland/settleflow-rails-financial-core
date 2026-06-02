@@ -18,6 +18,7 @@
             <%= link_to "Dashboard", ops_root_path %>
             <%= link_to "Wallets", ops_wallets_path %>
             <%= link_to "Pix review", ops_pix_payments_path(status: "pending_review") %>
+            <%= link_to "MED", ops_med_cases_path(status: "opened") %>
             <%= link_to "Ledger", ops_ledger_entries_path %>
             <%= link_to "Reconciliation", ops_reconciliation_runs_path %>
             <%= link_to "Outbox", ops_outbox_events_path %>

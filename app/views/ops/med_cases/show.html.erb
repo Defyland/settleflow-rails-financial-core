@@ -1,0 +1,58 @@
+<header class="page-header">
+  <div>
+    <h1>MED <%= @med_case.external_id %></h1>
+    <p><%= @med_case.reason %></p>
+  </div>
+  <div class="actions">
+    <% if @med_case.opened? && can?(:accept_med_case) %>
+      <%= button_to "Accept", accept_ops_med_case_path(@med_case.public_id), method: :post, params: { reason: "med_accept" }, class: "button" %>
+    <% end %>
+    <% if @med_case.opened? && can?(:reject_med_case) %>
+      <%= button_to "Reject", reject_ops_med_case_path(@med_case.public_id), method: :post, params: { reason: "insufficient_evidence" }, class: "button button--danger" %>
+    <% end %>
+    <button class="copy-button" data-controller="copy" data-copy-text-value="<%= @med_case.public_id %>" data-action="copy#copy">Copy ID</button>
+  </div>
+</header>
+
+<section class="metric-grid">
+  <div class="metric">
+    <span>Amount</span>
+    <strong><%= money_cents(@med_case.amount_cents, @med_case.currency) %></strong>
+  </div>
+  <div class="metric">
+    <span>Status</span>
+    <strong><%= @med_case.status.humanize %></strong>
+  </div>
+  <div class="metric">
+    <span>Resolved</span>
+    <strong><%= @med_case.resolved_at&.to_fs(:short) || "open" %></strong>
+  </div>
+  <div class="metric">
+    <span>Approval</span>
+    <strong><%= @med_case.operator_approval ? compact_id(@med_case.operator_approval) : "none" %></strong>
+  </div>
+</section>
+
+<section class="grid-two">
+  <div class="panel">
+    <div class="panel__header">
+      <h2>Dispute</h2>
+    </div>
+    <table class="table">
+      <tbody>
+        <tr><th>Organization</th><td><%= @med_case.organization.slug %></td></tr>
+        <tr><th>Pix payment</th><td><%= link_to @med_case.pix_payment.external_id, ops_pix_payment_path(@med_case.pix_payment.public_id) %></td></tr>
+        <tr><th>Refund</th><td><%= @med_case.refund ? compact_id(@med_case.refund) : "none" %></td></tr>
+        <tr><th>Opened</th><td><%= @med_case.opened_at.to_fs(:long) %></td></tr>
+        <tr><th>Correlation</th><td><%= @med_case.correlation_id || "none" %></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <div class="panel__header">
+      <h2>Metadata</h2>
+    </div>
+    <pre><%= JSON.pretty_generate(@med_case.metadata) %></pre>
+  </div>
+</section>

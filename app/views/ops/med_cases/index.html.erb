@@ -1,0 +1,46 @@
+<header class="page-header">
+  <div>
+    <h1>MED cases</h1>
+    <p>Disputes, approval evidence, and refund outcomes.</p>
+  </div>
+</header>
+
+<section class="panel">
+  <div class="panel__header">
+    <h2>Cases</h2>
+    <%= form_with url: ops_med_cases_path, method: :get, class: "filters" do |form| %>
+      <%= form.select :status, options_for_select([["All", nil], ["Opened", "opened"], ["Rejected", "rejected"], ["Refunded", "refunded"]], @status) %>
+      <%= form.search_field :q, value: @query, placeholder: "Search MED" %>
+      <%= form.submit "Filter", class: "button button--secondary" %>
+    <% end %>
+  </div>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>External ID</th>
+        <th>Organization</th>
+        <th>Pix</th>
+        <th>Status</th>
+        <th>Amount</th>
+        <th>Approval</th>
+        <th>Opened</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @med_cases.each do |med_case| %>
+        <tr>
+          <td><%= link_to med_case.external_id, ops_med_case_path(med_case.public_id) %></td>
+          <td><%= med_case.organization.slug %></td>
+          <td><%= med_case.pix_payment.external_id %></td>
+          <td><%= med_case.status.humanize %></td>
+          <td><%= money_cents(med_case.amount_cents, med_case.currency) %></td>
+          <td><%= med_case.operator_approval ? compact_id(med_case.operator_approval) : "none" %></td>
+          <td><%= med_case.opened_at.to_fs(:short) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+
+  <%= render "ops/shared/pagination", pagination: pagination, path: ops_med_cases_path %>
+</section>
