@@ -6,7 +6,7 @@ Allowed Redis use:
 
 - Rate-limit counters.
 - Short-lived cache entries.
-- Temporary non-financial locks.
+- Temporary non-financial locks through `Operational::TemporaryLock`.
 - Feature flags or operational throttles with PostgreSQL fallback.
 
 Forbidden Redis use:
@@ -19,3 +19,9 @@ Forbidden Redis use:
 - Audit hash-chain data.
 
 If Redis data is lost, financial correctness must be unchanged.
+
+## Temporary Locks
+
+`Operational::TemporaryLock` is cache-backed and requires a bounded TTL. It rejects lock keys for balances, ledger, journal entries, idempotency, payout, refund, settlement, MED, reconciliation, and audit state.
+
+Use it only for operational coordination such as cache warming or rate-limit maintenance. PostgreSQL row locks and persistent idempotency records remain responsible for financial correctness.
