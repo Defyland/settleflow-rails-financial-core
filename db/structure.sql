@@ -452,6 +452,52 @@ ALTER SEQUENCE public.balance_projections_id_seq OWNED BY public.balance_project
 
 
 --
+-- Name: balance_snapshots; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.balance_snapshots (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    wallet_id bigint NOT NULL,
+    currency character varying DEFAULT 'BRL'::character varying NOT NULL,
+    captured_on date NOT NULL,
+    captured_at timestamp(6) without time zone NOT NULL,
+    available_cents bigint NOT NULL,
+    pending_cents bigint NOT NULL,
+    blocked_cents bigint NOT NULL,
+    ledger_available_cents bigint NOT NULL,
+    difference_cents bigint NOT NULL,
+    source character varying DEFAULT 'scheduled_capture'::character varying NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT balance_snapshots_available_non_negative_check CHECK ((available_cents >= 0)),
+    CONSTRAINT balance_snapshots_blocked_non_negative_check CHECK ((blocked_cents >= 0)),
+    CONSTRAINT balance_snapshots_pending_non_negative_check CHECK ((pending_cents >= 0))
+);
+
+
+--
+-- Name: balance_snapshots_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.balance_snapshots_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: balance_snapshots_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.balance_snapshots_id_seq OWNED BY public.balance_snapshots.id;
+
+
+--
 -- Name: customers; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -972,6 +1018,49 @@ ALTER SEQUENCE public.pix_payments_id_seq OWNED BY public.pix_payments.id;
 
 
 --
+-- Name: processed_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.processed_events (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    outbox_event_id bigint NOT NULL,
+    processor character varying NOT NULL,
+    event_id character varying NOT NULL,
+    event_type character varying NOT NULL,
+    status character varying DEFAULT 'processing'::character varying NOT NULL,
+    payload_sha256 character varying NOT NULL,
+    processed_at timestamp(6) without time zone,
+    error_class character varying,
+    last_error text,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT processed_events_status_check CHECK (((status)::text = ANY ((ARRAY['processing'::character varying, 'processed'::character varying, 'failed'::character varying])::text[])))
+);
+
+
+--
+-- Name: processed_events_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.processed_events_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: processed_events_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.processed_events_id_seq OWNED BY public.processed_events.id;
+
+
+--
 -- Name: reconciliation_runs; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1343,6 +1432,13 @@ ALTER TABLE ONLY public.balance_projections ALTER COLUMN id SET DEFAULT nextval(
 
 
 --
+-- Name: balance_snapshots id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.balance_snapshots ALTER COLUMN id SET DEFAULT nextval('public.balance_snapshots_id_seq'::regclass);
+
+
+--
 -- Name: customers id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -1424,6 +1520,13 @@ ALTER TABLE ONLY public.payouts ALTER COLUMN id SET DEFAULT nextval('public.payo
 --
 
 ALTER TABLE ONLY public.pix_payments ALTER COLUMN id SET DEFAULT nextval('public.pix_payments_id_seq'::regclass);
+
+
+--
+-- Name: processed_events id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.processed_events ALTER COLUMN id SET DEFAULT nextval('public.processed_events_id_seq'::regclass);
 
 
 --
@@ -1539,6 +1642,14 @@ ALTER TABLE ONLY public.balance_projections
 
 
 --
+-- Name: balance_snapshots balance_snapshots_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.balance_snapshots
+    ADD CONSTRAINT balance_snapshots_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: customers customers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1635,6 +1746,14 @@ ALTER TABLE ONLY public.pix_payments
 
 
 --
+-- Name: processed_events processed_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.processed_events
+    ADD CONSTRAINT processed_events_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: reconciliation_runs reconciliation_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1711,6 +1830,20 @@ ALTER TABLE ONLY public.wallets
 --
 
 CREATE UNIQUE INDEX idx_balance_projection_wallet_currency ON public.balance_projections USING btree (organization_id, wallet_id, currency);
+
+
+--
+-- Name: idx_balance_snapshots_wallet_day; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_balance_snapshots_wallet_day ON public.balance_snapshots USING btree (organization_id, wallet_id, currency, captured_on);
+
+
+--
+-- Name: idx_on_organization_id_processor_status_4e31dea64d; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_on_organization_id_processor_status_4e31dea64d ON public.processed_events USING btree (organization_id, processor, status);
 
 
 --
@@ -1858,6 +1991,34 @@ CREATE UNIQUE INDEX index_balance_projections_on_public_id ON public.balance_pro
 --
 
 CREATE INDEX index_balance_projections_on_wallet_id ON public.balance_projections USING btree (wallet_id);
+
+
+--
+-- Name: index_balance_snapshots_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_balance_snapshots_on_organization_id ON public.balance_snapshots USING btree (organization_id);
+
+
+--
+-- Name: index_balance_snapshots_on_organization_id_and_captured_on; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_balance_snapshots_on_organization_id_and_captured_on ON public.balance_snapshots USING btree (organization_id, captured_on);
+
+
+--
+-- Name: index_balance_snapshots_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_balance_snapshots_on_public_id ON public.balance_snapshots USING btree (public_id);
+
+
+--
+-- Name: index_balance_snapshots_on_wallet_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_balance_snapshots_on_wallet_id ON public.balance_snapshots USING btree (wallet_id);
 
 
 --
@@ -2309,6 +2470,41 @@ CREATE INDEX index_pix_payments_on_wallet_id ON public.pix_payments USING btree 
 
 
 --
+-- Name: index_processed_events_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_processed_events_on_organization_id ON public.processed_events USING btree (organization_id);
+
+
+--
+-- Name: index_processed_events_on_outbox_event_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_processed_events_on_outbox_event_id ON public.processed_events USING btree (outbox_event_id);
+
+
+--
+-- Name: index_processed_events_on_outbox_event_id_and_processor; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_processed_events_on_outbox_event_id_and_processor ON public.processed_events USING btree (outbox_event_id, processor);
+
+
+--
+-- Name: index_processed_events_on_processor_and_event_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_processed_events_on_processor_and_event_id ON public.processed_events USING btree (processor, event_id);
+
+
+--
+-- Name: index_processed_events_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_processed_events_on_public_id ON public.processed_events USING btree (public_id);
+
+
+--
 -- Name: index_reconciliation_runs_on_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2644,11 +2840,27 @@ ALTER TABLE ONLY public.idempotency_keys
 
 
 --
+-- Name: balance_snapshots fk_rails_19719194e6; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.balance_snapshots
+    ADD CONSTRAINT fk_rails_19719194e6 FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
 -- Name: wallets fk_rails_28077d4aa2; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.wallets
     ADD CONSTRAINT fk_rails_28077d4aa2 FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: balance_snapshots fk_rails_286447968d; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.balance_snapshots
+    ADD CONSTRAINT fk_rails_286447968d FOREIGN KEY (wallet_id) REFERENCES public.wallets(id);
 
 
 --
@@ -2972,6 +3184,14 @@ ALTER TABLE ONLY public.transfers
 
 
 --
+-- Name: processed_events fk_rails_e5e2b6b786; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.processed_events
+    ADD CONSTRAINT fk_rails_e5e2b6b786 FOREIGN KEY (outbox_event_id) REFERENCES public.outbox_events(id);
+
+
+--
 -- Name: payouts fk_rails_e83f526e5a; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2985,6 +3205,14 @@ ALTER TABLE ONLY public.payouts
 
 ALTER TABLE ONLY public.split_payments
     ADD CONSTRAINT fk_rails_ec6140c53b FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: processed_events fk_rails_f1d88ff35f; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.processed_events
+    ADD CONSTRAINT fk_rails_f1d88ff35f FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
 
 
 --
@@ -3010,6 +3238,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602101000'),
 ('20260602100000'),
 ('20260602095000'),
 ('20260602094000'),

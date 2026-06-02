@@ -13,6 +13,8 @@ class Organization < ApplicationRecord
   has_many :med_cases, dependent: :restrict_with_exception
   has_many :reconciliation_runs, dependent: :restrict_with_exception
   has_many :outbox_events, dependent: :restrict_with_exception
+  has_many :processed_events, dependent: :restrict_with_exception
+  has_many :balance_snapshots, dependent: :restrict_with_exception
   has_many :operator_approvals, dependent: :restrict_with_exception
   has_many :api_credentials, dependent: :destroy
   has_many :idempotency_keys, dependent: :delete_all

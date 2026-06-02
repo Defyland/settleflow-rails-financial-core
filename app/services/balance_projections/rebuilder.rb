@@ -1,0 +1,43 @@
+module BalanceProjections
+  class Rebuilder
+    Result = Data.define(:wallet_id, :currency, :current_available_cents, :rebuilt_available_cents, :difference_cents)
+
+    def self.call(...)
+      new(...).call
+    end
+
+    def initialize(organization:, wallet: nil, currency: "BRL", apply: false)
+      @organization = organization
+      @wallet = wallet
+      @currency = currency
+      @apply = apply
+    end
+
+    def call
+      scope = wallet.present? ? organization.wallets.where(id: wallet.id) : organization.wallets
+      scope.includes(:balance_projection, :ledger_accounts).where(currency:).map do |record|
+        rebuild_wallet(record)
+      end
+    end
+
+    private
+
+    attr_reader :organization, :wallet, :currency, :apply
+
+    def rebuild_wallet(record)
+      projection = record.balance_projection
+      rebuilt_available_cents = record.liability_account.balance_cents
+      difference_cents = projection.available_cents - rebuilt_available_cents
+
+      projection.update!(available_cents: rebuilt_available_cents) if apply && difference_cents != 0
+
+      Result.new(
+        wallet_id: record.public_id,
+        currency:,
+        current_available_cents: projection.available_cents,
+        rebuilt_available_cents:,
+        difference_cents:
+      )
+    end
+  end
+end
