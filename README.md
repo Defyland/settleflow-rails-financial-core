@@ -41,7 +41,9 @@ For the senior/tech-lead evaluation rationale, see [docs/architecture/senior-tec
 
 - Ruby `3.4.2`
 - Rails `8.1`
-- PostgreSQL with `pgcrypto`
+- PostgreSQL with `pgcrypto` as the OLTP source of truth
+- ClickHouse HTTP ingestion for analytics-only financial events
+- Redis documented as operational cache/rate-limit/temporary-lock infrastructure, never financial truth
 - ERB, Turbo, Stimulus, Importmap, and Propshaft
 - Rails auth generator, bcrypt, Action Mailer, and Active Storage
 - ActiveJob, Solid Queue, Solid Cache, and Solid Cable
@@ -60,9 +62,9 @@ Core entities:
 - `Wallet`: customer wallet with optimistic locking and a liability ledger account.
 - `LedgerAccount`: asset/liability/revenue/expense/equity account with normal balance.
 - `JournalEntry` and `LedgerLine`: immutable double-entry record.
-- `BalanceProjection`: read-optimized available/pending/blocked wallet balance.
+- `BalanceProjection` and `BalanceSnapshot`: read-optimized wallet balance and daily projection-vs-ledger evidence.
 - `Funding`, `Transfer`, `SplitPayment`, `Payout`, `PixPayment`, `Refund`, `MedCase`, `ReconciliationRun`: financial workflows.
-- `OutboxEvent`, `IdempotencyKey`, `AuditLog`: reliability and governance records.
+- `OutboxEvent`, `ProcessedEvent`, `IdempotencyKey`, `AuditLog`: reliability, analytics sync, and governance records.
 
 ## 8. API documentation
 
@@ -74,7 +76,7 @@ SettleFlow uses a transactional outbox table and ActiveJob jobs. Financial servi
 
 ## 10. Database design
 
-The schema uses foreign keys, unique constraints per tenant, check constraints for ledger directions and account types, positive amount checks, UUID public IDs, and optimistic locking on wallets/projections. Money is stored as integer cents. Ledger entries are the source of truth; projections are derived read models. Posted journal entries and ledger lines are append-only through Active Record and PostgreSQL guards. Audit logs are append-only and hash-chained in PostgreSQL.
+The schema uses foreign keys, unique constraints per tenant, check constraints for ledger directions and account types, positive amount checks, UUID public IDs, and optimistic locking on wallets/projections. Money is stored as integer cents. Ledger entries are the source of truth; projections are derived read models and can be rebuilt from ledger. Posted journal entries and ledger lines are append-only through Active Record and PostgreSQL guards. Audit logs are append-only and hash-chained in PostgreSQL. Database engineering docs live in [docs/database](docs/database).
 
 ## 11. Testing strategy
 
@@ -150,10 +152,10 @@ email: ops@settleflow.local
 password: settleflow-dev-password-123
 ```
 
-Optional PostgreSQL via Docker:
+Optional PostgreSQL, ClickHouse, and Redis via Docker:
 
 ```bash
-docker compose up db
+docker compose up db clickhouse redis
 ```
 
 ## 17. How to run tests
@@ -186,6 +188,9 @@ Covered and documented scenarios include:
 - operator authorization denial
 - maker-checker settlement/reversal approval
 - audit hash-chain tamper detection
+- ClickHouse sync replay/failure handling
+- projection rebuild and balance snapshot drift detection
+- PostgreSQL lock contention around settlement, payout, refund, and MED
 - reconciliation discrepancies
 - unauthenticated operator access
 - manual Pix rejection and reversal with operator audit trail
@@ -197,7 +202,6 @@ Operational steps are in [docs/runbooks/incident-response.md](docs/runbooks/inci
 - Add OIDC/SAML SSO, MFA, and finer-grained permission groups for operators.
 - Add real DICT provider adapters and webhook ingestion.
 - Replace the fake MED simulator with real provider protocol, deadlines, evidence workflow, and notification handling.
-- Add ClickHouse export path for reporting.
 - Add multi-currency ledger support.
 - Add RabbitMQ/Redpanda adapters when measured throughput or integration fanout exceeds the built-in log/HTTP outbox publishers.
 - Add selected browser tests for pagination and multi-role review queues as the Ops surface grows.
