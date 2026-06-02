@@ -15,6 +15,7 @@ module Database
         audit_hash_chain_check,
         audit_anchor_chain_check,
         outbox_evidence_guards_check,
+        financial_state_evidence_guards_check,
         journal_balance_check,
         negative_projection_check,
         projection_rebuild_check
@@ -95,6 +96,32 @@ module Database
         details: {
           mutation_trigger_present: trigger_present,
           payload_hash_check_present:
+        }
+      )
+    end
+
+    def financial_state_evidence_guards_check
+      expected_triggers = %w[
+        payouts_state_evidence_after_write
+        refunds_state_evidence_after_write
+        med_cases_state_evidence_after_write
+        pix_payments_state_evidence_after_write
+      ]
+      enabled_triggers = ActiveRecord::Base.connection.select_values(<<~SQL.squish)
+        SELECT tgname
+        FROM pg_trigger
+        WHERE NOT tgisinternal
+          AND tgenabled <> 'D'
+      SQL
+      present_triggers = enabled_triggers & expected_triggers
+      missing_triggers = expected_triggers - present_triggers
+
+      Check.new(
+        name: :financial_state_evidence_guards,
+        ok: missing_triggers.empty?,
+        details: {
+          present_triggers: present_triggers.sort,
+          missing_triggers:
         }
       )
     end

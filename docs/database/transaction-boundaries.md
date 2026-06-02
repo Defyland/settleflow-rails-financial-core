@@ -2,6 +2,8 @@
 
 Financial services must complete domain state, ledger entries, balance projections, and outbox rows in one PostgreSQL transaction.
 
+Deferrable PostgreSQL state-evidence triggers validate Pix, payout, refund, and MED rows at commit, after the service has filled journal/refund references. Intermediate rows inside the transaction may be incomplete; committed rows may not be.
+
 ## Required pattern
 
 1. Validate tenant and currency.

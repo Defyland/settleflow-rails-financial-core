@@ -109,6 +109,52 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     assert_database_constraint_violation { event.update_columns(payload_sha256: "b" * 64) }
   end
 
+  test "database rejects direct financial status changes without journal evidence" do
+    fund_wallet(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-state-funding",
+      amount_cents: 10
+    )
+    pix_payment = create_pix_payment(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-pix-state",
+      amount_cents: 1
+    )
+    payout = Payouts::Create.call(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-payout-state",
+      amount_cents: 1,
+      settlement_delay_days: 0,
+      destination_reference: "bank-account",
+      idempotency_key: "db-invariant-payout-state"
+    )
+    PixPayments::Settle.call(organization: @organization, pix_payment:)
+    refund = Refunds::Create.call(
+      organization: @organization,
+      pix_payment:,
+      external_id: "db-invariant-refund-state",
+      amount_cents: 1,
+      reason: "customer_request",
+      idempotency_key: "db-invariant-refund-state"
+    )
+    med_case = MedCases::Open.call(
+      organization: @organization,
+      pix_payment:,
+      external_id: "db-invariant-med-state",
+      amount_cents: 1,
+      reason: "fraud_report",
+      idempotency_key: "db-invariant-med-state"
+    )
+
+    assert_database_constraint_violation { payout.update_columns(status: "settled", settled_at: Time.current) }
+    assert_database_constraint_violation { refund.update_columns(journal_entry_id: nil) }
+    assert_database_constraint_violation { med_case.update_columns(status: "refunded", resolved_at: Time.current) }
+    assert_database_constraint_violation { pix_payment.update_columns(status: "reversed", reversed_at: Time.current, reversal_reason: "tampered") }
+  end
+
   test "database rejects ledger lines whose account belongs to another organization" do
     journal = post_test_journal
     other_organization = create_organization
@@ -163,7 +209,10 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     connection = ActiveRecord::Base.connection
     connection.execute("SAVEPOINT database_invariant_test")
 
-    assert_raises(ActiveRecord::StatementInvalid) { yield }
+    assert_raises(ActiveRecord::StatementInvalid) do
+      yield
+      connection.execute("SET CONSTRAINTS ALL IMMEDIATE")
+    end
   ensure
     connection.execute("ROLLBACK TO SAVEPOINT database_invariant_test")
     connection.execute("RELEASE SAVEPOINT database_invariant_test")

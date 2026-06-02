@@ -8,7 +8,7 @@ PostgreSQL backups protect the financial source of truth. ClickHouse can be rebu
 - Take regular logical or physical backups.
 - Test logical restore into an isolated environment with `bin/rails database:backup_restore_drill`.
 - Check WAL/PITR readiness with `bin/rails database:pitr_readiness_check`.
-- Verify ledger balance sums, projection rebuilds, reconciliation counts, outbox evidence guards, and audit hash-chain integrity after restore.
+- Verify ledger balance sums, projection rebuilds, reconciliation counts, financial state evidence guards, outbox evidence guards, and audit hash-chain integrity after restore.
 
 `database:backup_restore_drill` proves that a logical `pg_dump`/`pg_restore` can be restored and validated. It is not a physical PITR drill.
 

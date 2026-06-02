@@ -89,6 +89,174 @@ $$;
 
 
 --
+-- Name: assert_med_case_state_evidence(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_med_case_state_evidence() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  med_case_row med_cases%ROWTYPE;
+BEGIN
+  SELECT * INTO med_case_row FROM med_cases WHERE id = NEW.id;
+
+  IF med_case_row.status = 'opened'
+    AND (med_case_row.refund_id IS NOT NULL OR med_case_row.resolved_at IS NOT NULL) THEN
+    RAISE EXCEPTION 'opened MED case cannot have resolution evidence';
+  END IF;
+
+  IF med_case_row.status = 'rejected'
+    AND (med_case_row.refund_id IS NOT NULL OR med_case_row.resolved_at IS NULL) THEN
+    RAISE EXCEPTION 'rejected MED case requires rejection resolution without refund';
+  END IF;
+
+  IF med_case_row.status = 'refunded'
+    AND (med_case_row.refund_id IS NULL OR med_case_row.resolved_at IS NULL) THEN
+    RAISE EXCEPTION 'refunded MED case requires refund and resolution evidence';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: assert_payout_state_evidence(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_payout_state_evidence() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  payout_row payouts%ROWTYPE;
+BEGIN
+  SELECT * INTO payout_row FROM payouts WHERE id = NEW.id;
+
+  IF payout_row.status = 'scheduled'
+    AND (
+      payout_row.journal_entry_id IS NULL
+      OR payout_row.settlement_journal_entry_id IS NOT NULL
+      OR payout_row.settled_at IS NOT NULL
+    ) THEN
+    RAISE EXCEPTION 'scheduled payout requires schedule journal evidence only';
+  END IF;
+
+  IF payout_row.status = 'settled'
+    AND (
+      payout_row.journal_entry_id IS NULL
+      OR payout_row.settlement_journal_entry_id IS NULL
+      OR payout_row.settled_at IS NULL
+    ) THEN
+    RAISE EXCEPTION 'settled payout requires schedule and settlement journal evidence';
+  END IF;
+
+  IF payout_row.status = 'failed' AND payout_row.failure_code IS NULL THEN
+    RAISE EXCEPTION 'failed payout requires a failure code';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: assert_pix_payment_state_evidence(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_pix_payment_state_evidence() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  pix_payment_row pix_payments%ROWTYPE;
+BEGIN
+  SELECT * INTO pix_payment_row FROM pix_payments WHERE id = NEW.id;
+
+  IF pix_payment_row.status IN ('created', 'pending_review')
+    AND (
+      pix_payment_row.journal_entry_id IS NOT NULL
+      OR pix_payment_row.settlement_journal_entry_id IS NOT NULL
+      OR pix_payment_row.reversal_journal_entry_id IS NOT NULL
+      OR pix_payment_row.reversed_at IS NOT NULL
+      OR pix_payment_row.reversal_reason IS NOT NULL
+    ) THEN
+    RAISE EXCEPTION 'unposted Pix payment cannot have journal evidence';
+  END IF;
+
+  IF pix_payment_row.status = 'rejected'
+    AND (
+      pix_payment_row.failure_code IS NULL
+      OR pix_payment_row.journal_entry_id IS NOT NULL
+      OR pix_payment_row.settlement_journal_entry_id IS NOT NULL
+      OR pix_payment_row.reversal_journal_entry_id IS NOT NULL
+    ) THEN
+    RAISE EXCEPTION 'rejected Pix payment requires failure evidence only';
+  END IF;
+
+  IF pix_payment_row.status = 'approved'
+    AND (
+      pix_payment_row.journal_entry_id IS NULL
+      OR pix_payment_row.settlement_journal_entry_id IS NOT NULL
+      OR pix_payment_row.reversal_journal_entry_id IS NOT NULL
+    ) THEN
+    RAISE EXCEPTION 'approved Pix payment requires approval journal evidence only';
+  END IF;
+
+  IF pix_payment_row.status = 'settled'
+    AND (
+      pix_payment_row.journal_entry_id IS NULL
+      OR pix_payment_row.settlement_journal_entry_id IS NULL
+      OR pix_payment_row.reversal_journal_entry_id IS NOT NULL
+    ) THEN
+    RAISE EXCEPTION 'settled Pix payment requires approval and settlement journal evidence';
+  END IF;
+
+  IF pix_payment_row.status = 'reversed'
+    AND (
+      pix_payment_row.journal_entry_id IS NULL
+      OR pix_payment_row.settlement_journal_entry_id IS NULL
+      OR pix_payment_row.reversal_journal_entry_id IS NULL
+      OR pix_payment_row.reversed_at IS NULL
+      OR pix_payment_row.reversal_reason IS NULL
+    ) THEN
+    RAISE EXCEPTION 'reversed Pix payment requires reversal evidence';
+  END IF;
+
+  IF pix_payment_row.status = 'failed' AND pix_payment_row.failure_code IS NULL THEN
+    RAISE EXCEPTION 'failed Pix payment requires a failure code';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: assert_refund_state_evidence(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_refund_state_evidence() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  refund_row refunds%ROWTYPE;
+BEGIN
+  SELECT * INTO refund_row FROM refunds WHERE id = NEW.id;
+
+  IF refund_row.status = 'settled'
+    AND (refund_row.journal_entry_id IS NULL OR refund_row.settled_at IS NULL) THEN
+    RAISE EXCEPTION 'settled refund requires journal evidence';
+  END IF;
+
+  IF refund_row.status = 'failed' AND refund_row.failure_code IS NULL THEN
+    RAISE EXCEPTION 'failed refund requires a failure code';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
 -- Name: assign_audit_log_hash_chain(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -3096,10 +3264,31 @@ CREATE CONSTRAINT TRIGGER journal_entry_balanced_after_line_insert AFTER INSERT 
 
 
 --
+-- Name: med_cases med_cases_state_evidence_after_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE CONSTRAINT TRIGGER med_cases_state_evidence_after_write AFTER INSERT OR UPDATE ON public.med_cases DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_med_case_state_evidence();
+
+
+--
 -- Name: outbox_events outbox_events_prevent_evidence_mutation; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER outbox_events_prevent_evidence_mutation BEFORE DELETE OR UPDATE ON public.outbox_events FOR EACH ROW EXECUTE FUNCTION public.prevent_outbox_event_evidence_mutation();
+
+
+--
+-- Name: payouts payouts_state_evidence_after_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE CONSTRAINT TRIGGER payouts_state_evidence_after_write AFTER INSERT OR UPDATE ON public.payouts DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_payout_state_evidence();
+
+
+--
+-- Name: pix_payments pix_payments_state_evidence_after_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE CONSTRAINT TRIGGER pix_payments_state_evidence_after_write AFTER INSERT OR UPDATE ON public.pix_payments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_pix_payment_state_evidence();
 
 
 --
@@ -3114,6 +3303,13 @@ CREATE TRIGGER prevent_journal_entry_mutation BEFORE DELETE OR UPDATE ON public.
 --
 
 CREATE TRIGGER prevent_ledger_line_mutation BEFORE DELETE OR UPDATE ON public.ledger_lines FOR EACH ROW EXECUTE FUNCTION public.prevent_ledger_record_mutation();
+
+
+--
+-- Name: refunds refunds_state_evidence_after_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE CONSTRAINT TRIGGER refunds_state_evidence_after_write AFTER INSERT OR UPDATE ON public.refunds DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_refund_state_evidence();
 
 
 --
@@ -3603,6 +3799,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602173000'),
 ('20260602170000'),
 ('20260602161000'),
 ('20260602130000'),

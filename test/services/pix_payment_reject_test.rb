@@ -47,7 +47,7 @@ class PixPaymentRejectTest < ActiveSupport::TestCase
   end
 
   test "only rejects pending-review Pix payments" do
-    pix_payment = build_pix_payment(organization: @organization, wallet: @wallet, status: "approved")
+    pix_payment = build_pix_payment(organization: @organization, wallet: @wallet, status: "created")
 
     assert_raises(Errors::ValidationError) do
       PixPayments::Reject.call(organization: @organization, pix_payment:, reason: "operator_rejected")
@@ -57,13 +57,13 @@ class PixPaymentRejectTest < ActiveSupport::TestCase
   test "revalidates status after locking a stale pending-review instance" do
     pix_payment = build_pix_payment(organization: @organization, wallet: @wallet, status: "pending_review")
     stale_pix_payment = PixPayment.find(pix_payment.id)
-    pix_payment.update!(status: "approved")
+    pix_payment.update!(status: "rejected", failure_code: "already_rejected")
 
     assert_raises(Errors::ValidationError) do
       PixPayments::Reject.call(organization: @organization, pix_payment: stale_pix_payment, reason: "operator_rejected")
     end
 
-    assert pix_payment.reload.approved?
+    assert pix_payment.reload.rejected?
     assert_empty OutboxEvent.where(aggregate_type: "PixPayment", aggregate_id: pix_payment.id, event_type: "pix.payment.rejected")
   end
 end

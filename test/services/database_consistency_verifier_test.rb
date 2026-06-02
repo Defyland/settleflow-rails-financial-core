@@ -12,6 +12,14 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     outbox_guard_check = checks.find { |check| check.name == :outbox_evidence_guards }
     assert outbox_guard_check.details.fetch(:mutation_trigger_present)
     assert outbox_guard_check.details.fetch(:payload_hash_check_present)
+    state_guard_check = checks.find { |check| check.name == :financial_state_evidence_guards }
+    assert_empty state_guard_check.details.fetch(:missing_triggers)
+    assert_equal %w[
+      med_cases_state_evidence_after_write
+      payouts_state_evidence_after_write
+      pix_payments_state_evidence_after_write
+      refunds_state_evidence_after_write
+    ], state_guard_check.details.fetch(:present_triggers)
   end
 
   test "detects balance projection drift from ledger" do
