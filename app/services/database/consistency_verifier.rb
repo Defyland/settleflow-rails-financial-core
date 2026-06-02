@@ -16,6 +16,7 @@ module Database
         audit_anchor_chain_check,
         outbox_evidence_guards_check,
         idempotency_evidence_guards_check,
+        processed_event_evidence_guards_check,
         financial_state_evidence_guards_check,
         journal_balance_check,
         negative_projection_check,
@@ -72,6 +73,11 @@ module Database
     end
 
     def outbox_evidence_guards_check
+      expected_constraints = %w[
+        outbox_events_payload_sha256_hex_check
+        outbox_events_status_check
+        outbox_events_delivery_state_check
+      ]
       trigger_present = catalog_value(<<~SQL.squish)
         SELECT EXISTS (
           SELECT 1
@@ -82,21 +88,21 @@ module Database
             AND tgenabled <> 'D'
         )
       SQL
-      payload_hash_check_present = catalog_value(<<~SQL.squish)
-        SELECT EXISTS (
-          SELECT 1
-          FROM pg_constraint
-          WHERE conname = 'outbox_events_payload_sha256_hex_check'
-            AND conrelid = 'outbox_events'::regclass
-        )
+      enabled_constraints = ActiveRecord::Base.connection.select_values(<<~SQL.squish)
+        SELECT conname
+        FROM pg_constraint
+        WHERE conrelid = 'outbox_events'::regclass
       SQL
+      present_constraints = enabled_constraints & expected_constraints
+      missing_constraints = expected_constraints - present_constraints
 
       Check.new(
         name: :outbox_evidence_guards,
-        ok: trigger_present && payload_hash_check_present,
+        ok: trigger_present && missing_constraints.empty?,
         details: {
           mutation_trigger_present: trigger_present,
-          payload_hash_check_present:
+          present_constraints: present_constraints.sort,
+          missing_constraints:
         }
       )
     end
@@ -133,6 +139,55 @@ module Database
           mutation_trigger_present: trigger_present,
           present_constraints: present_constraints.sort,
           missing_constraints:
+        }
+      )
+    end
+
+    def processed_event_evidence_guards_check
+      expected_constraints = %w[
+        processed_events_status_check
+        processed_events_payload_sha256_hex_check
+        processed_events_state_evidence_check
+      ]
+      enabled_constraints = ActiveRecord::Base.connection.select_values(<<~SQL.squish)
+        SELECT conname
+        FROM pg_constraint
+        WHERE conrelid = 'processed_events'::regclass
+      SQL
+      present_constraints = enabled_constraints & expected_constraints
+      trigger_present = catalog_value(<<~SQL.squish)
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_trigger
+          WHERE tgname = 'processed_events_prevent_evidence_mutation'
+            AND tgrelid = 'processed_events'::regclass
+            AND NOT tgisinternal
+            AND tgenabled <> 'D'
+        )
+      SQL
+      mismatch_count = ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
+        SELECT COUNT(*)
+        FROM processed_events pe
+        LEFT JOIN outbox_events oe ON oe.id = pe.outbox_event_id
+        WHERE oe.id IS NULL
+           OR oe.status <> 'published'
+           OR oe.published_at IS NULL
+           OR oe.payload_sha256 IS NULL
+           OR oe.organization_id <> pe.organization_id
+           OR oe.public_id::text <> pe.event_id
+           OR oe.event_type <> pe.event_type
+           OR oe.payload_sha256 <> pe.payload_sha256
+      SQL
+      missing_constraints = expected_constraints - present_constraints
+
+      Check.new(
+        name: :processed_event_evidence_guards,
+        ok: trigger_present && missing_constraints.empty? && mismatch_count.zero?,
+        details: {
+          mutation_trigger_present: trigger_present,
+          present_constraints: present_constraints.sort,
+          missing_constraints:,
+          outbox_evidence_mismatches: mismatch_count
         }
       )
     end

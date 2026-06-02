@@ -192,10 +192,31 @@ class OpsConsoleRequestTest < ActionDispatch::IntegrationTest
     assert_includes enqueued_jobs.map { |job| job[:job] }, OutboxPublishJob
   end
 
+  test "does not retry already published outbox events" do
+    event = OutboxEvent.pending.first
+    publish_outbox_event(event)
+    clear_enqueued_jobs
+    sign_in
+
+    post retry_ops_outbox_event_path(event.public_id)
+
+    assert_redirected_to ops_outbox_events_path(status: "published")
+    assert_empty enqueued_jobs.select { |job| job[:job] == OutboxPublishJob }
+    assert event.reload.published?
+  end
+
   private
 
   def sign_in(user = @operator)
     post session_path, params: { email_address: user.email_address, password: "strong-password-123" }
     assert_redirected_to root_path
+  end
+
+  def publish_outbox_event(event)
+    event.claim_for_publish!
+    event.publish!(
+      Outbox::DeliveryResult.new(adapter: "test", destination: "memory://outbox", message_id: "msg-#{event.public_id}"),
+      payload_sha256: Outbox::Publisher.payload_sha256(Outbox::Publisher.envelope_for(event))
+    )
   end
 end

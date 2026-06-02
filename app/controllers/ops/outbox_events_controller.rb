@@ -12,10 +12,13 @@ module Ops
 
     def retry
       event = find_public!(OutboxEvent.includes(:organization), params[:id])
-      event.reset_for_retry!
-      OutboxPublishJob.perform_later(event.id)
-      operator_audit!(action: "ops.outbox.retry", subject: event, metadata: { event_type: event.event_type })
-      redirect_to ops_outbox_events_path(status: "pending"), notice: "Outbox event queued for retry."
+      if event.reset_for_retry!
+        OutboxPublishJob.perform_later(event.id)
+        operator_audit!(action: "ops.outbox.retry", subject: event, metadata: { event_type: event.event_type })
+        redirect_to ops_outbox_events_path(status: "pending"), notice: "Outbox event queued for retry."
+      else
+        redirect_to ops_outbox_events_path(status: event.status), alert: "Outbox event cannot be retried from its current state."
+      end
     end
   end
 end

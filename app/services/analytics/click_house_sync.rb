@@ -98,7 +98,17 @@ module Analytics
     end
 
     def payload_sha256
-      @payload_sha256 ||= Outbox::Publisher.payload_sha256(envelope)
+      @payload_sha256 ||= begin
+        calculated_payload_sha256 = Outbox::Publisher.payload_sha256(envelope)
+        unless outbox_event.payload_sha256 == calculated_payload_sha256
+          raise Errors::ValidationError.new(
+            "Outbox payload hash does not match the published envelope",
+            details: { outbox_event_id: outbox_event.public_id }
+          )
+        end
+
+        calculated_payload_sha256
+      end
     end
 
     def envelope
@@ -112,7 +122,7 @@ module Analytics
       processed_event.update!(
         status: "failed",
         error_class: error.class.name,
-        last_error: error.message
+        last_error: error.message.presence || error.class.name
       )
     rescue StandardError
       nil

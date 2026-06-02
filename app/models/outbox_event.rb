@@ -22,6 +22,8 @@ class OutboxEvent < ApplicationRecord
   scope :attention, -> { where(status: %w[pending publishing dead_lettered]) }
 
   validates :aggregate_type, :aggregate_id, :event_type, presence: true
+  validates :payload_sha256, format: { with: /\A[0-9a-f]{64}\z/ }, allow_nil: true
+  validate :new_records_start_unpublished
 
   def claim_for_publish!
     with_lock do
@@ -97,6 +99,7 @@ class OutboxEvent < ApplicationRecord
 
   def reset_for_retry!
     with_lock do
+      return false if published?
       return false if publishing? && !publishing_stale?
 
       update!(
@@ -125,5 +128,24 @@ class OutboxEvent < ApplicationRecord
 
   def publishing_stale?
     last_attempted_at.blank? || last_attempted_at <= PUBLISHING_LOCK_TIMEOUT.ago
+  end
+
+  def new_records_start_unpublished
+    return unless new_record?
+
+    return if pending? &&
+      attempts.zero? &&
+      published_at.blank? &&
+      last_error.blank? &&
+      next_attempt_at.blank? &&
+      last_attempted_at.blank? &&
+      dead_lettered_at.blank? &&
+      error_class.blank? &&
+      publisher.blank? &&
+      published_to.blank? &&
+      publisher_message_id.blank? &&
+      payload_sha256.blank?
+
+    errors.add(:base, "outbox events must start pending and unpublished")
   end
 end

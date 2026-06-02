@@ -8,7 +8,7 @@ ClickHouse is used for analytical financial event scans and reporting. It is not
 2. `OutboxPublishJob` publishes the outbox event.
 3. If `CLICKHOUSE_URL` is configured, `ClickHouseSyncJob` is enqueued.
 4. `Analytics::ClickHouseSync` inserts a denormalized event row into ClickHouse with `JSONEachRow`.
-5. `processed_events` records processor status, stores the outbox envelope hash, rejects hash drift, and prevents duplicate ingestion.
+5. `processed_events` records processor status, stores the outbox envelope hash, rejects hash drift, requires a matching published outbox event in PostgreSQL, and prevents duplicate ingestion.
 
 ## Schema
 
@@ -46,4 +46,4 @@ CLICKHOUSE_URL=http://localhost:8123 bin/rails clickhouse:verify
 
 ClickHouse sync failure does not roll back PostgreSQL financial state. Failed sync rows remain in `processed_events` and can be retried with the backfill task.
 
-PostgreSQL still owns processor state. ClickHouse dedupe prevents duplicated analytical counts when a retry repeats an insert for the same `event_id`, but it is not a source of truth and must not be used to repair financial balances. If a stored `processed_events.payload_sha256` differs from the current outbox envelope hash, the sync fails instead of inserting an ambiguous analytics row.
+PostgreSQL still owns processor state. ClickHouse dedupe prevents duplicated analytical counts when a retry repeats an insert for the same `event_id`, but it is not a source of truth and must not be used to repair financial balances. PostgreSQL rejects processed-event rows unless they match a published outbox event by organization, public event ID, event type, and payload hash. If the stored outbox hash differs from the current outbox envelope hash, the sync fails instead of inserting an ambiguous analytics row.

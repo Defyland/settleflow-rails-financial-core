@@ -85,16 +85,28 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
       correlation_id: "db-invariant-outbox",
       idempotency_key: "db-invariant-outbox"
     )
-    event.claim_for_publish!
-    event.publish!(
-      Outbox::DeliveryResult.new(adapter: "test", destination: "memory://outbox", message_id: "msg-#{event.public_id}"),
-      payload_sha256: Outbox::Publisher.payload_sha256(Outbox::Publisher.envelope_for(event))
-    )
+    publish_outbox_event(event)
 
     assert_database_constraint_violation { event.update_columns(payload: { tampered: true }) }
     assert_database_constraint_violation { event.update_columns(event_type: "wallet.tampered") }
     assert_database_constraint_violation { event.update_columns(payload_sha256: "b" * 64) }
+    assert_database_constraint_violation { event.update_columns(status: "pending") }
     assert_database_constraint_violation { OutboxEvent.where(id: event.id).delete_all }
+    assert_database_constraint_violation do
+      OutboxEvent.insert!({
+        organization_id: @organization.id,
+        aggregate_type: "Wallet",
+        aggregate_id: @wallet.id,
+        event_type: "wallet.fake_published",
+        status: "published",
+        attempts: 1,
+        published_at: Time.current,
+        payload: { wallet_id: @wallet.public_id },
+        payload_sha256: "a" * 64,
+        created_at: Time.current,
+        updated_at: Time.current
+      })
+    end
   end
 
   test "database rejects malformed outbox payload hashes" do
@@ -107,6 +119,60 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
 
     assert_database_constraint_violation { event.update_columns(payload_sha256: "not-a-sha") }
     assert_database_constraint_violation { event.update_columns(payload_sha256: "b" * 64) }
+  end
+
+  test "database rejects direct processed event evidence tampering" do
+    event = OutboxEvents::Emit.call(
+      organization: @organization,
+      aggregate: @wallet,
+      event_type: "wallet.processed_event_test",
+      payload: { wallet_id: @wallet.public_id }
+    )
+    publish_outbox_event(event)
+    processed_event = @organization.processed_events.create!(
+      outbox_event: event,
+      processor: "clickhouse_financial_events",
+      event_id: event.public_id,
+      event_type: event.event_type,
+      payload_sha256: event.payload_sha256,
+      status: "processing"
+    )
+
+    assert_database_constraint_violation { processed_event.update_columns(event_type: "wallet.tampered") }
+    assert_database_constraint_violation { processed_event.update_columns(payload_sha256: "b" * 64) }
+    assert_database_constraint_violation do
+      ProcessedEvent.insert!({
+        organization_id: @organization.id,
+        outbox_event_id: event.id,
+        processor: "clickhouse_financial_events_direct",
+        event_id: event.public_id,
+        event_type: event.event_type,
+        payload_sha256: event.payload_sha256,
+        status: "processed",
+        processed_at: Time.current,
+        created_at: Time.current,
+        updated_at: Time.current
+      })
+    end
+    assert_database_constraint_violation do
+      ProcessedEvent.insert!({
+        organization_id: @organization.id,
+        outbox_event_id: event.id,
+        processor: "clickhouse_financial_events_mismatch",
+        event_id: SecureRandom.uuid,
+        event_type: event.event_type,
+        payload_sha256: event.payload_sha256,
+        status: "processing",
+        created_at: Time.current,
+        updated_at: Time.current
+      })
+    end
+
+    processed_event.reload
+    processed_event.update!(status: "processed", processed_at: Time.current)
+
+    assert_database_constraint_violation { processed_event.update_columns(status: "failed", processed_at: nil, error_class: "RuntimeError", last_error: "tampered") }
+    assert_database_constraint_violation { ProcessedEvent.where(id: processed_event.id).delete_all }
   end
 
   test "database rejects direct idempotency replay evidence tampering" do
@@ -258,6 +324,15 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
   end
 
   private
+
+  def publish_outbox_event(event)
+    event.claim_for_publish!
+    event.publish!(
+      Outbox::DeliveryResult.new(adapter: "test", destination: "memory://outbox", message_id: "msg-#{event.public_id}"),
+      payload_sha256: Outbox::Publisher.payload_sha256(Outbox::Publisher.envelope_for(event))
+    )
+    event.reload
+  end
 
   def post_test_journal
     destination_wallet = create_wallet(organization: @organization)

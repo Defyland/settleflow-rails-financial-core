@@ -11,7 +11,12 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     assert checks.all?(&:ok), checks.map { |check| [ check.name, check.details ] }.inspect
     outbox_guard_check = checks.find { |check| check.name == :outbox_evidence_guards }
     assert outbox_guard_check.details.fetch(:mutation_trigger_present)
-    assert outbox_guard_check.details.fetch(:payload_hash_check_present)
+    assert_empty outbox_guard_check.details.fetch(:missing_constraints)
+    assert_equal %w[
+      outbox_events_delivery_state_check
+      outbox_events_payload_sha256_hex_check
+      outbox_events_status_check
+    ], outbox_guard_check.details.fetch(:present_constraints)
     idempotency_guard_check = checks.find { |check| check.name == :idempotency_evidence_guards }
     assert idempotency_guard_check.details.fetch(:mutation_trigger_present)
     assert_empty idempotency_guard_check.details.fetch(:missing_constraints)
@@ -21,6 +26,15 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
       idempotency_keys_response_state_check
       idempotency_keys_status_check
     ], idempotency_guard_check.details.fetch(:present_constraints)
+    processed_event_guard_check = checks.find { |check| check.name == :processed_event_evidence_guards }
+    assert processed_event_guard_check.details.fetch(:mutation_trigger_present)
+    assert_empty processed_event_guard_check.details.fetch(:missing_constraints)
+    assert_equal 0, processed_event_guard_check.details.fetch(:outbox_evidence_mismatches)
+    assert_equal %w[
+      processed_events_payload_sha256_hex_check
+      processed_events_state_evidence_check
+      processed_events_status_check
+    ], processed_event_guard_check.details.fetch(:present_constraints)
     state_guard_check = checks.find { |check| check.name == :financial_state_evidence_guards }
     assert_empty state_guard_check.details.fetch(:missing_triggers)
     assert_equal %w[

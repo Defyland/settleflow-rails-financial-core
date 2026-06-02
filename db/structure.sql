@@ -266,6 +266,62 @@ END;
 $$;
 
 
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: processed_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.processed_events (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    outbox_event_id bigint NOT NULL,
+    processor character varying NOT NULL,
+    event_id character varying NOT NULL,
+    event_type character varying NOT NULL,
+    status character varying DEFAULT 'processing'::character varying NOT NULL,
+    payload_sha256 character varying NOT NULL,
+    processed_at timestamp(6) without time zone,
+    error_class character varying,
+    last_error text,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT processed_events_payload_sha256_hex_check CHECK (((payload_sha256)::text ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT processed_events_state_evidence_check CHECK (((((status)::text = 'processing'::text) AND (processed_at IS NULL) AND (error_class IS NULL) AND (last_error IS NULL)) OR (((status)::text = 'processed'::text) AND (processed_at IS NOT NULL) AND (error_class IS NULL) AND (last_error IS NULL)) OR (((status)::text = 'failed'::text) AND (processed_at IS NULL) AND (error_class IS NOT NULL) AND (btrim((error_class)::text) <> ''::text) AND (last_error IS NOT NULL) AND (btrim(last_error) <> ''::text)))),
+    CONSTRAINT processed_events_status_check CHECK (((status)::text = ANY ((ARRAY['processing'::character varying, 'processed'::character varying, 'failed'::character varying])::text[])))
+);
+
+
+--
+-- Name: assert_processed_event_outbox_evidence(public.processed_events); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_processed_event_outbox_evidence(processed_event_row public.processed_events) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM outbox_events
+    WHERE outbox_events.id = processed_event_row.outbox_event_id
+      AND outbox_events.organization_id = processed_event_row.organization_id
+      AND outbox_events.public_id::text = processed_event_row.event_id
+      AND outbox_events.event_type = processed_event_row.event_type
+      AND outbox_events.payload_sha256 = processed_event_row.payload_sha256
+      AND outbox_events.status = 'published'
+      AND outbox_events.published_at IS NOT NULL
+      AND outbox_events.payload_sha256 IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'processed event must match a published outbox event';
+  END IF;
+END;
+$$;
+
+
 --
 -- Name: assert_refund_state_evidence(); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -460,10 +516,6 @@ BEGIN
 END;
 $$;
 
-
-SET default_tablespace = '';
-
-SET default_table_access_method = heap;
 
 --
 -- Name: audit_log_anchors; Type: TABLE; Schema: public; Owner: -
@@ -707,8 +759,31 @@ CREATE FUNCTION public.prevent_outbox_event_evidence_mutation() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.status <> 'pending'
+      OR NEW.attempts <> 0
+      OR NEW.published_at IS NOT NULL
+      OR NEW.last_error IS NOT NULL
+      OR NEW.next_attempt_at IS NOT NULL
+      OR NEW.last_attempted_at IS NOT NULL
+      OR NEW.dead_lettered_at IS NOT NULL
+      OR NEW.error_class IS NOT NULL
+      OR NEW.publisher IS NOT NULL
+      OR NEW.published_to IS NOT NULL
+      OR NEW.publisher_message_id IS NOT NULL
+      OR NEW.payload_sha256 IS NOT NULL THEN
+      RAISE EXCEPTION 'outbox events must start as pending unpublished evidence';
+    END IF;
+
+    RETURN NEW;
+  END IF;
+
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'outbox events are append-only evidence';
+  END IF;
+
+  IF OLD.status = 'published' THEN
+    RAISE EXCEPTION 'published outbox events are immutable delivery evidence';
   END IF;
 
   IF OLD.public_id IS DISTINCT FROM NEW.public_id
@@ -734,6 +809,52 @@ BEGIN
     RAISE EXCEPTION 'outbox event payload hash can only be set during publication';
   END IF;
 
+  RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: prevent_processed_event_evidence_mutation(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.prevent_processed_event_evidence_mutation() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'processed events are downstream processing evidence';
+  END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.status <> 'processing' THEN
+      RAISE EXCEPTION 'processed events must start processing';
+    END IF;
+
+    PERFORM assert_processed_event_outbox_evidence(NEW);
+    RETURN NEW;
+  END IF;
+
+  IF OLD.organization_id IS DISTINCT FROM NEW.organization_id
+    OR OLD.public_id IS DISTINCT FROM NEW.public_id
+    OR OLD.outbox_event_id IS DISTINCT FROM NEW.outbox_event_id
+    OR OLD.processor IS DISTINCT FROM NEW.processor
+    OR OLD.event_id IS DISTINCT FROM NEW.event_id
+    OR OLD.event_type IS DISTINCT FROM NEW.event_type
+    OR OLD.payload_sha256 IS DISTINCT FROM NEW.payload_sha256
+    OR OLD.created_at IS DISTINCT FROM NEW.created_at THEN
+    RAISE EXCEPTION 'processed event identity is immutable';
+  END IF;
+
+  IF OLD.status = 'processed' THEN
+    RAISE EXCEPTION 'processed events are immutable after success';
+  END IF;
+
+  IF NEW.status = 'processed' AND OLD.status NOT IN ('processing', 'failed') THEN
+    RAISE EXCEPTION 'processed events can only succeed from processing or failed';
+  END IF;
+
+  PERFORM assert_processed_event_outbox_evidence(NEW);
   RETURN NEW;
 END;
 $$;
@@ -1415,7 +1536,9 @@ CREATE TABLE public.outbox_events (
     published_to character varying,
     publisher_message_id character varying,
     payload_sha256 character varying,
-    CONSTRAINT outbox_events_payload_sha256_hex_check CHECK (((payload_sha256 IS NULL) OR ((payload_sha256)::text ~ '^[0-9a-f]{64}$'::text)))
+    CONSTRAINT outbox_events_delivery_state_check CHECK (((((status)::text = 'pending'::text) AND (published_at IS NULL) AND (dead_lettered_at IS NULL) AND (payload_sha256 IS NULL)) OR (((status)::text = 'publishing'::text) AND (last_attempted_at IS NOT NULL) AND (published_at IS NULL) AND (dead_lettered_at IS NULL) AND (payload_sha256 IS NULL)) OR (((status)::text = 'published'::text) AND (published_at IS NOT NULL) AND (payload_sha256 IS NOT NULL) AND (dead_lettered_at IS NULL)) OR (((status)::text = 'dead_lettered'::text) AND (published_at IS NULL) AND (payload_sha256 IS NULL) AND (dead_lettered_at IS NOT NULL) AND (error_class IS NOT NULL) AND (btrim((error_class)::text) <> ''::text) AND (last_error IS NOT NULL) AND (btrim((last_error)::text) <> ''::text)))),
+    CONSTRAINT outbox_events_payload_sha256_hex_check CHECK (((payload_sha256 IS NULL) OR ((payload_sha256)::text ~ '^[0-9a-f]{64}$'::text))),
+    CONSTRAINT outbox_events_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'publishing'::character varying, 'published'::character varying, 'dead_lettered'::character varying])::text[])))
 );
 
 
@@ -1538,30 +1661,6 @@ CREATE SEQUENCE public.pix_payments_id_seq
 --
 
 ALTER SEQUENCE public.pix_payments_id_seq OWNED BY public.pix_payments.id;
-
-
---
--- Name: processed_events; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.processed_events (
-    id bigint NOT NULL,
-    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
-    organization_id bigint NOT NULL,
-    outbox_event_id bigint NOT NULL,
-    processor character varying NOT NULL,
-    event_id character varying NOT NULL,
-    event_type character varying NOT NULL,
-    status character varying DEFAULT 'processing'::character varying NOT NULL,
-    payload_sha256 character varying NOT NULL,
-    processed_at timestamp(6) without time zone,
-    error_class character varying,
-    last_error text,
-    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
-    created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL,
-    CONSTRAINT processed_events_status_check CHECK (((status)::text = ANY ((ARRAY['processing'::character varying, 'processed'::character varying, 'failed'::character varying])::text[])))
-);
 
 
 --
@@ -3516,7 +3615,7 @@ CREATE CONSTRAINT TRIGGER med_cases_state_evidence_after_write AFTER INSERT OR U
 -- Name: outbox_events outbox_events_prevent_evidence_mutation; Type: TRIGGER; Schema: public; Owner: -
 --
 
-CREATE TRIGGER outbox_events_prevent_evidence_mutation BEFORE DELETE OR UPDATE ON public.outbox_events FOR EACH ROW EXECUTE FUNCTION public.prevent_outbox_event_evidence_mutation();
+CREATE TRIGGER outbox_events_prevent_evidence_mutation BEFORE INSERT OR DELETE OR UPDATE ON public.outbox_events FOR EACH ROW EXECUTE FUNCTION public.prevent_outbox_event_evidence_mutation();
 
 
 --
@@ -3545,6 +3644,13 @@ CREATE TRIGGER prevent_journal_entry_mutation BEFORE DELETE OR UPDATE ON public.
 --
 
 CREATE TRIGGER prevent_ledger_line_mutation BEFORE DELETE OR UPDATE ON public.ledger_lines FOR EACH ROW EXECUTE FUNCTION public.prevent_ledger_record_mutation();
+
+
+--
+-- Name: processed_events processed_events_prevent_evidence_mutation; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER processed_events_prevent_evidence_mutation BEFORE INSERT OR DELETE OR UPDATE ON public.processed_events FOR EACH ROW EXECUTE FUNCTION public.prevent_processed_event_evidence_mutation();
 
 
 --
@@ -4062,6 +4168,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602190000'),
 ('20260602183000'),
 ('20260602180000'),
 ('20260602173000'),
