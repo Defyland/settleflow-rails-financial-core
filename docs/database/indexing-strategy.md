@@ -24,6 +24,7 @@ Indexes are designed around tenant-scoped financial reads, idempotent writes, qu
 ## Reconciliation
 
 - `reconciliation_runs` has unique `(organization_id, provider, statement_date)`.
+- `reconciliation_rows` has run/status, run/external ID, organization/day/status, organization/external ID, and unique run/type/external ID indexes for discrepancy review and provider-file matching without duplicate evidence rows.
 - `balance_snapshots` has unique `(organization_id, wallet_id, currency, captured_on)` and `(organization_id, captured_on)` for daily drift scans.
 
 ## Validation

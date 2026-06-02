@@ -6,7 +6,8 @@ module Database
       "journal_entries",
       "ledger_lines",
       "audit_logs",
-      "reconciliation_runs"
+      "reconciliation_runs",
+      "reconciliation_rows"
     ].freeze
 
     def self.call(...)

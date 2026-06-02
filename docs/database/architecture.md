@@ -1,10 +1,10 @@
 # Database Architecture
 
-SettleFlow is an OLTP-first financial core. PostgreSQL is the only source of truth for money movement, balances, idempotency, outbox state, processed events, reconciliation runs, operator approvals, and audit evidence.
+SettleFlow is an OLTP-first financial core. PostgreSQL is the only source of truth for money movement, balances, idempotency, outbox state, processed events, reconciliation runs and rows, operator approvals, and audit evidence.
 
 ## Boundaries
 
-- PostgreSQL stores financial facts: `journal_entries`, `ledger_lines`, `balance_projections`, `balance_snapshots`, `idempotency_keys`, `outbox_events`, `processed_events`, and domain command tables.
+- PostgreSQL stores financial facts: `journal_entries`, `ledger_lines`, `balance_projections`, `balance_snapshots`, `idempotency_keys`, `outbox_events`, `processed_events`, `reconciliation_runs`, `reconciliation_rows`, and domain command tables.
 - ClickHouse is analytics-only. It receives published outbox events and stores denormalized financial event rows for reporting, dashboards, retention-friendly exports, and large scans.
 - Redis is not a source of truth. If enabled, Redis is limited to cache, rate-limit counters, and temporary non-financial locks.
 
@@ -14,6 +14,7 @@ SettleFlow is an OLTP-first financial core. PostgreSQL is the only source of tru
 - `balance_projections` are derived read models and can be rebuilt from wallet liability ledger accounts.
 - `balance_snapshots` capture projection-vs-ledger comparisons for daily explainability.
 - `idempotency_keys` preserve write command identity and replay behavior.
+- `reconciliation_runs` and `reconciliation_rows` preserve provider-vs-ledger discrepancy evidence.
 - `outbox_events` preserve integration delivery evidence.
 - `processed_events` records downstream processors such as ClickHouse sync and prevents duplicate analytics ingestion.
 - `audit_log_anchors` stores append-only anchor records for exported audit hash-chain tail evidence.

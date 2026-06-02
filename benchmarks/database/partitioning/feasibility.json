@@ -175,6 +175,23 @@
         "severity": "blocker",
         "message": "foreign key references this table without the intended partition key",
         "details": {
+          "constraint_name": "fk_rails_d410954a4e",
+          "source_table": "reconciliation_rows",
+          "source_columns": [
+            "journal_entry_id"
+          ],
+          "target_table": "journal_entries",
+          "target_columns": [
+            "id"
+          ],
+          "partition_key": "occurred_at"
+        }
+      },
+      {
+        "code": "foreign_key_references_without_partition_key",
+        "severity": "blocker",
+        "message": "foreign key references this table without the intended partition key",
+        "details": {
           "constraint_name": "fk_rails_94ce031b15",
           "source_table": "refunds",
           "source_columns": [
@@ -391,6 +408,79 @@
             "id"
           ],
           "partition_key": "statement_date",
+          "partial": false,
+          "predicate": null
+        }
+      },
+      {
+        "code": "foreign_key_references_without_partition_key",
+        "severity": "blocker",
+        "message": "foreign key references this table without the intended partition key",
+        "details": {
+          "constraint_name": "fk_rails_48a7f59771",
+          "source_table": "reconciliation_rows",
+          "source_columns": [
+            "reconciliation_run_id"
+          ],
+          "target_table": "reconciliation_runs",
+          "target_columns": [
+            "id"
+          ],
+          "partition_key": "statement_date"
+        }
+      }
+    ],
+    "warnings": []
+  },
+  {
+    "table": "reconciliation_rows",
+    "partition_key": "occurred_on",
+    "strategy": "monthly_range",
+    "ready": false,
+    "blockers": [
+      {
+        "code": "unique_index_missing_partition_key",
+        "severity": "blocker",
+        "message": "PostgreSQL partitioned-table uniqueness must include every partition key column",
+        "details": {
+          "table": "reconciliation_rows",
+          "index_name": "idx_reconciliation_rows_run_type_external_id",
+          "columns": [
+            "reconciliation_run_id",
+            "row_type",
+            "external_id"
+          ],
+          "partition_key": "occurred_on",
+          "partial": false,
+          "predicate": null
+        }
+      },
+      {
+        "code": "unique_index_missing_partition_key",
+        "severity": "blocker",
+        "message": "PostgreSQL partitioned-table uniqueness must include every partition key column",
+        "details": {
+          "table": "reconciliation_rows",
+          "index_name": "index_reconciliation_rows_on_public_id",
+          "columns": [
+            "public_id"
+          ],
+          "partition_key": "occurred_on",
+          "partial": false,
+          "predicate": null
+        }
+      },
+      {
+        "code": "primary_key_missing_partition_key",
+        "severity": "blocker",
+        "message": "PostgreSQL partitioned-table uniqueness must include every partition key column",
+        "details": {
+          "table": "reconciliation_rows",
+          "index_name": "reconciliation_rows_pkey",
+          "columns": [
+            "id"
+          ],
+          "partition_key": "occurred_on",
           "partial": false,
           "predicate": null
         }

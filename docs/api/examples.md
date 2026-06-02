@@ -182,6 +182,9 @@ curl -sS "$BASE_URL/v1/reconciliation_runs" \
   -d '{
     "provider": "bank-sandbox",
     "statement_date": "2026-05-29",
-    "provider_balance_cents": 10000
+    "provider_balance_cents": 10000,
+    "statement_entries": [
+      { "external_id": "funding-001", "amount_cents": 10000, "occurred_on": "2026-05-29" }
+    ]
   }'
 ```

@@ -1,5 +1,6 @@
 class ReconciliationRun < ApplicationRecord
   belongs_to :organization
+  has_many :reconciliation_rows, dependent: :restrict_with_exception
 
   enum :status, { matched: "matched", discrepant: "discrepant" }
 

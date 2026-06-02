@@ -9,7 +9,7 @@ module Ops
     end
 
     def show
-      @run = find_public!(ReconciliationRun.includes(:organization), params[:id])
+      @run = find_public!(ReconciliationRun.includes(:organization, reconciliation_rows: :journal_entry), params[:id])
     end
   end
 end

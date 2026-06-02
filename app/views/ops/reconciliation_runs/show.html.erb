@@ -27,6 +27,44 @@
 
 <section class="panel">
   <div class="panel__header">
+    <h2>Rows</h2>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Status</th>
+        <th>External ID</th>
+        <th>Provider</th>
+        <th>Ledger</th>
+        <th>Diff</th>
+        <th>Journal</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @run.reconciliation_rows.order(:id).each do |row| %>
+        <tr>
+          <td><%= row.row_type.humanize %></td>
+          <td><span class="status status--<%= row.status %>"><%= row.status.humanize %></span></td>
+          <td><%= row.external_id %></td>
+          <td><%= money_cents(row.provider_amount_cents) %></td>
+          <td><%= money_cents(row.ledger_amount_cents) %></td>
+          <td><%= money_cents(row.difference_cents) %></td>
+          <td>
+            <% if row.journal_entry.present? %>
+              <%= link_to row.journal_entry.public_id, ops_ledger_entry_path(row.journal_entry.public_id) %>
+            <% else %>
+              -
+            <% end %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <div class="panel__header">
     <h2>Metadata</h2>
   </div>
   <pre><%= JSON.pretty_generate(@run.metadata) %></pre>

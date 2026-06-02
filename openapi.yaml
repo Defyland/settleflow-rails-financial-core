@@ -1459,8 +1459,66 @@ components:
           format: int64
         currency:
           type: string
+        statement_entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReconciliationStatementEntry"
         metadata:
           $ref: "#/components/schemas/Metadata"
+    ReconciliationStatementEntry:
+      type: object
+      required: [external_id, amount_cents]
+      properties:
+        external_id:
+          type: string
+        amount_cents:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        occurred_on:
+          type: string
+          format: date
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+    ReconciliationRow:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        row_type:
+          type: string
+          enum: [cash_balance, projection_balance, provider_statement_entry, ledger_statement_entry]
+        status:
+          type: string
+          enum: [matched, discrepant, missing_in_ledger, missing_in_provider]
+        external_id:
+          type: string
+          nullable: true
+        occurred_on:
+          type: string
+          format: date
+        provider_amount_cents:
+          type: integer
+          format: int64
+        ledger_amount_cents:
+          type: integer
+          format: int64
+        difference_cents:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        journal_entry_id:
+          type: string
+          format: uuid
+          nullable: true
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        created_at:
+          type: string
+          format: date-time
     ReconciliationRun:
       type: object
       properties:
@@ -1484,6 +1542,14 @@ components:
         status:
           type: string
           enum: [matched, discrepant]
+        rows_summary:
+          type: object
+          additionalProperties:
+            type: integer
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReconciliationRow"
         metadata:
           $ref: "#/components/schemas/Metadata"
         created_at:

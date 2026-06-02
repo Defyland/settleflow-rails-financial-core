@@ -17,6 +17,7 @@ class DatabasePartitionFeasibilityTest < ActiveSupport::TestCase
     journal_entries = checks.find { |check| check.table == "journal_entries" }
     audit_logs = checks.find { |check| check.table == "audit_logs" }
     reconciliation_runs = checks.find { |check| check.table == "reconciliation_runs" }
+    reconciliation_rows = checks.find { |check| check.table == "reconciliation_rows" }
 
     assert_not journal_entries.ready
     assert_blocker journal_entries, :primary_key_missing_partition_key, index_name: "journal_entries_pkey"
@@ -30,7 +31,12 @@ class DatabasePartitionFeasibilityTest < ActiveSupport::TestCase
 
     assert_not reconciliation_runs.ready
     assert_blocker reconciliation_runs, :primary_key_missing_partition_key, index_name: "reconciliation_runs_pkey"
-    assert_no_blocker reconciliation_runs, :foreign_key_references_without_partition_key
+    assert_blocker reconciliation_runs, :foreign_key_references_without_partition_key, source_table: "reconciliation_rows"
+
+    assert_not reconciliation_rows.ready
+    assert_blocker reconciliation_rows, :primary_key_missing_partition_key, index_name: "reconciliation_rows_pkey"
+    assert_blocker reconciliation_rows, :unique_index_missing_partition_key, index_name: "idx_reconciliation_rows_run_type_external_id"
+    assert_blocker reconciliation_rows, :unique_index_missing_partition_key, index_name: "index_reconciliation_rows_on_public_id"
   end
 
   test "does not report nullable partition keys in current schema" do

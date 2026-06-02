@@ -11,6 +11,7 @@ module Database
       outbox_events
       pix_payments
       processed_events
+      reconciliation_rows
       reconciliation_runs
     ].freeze
 

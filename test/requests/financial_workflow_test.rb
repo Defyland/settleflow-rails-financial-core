@@ -80,6 +80,60 @@ class FinancialWorkflowTest < ActionDispatch::IntegrationTest
     assert_not @organization.customers.exists?(external_id: "missing-idempotency")
   end
 
+  test "creates reconciliation rows from provider statement entries" do
+    wallet = create_wallet(organization: @organization, external_id: "recon-api-row-wallet")
+    fund_wallet(organization: @organization, wallet:, external_id: "recon-api-row-funding", amount_cents: 5_000)
+
+    post_json "/v1/reconciliation_runs", {
+      provider: "bank-sandbox",
+      statement_date: Date.current.iso8601,
+      provider_balance_cents: 5_000,
+      statement_entries: [
+        { external_id: "recon-api-row-funding", amount_cents: 5_000, occurred_on: Date.current.iso8601 }
+      ]
+    }, headers: auth_headers(@api_key, "Idempotency-Key" => "recon-api-row")
+
+    assert_response :created
+    assert_equal "matched", json_body.dig("data", "status")
+    assert_equal({ "matched" => 3 }, json_body.dig("data", "rows_summary"))
+
+    get "/v1/reconciliation_runs/#{json_body.dig("data", "id")}", headers: auth_headers(@api_key)
+
+    assert_response :ok
+    assert_equal 3, json_body.dig("data", "rows").size
+    assert_equal "provider_statement_entry", json_body.dig("data", "rows").last.fetch("row_type")
+  end
+
+  test "rejects malformed reconciliation statement entries" do
+    assert_no_difference -> { @organization.reconciliation_runs.count } do
+      post_json "/v1/reconciliation_runs", {
+        provider: "bank-sandbox",
+        statement_date: Date.current.iso8601,
+        provider_balance_cents: 0,
+        statement_entries: { external_id: "not-an-array" }
+      }, headers: auth_headers(@api_key, "Idempotency-Key" => "recon-api-entry-shape")
+    end
+
+    assert_response 422
+    assert_equal "validation_failed", json_body.dig("error", "code")
+    assert_equal "statement_entries must be an array", json_body.dig("error", "message")
+
+    assert_no_difference -> { @organization.reconciliation_runs.count } do
+      post_json "/v1/reconciliation_runs", {
+        provider: "bank-sandbox",
+        statement_date: Date.current.iso8601,
+        provider_balance_cents: 0,
+        statement_entries: [
+          { external_id: "bad-amount", amount_cents: "abc", occurred_on: Date.current.iso8601 }
+        ]
+      }, headers: auth_headers(@api_key, "Idempotency-Key" => "recon-api-entry-amount")
+    end
+
+    assert_response 422
+    assert_equal "validation_failed", json_body.dig("error", "code")
+    assert_equal "Statement entry amount_cents must be an integer", json_body.dig("error", "message")
+  end
+
   private
 
   def create_customer_via_api(external_id, document_number)

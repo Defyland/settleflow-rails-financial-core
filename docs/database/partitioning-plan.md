@@ -8,6 +8,7 @@ The current schema keeps ordinary tables for developer ergonomics. Production-sc
 - `ledger_lines`: monthly range partition on `created_at`, aligned with journal entries.
 - `audit_logs`: monthly range partition on `created_at`, preserving global `chain_sequence`.
 - `reconciliation_runs`: yearly or monthly range partition on `statement_date`.
+- `reconciliation_rows`: monthly range partition on `occurred_on`.
 
 ## Rules
 
@@ -56,6 +57,7 @@ Current status is intentionally blocked, not hidden:
 - `ledger_lines` needs its primary/public identifiers remodeled or scoped by `created_at` before becoming a partitioned parent.
 - `audit_logs` needs a deliberate design for global `chain_sequence` and `hash_value` uniqueness before partitioning by `created_at`.
 - `reconciliation_runs` already scopes provider uniqueness by `statement_date`, but its primary/public identifiers still do not include the partition key.
+- `reconciliation_rows` uses `occurred_on` for provider-line scale, but its primary/public identifiers, unique run/type/external ID key, and inbound run relationship still need partition-aware key strategy before production conversion.
 
 The next production-grade step is not a blind migration. It is a key strategy decision:
 

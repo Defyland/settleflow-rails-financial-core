@@ -28,7 +28,8 @@ module Database
       Candidate.new(table: "journal_entries", partition_key: "occurred_at", strategy: "monthly_range"),
       Candidate.new(table: "ledger_lines", partition_key: "created_at", strategy: "monthly_range"),
       Candidate.new(table: "audit_logs", partition_key: "created_at", strategy: "monthly_range"),
-      Candidate.new(table: "reconciliation_runs", partition_key: "statement_date", strategy: "monthly_range")
+      Candidate.new(table: "reconciliation_runs", partition_key: "statement_date", strategy: "monthly_range"),
+      Candidate.new(table: "reconciliation_rows", partition_key: "occurred_on", strategy: "monthly_range")
     ].freeze
 
     def self.call(...)

@@ -722,7 +722,6 @@ CREATE TABLE public.journal_entries (
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    CONSTRAINT journal_entries_idempotency_key_required_check CHECK ((idempotency_key IS NOT NULL)),
     CONSTRAINT journal_entries_reference_required_check CHECK (((reference_type IS NOT NULL) AND (reference_id IS NOT NULL)))
 );
 
@@ -763,8 +762,8 @@ CREATE TABLE public.ledger_accounts (
     status character varying DEFAULT 'active'::character varying NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    CONSTRAINT ledger_accounts_account_type_check CHECK (((account_type)::text = ANY (ARRAY[('asset'::character varying)::text, ('liability'::character varying)::text, ('revenue'::character varying)::text, ('expense'::character varying)::text, ('equity'::character varying)::text]))),
-    CONSTRAINT ledger_accounts_normal_balance_check CHECK (((normal_balance)::text = ANY (ARRAY[('debit'::character varying)::text, ('credit'::character varying)::text])))
+    CONSTRAINT ledger_accounts_account_type_check CHECK (((account_type)::text = ANY ((ARRAY['asset'::character varying, 'liability'::character varying, 'revenue'::character varying, 'expense'::character varying, 'equity'::character varying])::text[]))),
+    CONSTRAINT ledger_accounts_normal_balance_check CHECK (((normal_balance)::text = ANY ((ARRAY['debit'::character varying, 'credit'::character varying])::text[])))
 );
 
 
@@ -804,7 +803,7 @@ CREATE TABLE public.ledger_lines (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     CONSTRAINT ledger_lines_amount_positive_check CHECK ((amount_cents > 0)),
-    CONSTRAINT ledger_lines_direction_check CHECK (((direction)::text = ANY (ARRAY[('debit'::character varying)::text, ('credit'::character varying)::text])))
+    CONSTRAINT ledger_lines_direction_check CHECK (((direction)::text = ANY ((ARRAY['debit'::character varying, 'credit'::character varying])::text[])))
 );
 
 
@@ -850,7 +849,7 @@ CREATE TABLE public.med_cases (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     CONSTRAINT med_cases_amount_positive_check CHECK ((amount_cents > 0)),
-    CONSTRAINT med_cases_status_check CHECK (((status)::text = ANY (ARRAY[('opened'::character varying)::text, ('rejected'::character varying)::text, ('refunded'::character varying)::text])))
+    CONSTRAINT med_cases_status_check CHECK (((status)::text = ANY ((ARRAY['opened'::character varying, 'rejected'::character varying, 'refunded'::character varying])::text[])))
 );
 
 
@@ -894,7 +893,7 @@ CREATE TABLE public.operator_approvals (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     CONSTRAINT operator_approvals_dual_control_check CHECK (((approved_by_id IS NULL) OR (approved_by_id <> requested_by_id))),
-    CONSTRAINT operator_approvals_status_check CHECK (((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('approved'::character varying)::text, ('rejected'::character varying)::text])))
+    CONSTRAINT operator_approvals_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying])::text[])))
 );
 
 
@@ -1031,7 +1030,7 @@ CREATE TABLE public.payouts (
     updated_at timestamp(6) without time zone NOT NULL,
     CONSTRAINT payouts_amount_positive_check CHECK ((amount_cents > 0)),
     CONSTRAINT payouts_settlement_delay_non_negative_check CHECK ((settlement_delay_days >= 0)),
-    CONSTRAINT payouts_status_check CHECK (((status)::text = ANY (ARRAY[('scheduled'::character varying)::text, ('settled'::character varying)::text, ('failed'::character varying)::text])))
+    CONSTRAINT payouts_status_check CHECK (((status)::text = ANY ((ARRAY['scheduled'::character varying, 'settled'::character varying, 'failed'::character varying])::text[])))
 );
 
 
@@ -1082,7 +1081,7 @@ CREATE TABLE public.pix_payments (
     reversed_at timestamp(6) without time zone,
     reversal_reason character varying,
     CONSTRAINT pix_payments_amount_positive_check CHECK ((amount_cents > 0)),
-    CONSTRAINT pix_payments_status_check CHECK (((status)::text = ANY (ARRAY[('created'::character varying)::text, ('pending_review'::character varying)::text, ('approved'::character varying)::text, ('rejected'::character varying)::text, ('settled'::character varying)::text, ('failed'::character varying)::text, ('reversed'::character varying)::text])))
+    CONSTRAINT pix_payments_status_check CHECK (((status)::text = ANY ((ARRAY['created'::character varying, 'pending_review'::character varying, 'approved'::character varying, 'rejected'::character varying, 'settled'::character varying, 'failed'::character varying, 'reversed'::character varying])::text[])))
 );
 
 
@@ -1125,7 +1124,7 @@ CREATE TABLE public.processed_events (
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    CONSTRAINT processed_events_status_check CHECK (((status)::text = ANY (ARRAY[('processing'::character varying)::text, ('processed'::character varying)::text, ('failed'::character varying)::text])))
+    CONSTRAINT processed_events_status_check CHECK (((status)::text = ANY ((ARRAY['processing'::character varying, 'processed'::character varying, 'failed'::character varying])::text[])))
 );
 
 
@@ -1146,6 +1145,54 @@ CREATE SEQUENCE public.processed_events_id_seq
 --
 
 ALTER SEQUENCE public.processed_events_id_seq OWNED BY public.processed_events.id;
+
+
+--
+-- Name: reconciliation_rows; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.reconciliation_rows (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    reconciliation_run_id bigint NOT NULL,
+    journal_entry_id bigint,
+    row_type character varying NOT NULL,
+    status character varying NOT NULL,
+    external_id character varying NOT NULL,
+    occurred_on date NOT NULL,
+    provider_amount_cents bigint DEFAULT 0 NOT NULL,
+    ledger_amount_cents bigint DEFAULT 0 NOT NULL,
+    difference_cents bigint DEFAULT 0 NOT NULL,
+    currency character varying DEFAULT 'BRL'::character varying NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT reconciliation_rows_difference_check CHECK ((difference_cents = (provider_amount_cents - ledger_amount_cents))),
+    CONSTRAINT reconciliation_rows_external_id_required_check CHECK ((external_id IS NOT NULL)),
+    CONSTRAINT reconciliation_rows_row_type_check CHECK (((row_type)::text = ANY ((ARRAY['cash_balance'::character varying, 'projection_balance'::character varying, 'provider_statement_entry'::character varying, 'ledger_statement_entry'::character varying])::text[]))),
+    CONSTRAINT reconciliation_rows_status_check CHECK (((status)::text = ANY ((ARRAY['matched'::character varying, 'discrepant'::character varying, 'missing_in_ledger'::character varying, 'missing_in_provider'::character varying])::text[]))),
+    CONSTRAINT reconciliation_rows_type_status_check CHECK (((((row_type)::text = ANY ((ARRAY['cash_balance'::character varying, 'projection_balance'::character varying])::text[])) AND ((status)::text = ANY ((ARRAY['matched'::character varying, 'discrepant'::character varying])::text[]))) OR (((row_type)::text = 'provider_statement_entry'::text) AND ((status)::text = ANY ((ARRAY['matched'::character varying, 'discrepant'::character varying, 'missing_in_ledger'::character varying])::text[]))) OR (((row_type)::text = 'ledger_statement_entry'::text) AND ((status)::text = 'missing_in_provider'::text))))
+);
+
+
+--
+-- Name: reconciliation_rows_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.reconciliation_rows_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: reconciliation_rows_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.reconciliation_rows_id_seq OWNED BY public.reconciliation_rows.id;
 
 
 --
@@ -1212,7 +1259,7 @@ CREATE TABLE public.refunds (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     CONSTRAINT refunds_amount_positive_check CHECK ((amount_cents > 0)),
-    CONSTRAINT refunds_status_check CHECK (((status)::text = ANY (ARRAY[('settled'::character varying)::text, ('failed'::character varying)::text])))
+    CONSTRAINT refunds_status_check CHECK (((status)::text = ANY ((ARRAY['settled'::character varying, 'failed'::character varying])::text[])))
 );
 
 
@@ -1336,7 +1383,7 @@ CREATE TABLE public.split_payments (
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    CONSTRAINT split_payments_status_check CHECK (((status)::text = ANY (ARRAY[('posted'::character varying)::text, ('failed'::character varying)::text]))),
+    CONSTRAINT split_payments_status_check CHECK (((status)::text = ANY ((ARRAY['posted'::character varying, 'failed'::character varying])::text[]))),
     CONSTRAINT split_payments_total_amount_positive_check CHECK ((total_amount_cents > 0))
 );
 
@@ -1416,7 +1463,7 @@ CREATE TABLE public.users (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     role character varying DEFAULT 'operator'::character varying NOT NULL,
-    CONSTRAINT users_role_check CHECK (((role)::text = ANY (ARRAY[('viewer'::character varying)::text, ('operator'::character varying)::text, ('admin'::character varying)::text])))
+    CONSTRAINT users_role_check CHECK (((role)::text = ANY ((ARRAY['viewer'::character varying, 'operator'::character varying, 'admin'::character varying])::text[])))
 );
 
 
@@ -1622,6 +1669,13 @@ ALTER TABLE ONLY public.pix_payments ALTER COLUMN id SET DEFAULT nextval('public
 --
 
 ALTER TABLE ONLY public.processed_events ALTER COLUMN id SET DEFAULT nextval('public.processed_events_id_seq'::regclass);
+
+
+--
+-- Name: reconciliation_rows id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reconciliation_rows ALTER COLUMN id SET DEFAULT nextval('public.reconciliation_rows_id_seq'::regclass);
 
 
 --
@@ -1857,6 +1911,14 @@ ALTER TABLE ONLY public.processed_events
 
 
 --
+-- Name: reconciliation_rows reconciliation_rows_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reconciliation_rows
+    ADD CONSTRAINT reconciliation_rows_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: reconciliation_runs reconciliation_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1975,6 +2037,41 @@ CREATE INDEX idx_outbox_status_next_attempt ON public.outbox_events USING btree 
 --
 
 CREATE UNIQUE INDEX idx_reconciliation_provider_day ON public.reconciliation_runs USING btree (organization_id, provider, statement_date);
+
+
+--
+-- Name: idx_reconciliation_rows_org_day_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_reconciliation_rows_org_day_status ON public.reconciliation_rows USING btree (organization_id, occurred_on, status);
+
+
+--
+-- Name: idx_reconciliation_rows_org_external_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_reconciliation_rows_org_external_id ON public.reconciliation_rows USING btree (organization_id, external_id);
+
+
+--
+-- Name: idx_reconciliation_rows_run_external_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_reconciliation_rows_run_external_id ON public.reconciliation_rows USING btree (reconciliation_run_id, external_id);
+
+
+--
+-- Name: idx_reconciliation_rows_run_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_reconciliation_rows_run_status ON public.reconciliation_rows USING btree (reconciliation_run_id, status);
+
+
+--
+-- Name: idx_reconciliation_rows_run_type_external_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_reconciliation_rows_run_type_external_id ON public.reconciliation_rows USING btree (reconciliation_run_id, row_type, external_id);
 
 
 --
@@ -2650,6 +2747,34 @@ CREATE UNIQUE INDEX index_processed_events_on_public_id ON public.processed_even
 
 
 --
+-- Name: index_reconciliation_rows_on_journal_entry_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_reconciliation_rows_on_journal_entry_id ON public.reconciliation_rows USING btree (journal_entry_id);
+
+
+--
+-- Name: index_reconciliation_rows_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_reconciliation_rows_on_organization_id ON public.reconciliation_rows USING btree (organization_id);
+
+
+--
+-- Name: index_reconciliation_rows_on_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_reconciliation_rows_on_public_id ON public.reconciliation_rows USING btree (public_id);
+
+
+--
+-- Name: index_reconciliation_rows_on_reconciliation_run_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_reconciliation_rows_on_reconciliation_run_id ON public.reconciliation_rows USING btree (reconciliation_run_id);
+
+
+--
 -- Name: index_reconciliation_runs_on_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3048,6 +3173,14 @@ ALTER TABLE ONLY public.split_entries
 
 
 --
+-- Name: reconciliation_rows fk_rails_48a7f59771; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reconciliation_rows
+    ADD CONSTRAINT fk_rails_48a7f59771 FOREIGN KEY (reconciliation_run_id) REFERENCES public.reconciliation_runs(id);
+
+
+--
 -- Name: med_cases fk_rails_4e3e5fe13a; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3328,11 +3461,27 @@ ALTER TABLE ONLY public.pix_payments
 
 
 --
+-- Name: reconciliation_rows fk_rails_d410954a4e; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reconciliation_rows
+    ADD CONSTRAINT fk_rails_d410954a4e FOREIGN KEY (journal_entry_id) REFERENCES public.journal_entries(id);
+
+
+--
 -- Name: pix_payments fk_rails_d74603299a; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.pix_payments
     ADD CONSTRAINT fk_rails_d74603299a FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: reconciliation_rows fk_rails_d74666def8; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reconciliation_rows
+    ADD CONSTRAINT fk_rails_d74666def8 FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
 
 
 --
@@ -3406,6 +3555,8 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602161000'),
+('20260602130000'),
 ('20260602110000'),
 ('20260602101000'),
 ('20260602100000'),

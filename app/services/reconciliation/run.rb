@@ -4,7 +4,7 @@ module Reconciliation
       new(...).call
     end
 
-    def initialize(organization:, provider:, statement_date:, provider_balance_cents:, currency: "BRL", correlation_id: nil, metadata: {})
+    def initialize(organization:, provider:, statement_date:, provider_balance_cents:, currency: "BRL", correlation_id: nil, metadata: {}, statement_entries: [])
       @organization = organization
       @provider = provider
       @statement_date = statement_date
@@ -12,25 +12,37 @@ module Reconciliation
       @currency = currency
       @correlation_id = correlation_id
       @metadata = metadata || {}
+      @statement_entries = statement_entries || []
     end
 
     def call
       snapshot = Reconciliation::LedgerSnapshot.call(organization:, currency:)
       ledger_balance = snapshot.fetch(:platform_cash_cents)
       discrepancy = provider_balance_cents - ledger_balance
-      projection_difference = snapshot.fetch(:projection_difference_cents)
-      status = discrepancy.zero? && projection_difference.zero? ? "matched" : "discrepant"
 
-      organization.reconciliation_runs.create!(
-        provider:,
-        statement_date:,
-        provider_balance_cents:,
-        ledger_balance_cents: ledger_balance,
-        discrepancy_cents: discrepancy,
-        status:,
-        correlation_id:,
-        metadata: metadata.merge(snapshot)
-      ).tap do |run|
+      ActiveRecord::Base.transaction do
+        run = organization.reconciliation_runs.create!(
+          provider:,
+          statement_date:,
+          provider_balance_cents:,
+          ledger_balance_cents: ledger_balance,
+          discrepancy_cents: discrepancy,
+          status: "matched",
+          correlation_id:,
+          metadata: metadata.merge(snapshot)
+        )
+        rows = Reconciliation::RowsBuilder.call(run:, snapshot:, statement_entries:, currency:)
+        status = rows.all?(&:matched?) ? "matched" : "discrepant"
+        row_status_counts = rows.group_by(&:status).transform_values(&:count)
+        run.update!(
+          status:,
+          metadata: run.metadata.merge(
+            statement_entry_count: statement_entries.size,
+            reconciliation_row_count: rows.size,
+            row_status_counts:
+          )
+        )
+
         OutboxEvents::Emit.call(
           organization:,
           aggregate: run,
@@ -42,14 +54,17 @@ module Reconciliation
             statement_date: run.statement_date.iso8601,
             ledger_balance_cents: ledger_balance,
             provider_balance_cents:,
-            discrepancy_cents: discrepancy
+            discrepancy_cents: discrepancy,
+            reconciliation_row_count: rows.size,
+            row_status_counts:
           }
         )
+        run
       end
     end
 
     private
 
-    attr_reader :organization, :provider, :statement_date, :provider_balance_cents, :currency, :correlation_id, :metadata
+    attr_reader :organization, :provider, :statement_date, :provider_balance_cents, :currency, :correlation_id, :metadata, :statement_entries
   end
 end
