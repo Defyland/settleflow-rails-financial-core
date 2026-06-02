@@ -1,7 +1,7 @@
 <header class="page-header">
   <div>
     <h1>Audit logs</h1>
-    <p>API and operator actions with request and correlation IDs.</p>
+    <p>API and operator actions with request, correlation, and hash-chain evidence.</p>
   </div>
   <%= form_with url: ops_audit_logs_path, method: :get, class: "filters" do |form| %>
     <%= form.search_field :q, value: @query, placeholder: "Search audit" %>
@@ -19,6 +19,7 @@
         <th>Subject</th>
         <th>Status</th>
         <th>Correlation</th>
+        <th>Chain</th>
       </tr>
     </thead>
     <tbody>
@@ -30,6 +31,7 @@
           <td><%= log.subject_type %>#<%= log.subject_id %></td>
           <td><%= log.metadata["status"] || "n/a" %></td>
           <td><%= log.correlation_id.to_s.first(12) %></td>
+          <td>#<%= log.chain_sequence %> <%= log.hash_value.to_s.first(12) %></td>
         </tr>
       <% end %>
     </tbody>
