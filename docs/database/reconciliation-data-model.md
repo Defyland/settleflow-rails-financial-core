@@ -4,8 +4,8 @@ Reconciliation compares provider cash statements with PostgreSQL ledger state an
 
 ## Tables
 
-- `reconciliation_runs`: provider/date result, provider balance, platform cash balance, discrepancy, status, metadata.
-- `reconciliation_rows`: itemized evidence for cash balance, projection balance, provider statement entries, and ledger entries missing from the provider statement. The database enforces a unique `(reconciliation_run_id, row_type, external_id)` evidence key plus row type/status compatibility checks.
+- `reconciliation_runs`: provider/date result, provider balance, platform cash balance, discrepancy, status, metadata. PostgreSQL enforces discrepancy math, outbox evidence, row presence, and run status consistency with row evidence.
+- `reconciliation_rows`: itemized evidence for cash balance, projection balance, provider statement entries, and ledger entries missing from the provider statement. The database enforces a unique `(reconciliation_run_id, row_type, external_id)` evidence key, row type/status compatibility, amount/status compatibility, run/journal organization consistency, and immutability after reconciliation outbox evidence is emitted.
 - `balance_snapshots`: wallet projection state compared with ledger-derived available balance. Rows are append-only evidence; PostgreSQL enforces wallet organization/currency consistency and the projection-minus-ledger difference.
 - `journal_entries` and `ledger_lines`: source accounting evidence.
 - `outbox_events`: external event evidence.

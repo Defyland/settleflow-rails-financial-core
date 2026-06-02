@@ -20,8 +20,11 @@ class ReconciliationRow < ApplicationRecord
   validates :provider_amount_cents, :ledger_amount_cents, :difference_cents, numericality: { only_integer: true }
   validate :difference_matches_amounts
   validate :status_matches_row_type
+  validate :status_matches_amount_evidence
   validate :run_belongs_to_same_organization
   validate :journal_entry_belongs_to_same_organization
+  before_save :prevent_mutation_after_outbox
+  before_destroy :prevent_mutation_after_outbox
 
   private
 
@@ -47,6 +50,23 @@ class ReconciliationRow < ApplicationRecord
     errors.add(:status, "is not valid for row type")
   end
 
+  def status_matches_amount_evidence
+    case status
+    when "matched"
+      errors.add(:difference_cents, "must be zero for matched rows") unless difference_cents.to_i.zero?
+    when "discrepant"
+      errors.add(:difference_cents, "must be non-zero for discrepant rows") if difference_cents.to_i.zero?
+    when "missing_in_ledger"
+      if ledger_amount_cents.to_i != 0 || provider_amount_cents.to_i.zero?
+        errors.add(:base, "missing-in-ledger rows require provider amount and zero ledger amount")
+      end
+    when "missing_in_provider"
+      if provider_amount_cents.to_i != 0 || ledger_amount_cents.to_i.zero?
+        errors.add(:base, "missing-in-provider rows require ledger amount and zero provider amount")
+      end
+    end
+  end
+
   def run_belongs_to_same_organization
     return if reconciliation_run.blank? || reconciliation_run.organization_id == organization_id
 
@@ -57,5 +77,17 @@ class ReconciliationRow < ApplicationRecord
     return if journal_entry.blank? || journal_entry.organization_id == organization_id
 
     errors.add(:journal_entry, "must belong to the same organization")
+  end
+
+  def prevent_mutation_after_outbox
+    return if reconciliation_run.blank?
+    return unless OutboxEvent.exists?(
+      aggregate_type: "ReconciliationRun",
+      aggregate_id: reconciliation_run_id,
+      event_type: [ "reconciliation.matched", "reconciliation.discrepant" ]
+    )
+
+    errors.add(:base, "reconciliation rows with outbox evidence are immutable")
+    throw :abort
   end
 end

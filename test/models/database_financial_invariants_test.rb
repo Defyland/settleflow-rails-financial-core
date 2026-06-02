@@ -115,6 +115,41 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     assert_database_constraint_violation { OperatorApproval.where(id: approval.id).delete_all }
   end
 
+  test "database rejects direct reconciliation evidence tampering" do
+    fund_wallet(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-reconciliation-funding",
+      amount_cents: 500
+    )
+    run = Reconciliation::Run.call(
+      organization: @organization,
+      provider: "db-invariant-provider",
+      statement_date: Date.current,
+      provider_balance_cents: 400
+    )
+    row = run.reconciliation_rows.find_by!(row_type: "cash_balance")
+
+    assert_database_constraint_violation { run.update_columns(discrepancy_cents: run.discrepancy_cents + 1) }
+    assert_database_constraint_violation { run.update_columns(status: "matched") }
+    assert_database_constraint_violation { ReconciliationRun.where(id: run.id).delete_all }
+    assert_database_constraint_violation { row.update_columns(status: "matched", provider_amount_cents: row.ledger_amount_cents, difference_cents: 0) }
+    assert_database_constraint_violation { ReconciliationRow.where(id: row.id).delete_all }
+    assert_database_constraint_violation do
+      ReconciliationRun.insert!({
+        organization_id: @organization.id,
+        provider: "db-invariant-direct-recon",
+        statement_date: Date.current.next_day,
+        provider_balance_cents: 0,
+        ledger_balance_cents: 0,
+        discrepancy_cents: 0,
+        status: "matched",
+        created_at: Time.current,
+        updated_at: Time.current
+      })
+    end
+  end
+
   test "database rejects journal entries without command identity" do
     assert_raises(ActiveRecord::StatementInvalid) do
       JournalEntry.insert!({

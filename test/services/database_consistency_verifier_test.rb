@@ -49,6 +49,16 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     assert_empty operator_approval_guard_check.details.fetch(:missing_triggers)
     assert_equal 0, operator_approval_guard_check.details.fetch(:evidence_mismatches)
     assert_equal [ "operator_approvals_prevent_evidence_mutation" ], operator_approval_guard_check.details.fetch(:present_triggers)
+    reconciliation_guard_check = checks.find { |check| check.name == :reconciliation_evidence_guards }
+    assert_empty reconciliation_guard_check.details.fetch(:missing_constraints)
+    assert_empty reconciliation_guard_check.details.fetch(:missing_triggers)
+    assert_equal 0, reconciliation_guard_check.details.fetch(:evidence_mismatches)
+    assert_equal %w[
+      reconciliation_rows_evidence_after_write
+      reconciliation_rows_prevent_evidence_mutation
+      reconciliation_runs_evidence_after_write
+      reconciliation_runs_prevent_evidence_mutation
+    ], reconciliation_guard_check.details.fetch(:present_triggers)
     state_guard_check = checks.find { |check| check.name == :financial_state_evidence_guards }
     assert_empty state_guard_check.details.fetch(:missing_triggers)
     assert_equal %w[

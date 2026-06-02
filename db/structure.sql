@@ -354,6 +354,98 @@ $$;
 
 
 --
+-- Name: assert_reconciliation_run_evidence(bigint); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_reconciliation_run_evidence(run_id_to_check bigint) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  run_row reconciliation_runs%ROWTYPE;
+BEGIN
+  SELECT * INTO run_row
+  FROM reconciliation_runs
+  WHERE id = run_id_to_check;
+
+  IF run_row.id IS NULL THEN
+    RETURN;
+  END IF;
+
+  IF NOT reconciliation_run_has_outbox_evidence(run_row.id) THEN
+    RAISE EXCEPTION 'reconciliation run requires outbox evidence';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM reconciliation_rows
+    WHERE reconciliation_run_id = run_row.id
+  ) THEN
+    RAISE EXCEPTION 'reconciliation run requires row evidence';
+  END IF;
+
+  IF run_row.status = 'matched' AND EXISTS (
+    SELECT 1
+    FROM reconciliation_rows
+    WHERE reconciliation_run_id = run_row.id
+      AND status <> 'matched'
+  ) THEN
+    RAISE EXCEPTION 'matched reconciliation run cannot contain discrepant rows';
+  END IF;
+
+  IF run_row.status = 'discrepant' AND NOT EXISTS (
+    SELECT 1
+    FROM reconciliation_rows
+    WHERE reconciliation_run_id = run_row.id
+      AND status <> 'matched'
+  ) THEN
+    RAISE EXCEPTION 'discrepant reconciliation run requires discrepant row evidence';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM reconciliation_rows row
+    LEFT JOIN journal_entries journal ON journal.id = row.journal_entry_id
+    WHERE row.reconciliation_run_id = run_row.id
+      AND (
+        row.organization_id <> run_row.organization_id
+        OR (journal.id IS NOT NULL AND journal.organization_id <> row.organization_id)
+      )
+  ) THEN
+    RAISE EXCEPTION 'reconciliation rows must match run and journal organization';
+  END IF;
+END;
+$$;
+
+
+--
+-- Name: assert_reconciliation_run_evidence_after_row_write(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_reconciliation_run_evidence_after_row_write() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  PERFORM assert_reconciliation_run_evidence(COALESCE(NEW.reconciliation_run_id, OLD.reconciliation_run_id));
+  RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+
+--
+-- Name: assert_reconciliation_run_evidence_after_run_write(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_reconciliation_run_evidence_after_run_write() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  PERFORM assert_reconciliation_run_evidence(NEW.id);
+  RETURN NEW;
+END;
+$$;
+
+
+--
 -- Name: assert_refund_state_evidence(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -983,6 +1075,80 @@ BEGIN
   PERFORM assert_processed_event_outbox_evidence(NEW);
   RETURN NEW;
 END;
+$$;
+
+
+--
+-- Name: prevent_reconciliation_row_evidence_mutation(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.prevent_reconciliation_row_evidence_mutation() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  run_id_to_check bigint;
+BEGIN
+  run_id_to_check := COALESCE(NEW.reconciliation_run_id, OLD.reconciliation_run_id);
+
+  IF reconciliation_run_has_outbox_evidence(run_id_to_check) THEN
+    RAISE EXCEPTION 'reconciliation rows with outbox evidence are immutable';
+  END IF;
+
+  RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+
+--
+-- Name: prevent_reconciliation_run_evidence_mutation(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.prevent_reconciliation_run_evidence_mutation() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF reconciliation_run_has_outbox_evidence(OLD.id) THEN
+      RAISE EXCEPTION 'reconciliation runs with outbox evidence are immutable';
+    END IF;
+    RETURN OLD;
+  END IF;
+
+  IF OLD.organization_id IS DISTINCT FROM NEW.organization_id
+    OR OLD.public_id IS DISTINCT FROM NEW.public_id
+    OR OLD.provider IS DISTINCT FROM NEW.provider
+    OR OLD.statement_date IS DISTINCT FROM NEW.statement_date
+    OR OLD.provider_balance_cents IS DISTINCT FROM NEW.provider_balance_cents
+    OR OLD.ledger_balance_cents IS DISTINCT FROM NEW.ledger_balance_cents
+    OR OLD.discrepancy_cents IS DISTINCT FROM NEW.discrepancy_cents
+    OR OLD.correlation_id IS DISTINCT FROM NEW.correlation_id
+    OR OLD.created_at IS DISTINCT FROM NEW.created_at THEN
+    RAISE EXCEPTION 'reconciliation run identity and balances are immutable';
+  END IF;
+
+  IF reconciliation_run_has_outbox_evidence(OLD.id) THEN
+    RAISE EXCEPTION 'reconciliation runs with outbox evidence are immutable';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: reconciliation_run_has_outbox_evidence(bigint); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.reconciliation_run_has_outbox_evidence(run_id_to_check bigint) RETURNS boolean
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM outbox_events
+    WHERE aggregate_type = 'ReconciliationRun'
+      AND aggregate_id = run_id_to_check
+      AND event_type IN ('reconciliation.matched', 'reconciliation.discrepant')
+  );
 $$;
 
 
@@ -1833,6 +1999,7 @@ CREATE TABLE public.reconciliation_rows (
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT reconciliation_rows_amount_status_check CHECK (((((status)::text = 'matched'::text) AND (difference_cents = 0)) OR (((status)::text = 'discrepant'::text) AND (difference_cents <> 0)) OR (((status)::text = 'missing_in_ledger'::text) AND (ledger_amount_cents = 0) AND (provider_amount_cents <> 0)) OR (((status)::text = 'missing_in_provider'::text) AND (provider_amount_cents = 0) AND (ledger_amount_cents <> 0)))),
     CONSTRAINT reconciliation_rows_difference_check CHECK ((difference_cents = (provider_amount_cents - ledger_amount_cents))),
     CONSTRAINT reconciliation_rows_external_id_required_check CHECK ((external_id IS NOT NULL)),
     CONSTRAINT reconciliation_rows_row_type_check CHECK (((row_type)::text = ANY ((ARRAY['cash_balance'::character varying, 'projection_balance'::character varying, 'provider_statement_entry'::character varying, 'ledger_statement_entry'::character varying])::text[]))),
@@ -1877,7 +2044,10 @@ CREATE TABLE public.reconciliation_runs (
     correlation_id character varying,
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT reconciliation_runs_discrepancy_check CHECK ((discrepancy_cents = (provider_balance_cents - ledger_balance_cents))),
+    CONSTRAINT reconciliation_runs_provider_present_check CHECK ((btrim((provider)::text) <> ''::text)),
+    CONSTRAINT reconciliation_runs_status_check CHECK (((status)::text = ANY ((ARRAY['matched'::character varying, 'discrepant'::character varying])::text[])))
 );
 
 
@@ -3805,6 +3975,34 @@ CREATE TRIGGER processed_events_prevent_evidence_mutation BEFORE INSERT OR DELET
 
 
 --
+-- Name: reconciliation_rows reconciliation_rows_evidence_after_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE CONSTRAINT TRIGGER reconciliation_rows_evidence_after_write AFTER INSERT OR DELETE OR UPDATE ON public.reconciliation_rows DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_reconciliation_run_evidence_after_row_write();
+
+
+--
+-- Name: reconciliation_rows reconciliation_rows_prevent_evidence_mutation; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER reconciliation_rows_prevent_evidence_mutation BEFORE INSERT OR DELETE OR UPDATE ON public.reconciliation_rows FOR EACH ROW EXECUTE FUNCTION public.prevent_reconciliation_row_evidence_mutation();
+
+
+--
+-- Name: reconciliation_runs reconciliation_runs_evidence_after_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE CONSTRAINT TRIGGER reconciliation_runs_evidence_after_write AFTER INSERT OR UPDATE ON public.reconciliation_runs DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_reconciliation_run_evidence_after_run_write();
+
+
+--
+-- Name: reconciliation_runs reconciliation_runs_prevent_evidence_mutation; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER reconciliation_runs_prevent_evidence_mutation BEFORE DELETE OR UPDATE ON public.reconciliation_runs FOR EACH ROW EXECUTE FUNCTION public.prevent_reconciliation_run_evidence_mutation();
+
+
+--
 -- Name: refunds refunds_state_evidence_after_write; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -4319,6 +4517,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602200000'),
 ('20260602194500'),
 ('20260602193000'),
 ('20260602190000'),
