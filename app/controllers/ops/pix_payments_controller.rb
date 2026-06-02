@@ -18,9 +18,18 @@ module Ops
 
     def settle
       pix_payment = find_public!(PixPayment.includes(:organization), params[:id])
-      PixPayments::Settle.call(organization: pix_payment.organization, pix_payment:, correlation_id: Current.correlation_id)
-      operator_audit!(action: "ops.pix_payment.settle", subject: pix_payment, metadata: { status: pix_payment.reload.status })
-      redirect_to ops_pix_payment_path(pix_payment.public_id), notice: "Pix payment settled."
+      result = MakerChecker.call(
+        action: "pix_payment.settle",
+        subject: pix_payment,
+        operator: Current.user,
+        reason: params[:reason],
+        correlation_id: Current.correlation_id
+      ) do
+        PixPayments::Settle.call(organization: pix_payment.organization, pix_payment:, correlation_id: Current.correlation_id)
+      end
+      operator_audit!(action: "ops.pix_payment.settle.#{result.status}", subject: pix_payment, metadata: { approval_id: result.approval.public_id, status: pix_payment.reload.status })
+      notice = result.status == :approved ? "Pix payment settled." : "Pix settlement approval requested."
+      redirect_to ops_pix_payment_path(pix_payment.public_id), notice:
     rescue Errors::ApplicationError => e
       redirect_to ops_pix_payment_path(params[:id]), alert: e.message
     end
@@ -41,14 +50,23 @@ module Ops
 
     def reverse
       pix_payment = find_public!(PixPayment.includes(:organization), params[:id])
-      PixPayments::Reverse.call(
-        organization: pix_payment.organization,
-        pix_payment:,
+      result = MakerChecker.call(
+        action: "pix_payment.reverse",
+        subject: pix_payment,
+        operator: Current.user,
         reason: params[:reason],
         correlation_id: Current.correlation_id
-      )
-      operator_audit!(action: "ops.pix_payment.reverse", subject: pix_payment, metadata: { reason: params[:reason] })
-      redirect_to ops_pix_payment_path(pix_payment.public_id), notice: "Pix payment reversed."
+      ) do
+        PixPayments::Reverse.call(
+          organization: pix_payment.organization,
+          pix_payment:,
+          reason: params[:reason],
+          correlation_id: Current.correlation_id
+        )
+      end
+      operator_audit!(action: "ops.pix_payment.reverse.#{result.status}", subject: pix_payment, metadata: { approval_id: result.approval.public_id, reason: params[:reason] })
+      notice = result.status == :approved ? "Pix payment reversed." : "Pix reversal approval requested."
+      redirect_to ops_pix_payment_path(pix_payment.public_id), notice:
     rescue Errors::ApplicationError => e
       redirect_to ops_pix_payment_path(params[:id]), alert: e.message
     end

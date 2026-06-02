@@ -2,7 +2,8 @@ require "test_helper"
 
 class OpsConsoleRequestTest < ActionDispatch::IntegrationTest
   setup do
-    @operator = User.create!(email_address: "operator-#{SecureRandom.hex(4)}@example.com", password: "password", role: "admin")
+    @operator = User.create!(email_address: "operator-#{SecureRandom.hex(4)}@example.com", password: "strong-password-123", role: "admin")
+    @approver = User.create!(email_address: "approver-#{SecureRandom.hex(4)}@example.com", password: "strong-password-123", role: "admin")
     @organization = create_organization
     @wallet = create_wallet(organization: @organization)
     @funding = fund_wallet(
@@ -83,14 +84,36 @@ class OpsConsoleRequestTest < ActionDispatch::IntegrationTest
 
     post settle_ops_pix_payment_path(@approved_pix_payment.public_id)
     assert_redirected_to ops_pix_payment_path(@approved_pix_payment.public_id)
-    assert @approved_pix_payment.reload.settled?
-    assert AuditLog.exists?(actor_type: "user", actor_id: @operator.id, action: "ops.pix_payment.settle")
+    assert @approved_pix_payment.reload.approved?
+    settlement_approval = OperatorApproval.find_by!(action: "pix_payment.settle", subject_type: "PixPayment", subject_id: @approved_pix_payment.id)
+    assert settlement_approval.pending?
+    assert_equal @operator.id, settlement_approval.requested_by_id
+    assert AuditLog.exists?(actor_type: "user", actor_id: @operator.id, action: "ops.pix_payment.settle.requested")
 
+    sign_in(@approver)
+    post settle_ops_pix_payment_path(@approved_pix_payment.public_id)
+    assert_redirected_to ops_pix_payment_path(@approved_pix_payment.public_id)
+    assert @approved_pix_payment.reload.settled?
+    assert settlement_approval.reload.approved?
+    assert_equal @approver.id, settlement_approval.approved_by_id
+    assert AuditLog.exists?(actor_type: "user", actor_id: @approver.id, action: "ops.pix_payment.settle.approved")
+
+    post reverse_ops_pix_payment_path(@approved_pix_payment.public_id), params: { reason: "operator_reversal" }
+    assert_redirected_to ops_pix_payment_path(@approved_pix_payment.public_id)
+    assert @approved_pix_payment.reload.settled?
+    reversal_approval = OperatorApproval.find_by!(action: "pix_payment.reverse", subject_type: "PixPayment", subject_id: @approved_pix_payment.id)
+    assert reversal_approval.pending?
+    assert_equal @approver.id, reversal_approval.requested_by_id
+    assert AuditLog.exists?(actor_type: "user", actor_id: @approver.id, action: "ops.pix_payment.reverse.requested")
+
+    sign_in(@operator)
     post reverse_ops_pix_payment_path(@approved_pix_payment.public_id), params: { reason: "operator_reversal" }
     assert_redirected_to ops_pix_payment_path(@approved_pix_payment.public_id)
     assert @approved_pix_payment.reload.reversed?
     assert @approved_pix_payment.reversal_journal_entry.balanced?
-    assert AuditLog.exists?(actor_type: "user", actor_id: @operator.id, action: "ops.pix_payment.reverse")
+    assert reversal_approval.reload.approved?
+    assert_equal @operator.id, reversal_approval.approved_by_id
+    assert AuditLog.exists?(actor_type: "user", actor_id: @operator.id, action: "ops.pix_payment.reverse.approved")
 
     post reject_ops_pix_payment_path(@pending_pix_payment.public_id), params: { reason: "operator_rejected" }
     assert_redirected_to ops_pix_payment_path(@pending_pix_payment.public_id)
@@ -102,6 +125,18 @@ class OpsConsoleRequestTest < ActionDispatch::IntegrationTest
     assert_redirected_to ops_outbox_events_path(status: "pending")
     assert_includes enqueued_jobs.map { |job| job[:job] }, OutboxPublishJob
     assert AuditLog.exists?(actor_type: "user", actor_id: @operator.id, action: "ops.outbox.retry")
+  end
+
+  test "prevents the requester from approving their own financial action" do
+    sign_in
+
+    post settle_ops_pix_payment_path(@approved_pix_payment.public_id)
+    assert_redirected_to ops_pix_payment_path(@approved_pix_payment.public_id)
+
+    post settle_ops_pix_payment_path(@approved_pix_payment.public_id)
+    assert_redirected_to ops_pix_payment_path(@approved_pix_payment.public_id)
+    assert @approved_pix_payment.reload.approved?
+    assert OperatorApproval.find_by!(action: "pix_payment.settle", subject_type: "PixPayment", subject_id: @approved_pix_payment.id).pending?
   end
 
   test "blocks viewers from mutating financial operations" do
@@ -159,8 +194,8 @@ class OpsConsoleRequestTest < ActionDispatch::IntegrationTest
 
   private
 
-  def sign_in
-    post session_path, params: { email_address: @operator.email_address, password: "password" }
+  def sign_in(user = @operator)
+    post session_path, params: { email_address: user.email_address, password: "strong-password-123" }
     assert_redirected_to root_path
   end
 end
