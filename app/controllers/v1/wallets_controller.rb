@@ -30,17 +30,17 @@ module V1
       render_success data: BalanceProjectionSerializer.render(wallet.balance_projection)
     end
 
-    def statement
-      lines = LedgerLine
-        .joins(:ledger_account, :journal_entry)
-        .where(organization: current_organization, ledger_account: { wallet_id: wallet.id })
-        .includes(:journal_entry, :ledger_account)
-        .order(created_at: :desc)
+    def balance_explanation
+      render_success data: Wallets::BalanceExplainer.call(wallet:)
+    end
 
-      render_success PagedCollectionSerializer.render(
-        lines,
-        params:,
-        item_serializer: LedgerLineSerializer
+    def statement
+      limit = [ [ params.fetch(:limit, Wallets::StatementBuilder::DEFAULT_LIMIT).to_i, 1 ].max, Wallets::StatementBuilder::MAX_LIMIT ].min
+      lines = Wallets::StatementBuilder.call(wallet:, limit:)
+
+      render_success(
+        data: lines.map { |line| WalletStatementLineSerializer.render(line) },
+        meta: { limit:, returned: lines.size }
       )
     end
 

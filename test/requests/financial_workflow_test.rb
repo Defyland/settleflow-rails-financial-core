@@ -35,8 +35,17 @@ class FinancialWorkflowTest < ActionDispatch::IntegrationTest
     get "/v1/wallets/#{source_wallet_id}/balance", headers: auth_headers(@api_key)
     assert_equal 7_500, json_body.dig("data", "available_cents")
 
+    get "/v1/wallets/#{source_wallet_id}/balance_explanation", headers: auth_headers(@api_key)
+    assert_response :ok
+    assert_equal 7_500, json_body.dig("data", "projection_available_cents")
+    assert_equal 7_500, json_body.dig("data", "ledger_available_cents")
+    assert_equal true, json_body.dig("data", "consistent")
+    assert_equal [ 10_000, 7_500 ], json_body.dig("data", "recent_lines").map { |line| line.fetch("running_available_cents") }
+
     get "/v1/wallets/#{destination_wallet_id}/statement", headers: auth_headers(@api_key)
     assert_equal 2_500, json_body.fetch("data").first.fetch("amount_cents")
+    assert_equal 2_500, json_body.fetch("data").first.fetch("delta_cents")
+    assert_equal 2_500, json_body.fetch("data").first.fetch("running_available_cents")
 
     post_json "/v1/reconciliation_runs", {
       provider: "bank-sandbox",
@@ -49,13 +58,26 @@ class FinancialWorkflowTest < ActionDispatch::IntegrationTest
   end
 
   test "returns standardized validation errors" do
-    post_json "/v1/customers", { external_id: "bad" }, headers: auth_headers(@api_key)
+    post_json "/v1/customers", { external_id: "bad" }, headers: auth_headers(@api_key, "Idempotency-Key" => "bad-customer-validation")
 
     assert_response 422
     assert_equal "validation_failed", json_body.dig("error", "code")
     assert_includes json_body.dig("error", "details"), "legal_name"
     assert_includes json_body.dig("error", "details"), "document_kind"
     assert_includes json_body.dig("error", "details"), "document_number"
+  end
+
+  test "requires idempotency keys for mutating API requests" do
+    post_json "/v1/customers", {
+      external_id: "missing-idempotency",
+      legal_name: "Missing Idempotency",
+      document_kind: "cpf",
+      document_number: "33333333333"
+    }, headers: auth_headers(@api_key)
+
+    assert_response :bad_request
+    assert_equal "idempotency_key_required", json_body.dig("error", "code")
+    assert_not @organization.customers.exists?(external_id: "missing-idempotency")
   end
 
   private

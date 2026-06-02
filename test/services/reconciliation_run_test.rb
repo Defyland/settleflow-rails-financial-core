@@ -24,6 +24,32 @@ class ReconciliationRunTest < ActiveSupport::TestCase
     assert_equal "BRL", run.metadata.fetch("currency")
     assert_equal 12_345, run.metadata.fetch("platform_cash_cents")
     assert_equal 12_345, run.metadata.fetch("wallet_liability_cents")
+    assert_equal 12_345, run.metadata.fetch("projection_available_cents")
+    assert_equal 0, run.metadata.fetch("projection_difference_cents")
     assert_equal 0, run.metadata.fetch("pix_clearing_cents")
+    assert_equal 0, run.metadata.fetch("payout_clearing_cents")
+  end
+
+  test "marks projection divergence as discrepant even when provider cash matches" do
+    organization = create_organization
+    wallet = create_wallet(organization:)
+    fund_wallet(
+      organization:,
+      wallet:,
+      external_id: "recon-projection-funding",
+      amount_cents: 12_345
+    )
+    wallet.balance_projection.reload.update!(available_cents: 12_000)
+
+    run = Reconciliation::Run.call(
+      organization:,
+      provider: "bank-sandbox",
+      statement_date: Date.new(2026, 5, 30),
+      provider_balance_cents: 12_345
+    )
+
+    assert run.discrepant?
+    assert_equal 0, run.discrepancy_cents
+    assert_equal(-345, run.metadata.fetch("projection_difference_cents"))
   end
 end
