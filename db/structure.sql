@@ -409,6 +409,23 @@ $$;
 
 
 --
+-- Name: assert_pix_payment_refund_evidence(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_pix_payment_refund_evidence() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NOT refund_pix_payment_evidence_valid(NEW.id) THEN
+    RAISE EXCEPTION 'Pix payment state conflicts with settled refund evidence';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
 -- Name: assert_pix_payment_state_evidence(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -622,6 +639,23 @@ CREATE FUNCTION public.assert_reconciliation_run_evidence_after_run_write() RETU
     AS $$
 BEGIN
   PERFORM assert_reconciliation_run_evidence(NEW.id);
+  RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: assert_refund_pix_payment_evidence(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.assert_refund_pix_payment_evidence() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NOT refund_pix_payment_evidence_valid(NEW.pix_payment_id) THEN
+    RAISE EXCEPTION 'settled refunds exceed or mismatch Pix payment evidence';
+  END IF;
+
   RETURN NEW;
 END;
 $$;
@@ -1342,6 +1376,33 @@ CREATE FUNCTION public.financial_journal_line_exists(journal_entry_id_to_check b
       AND amount_cents = amount_cents_to_check
       AND currency = currency_to_check
   );
+$$;
+
+
+--
+-- Name: lock_refund_pix_payment_evidence(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.lock_refund_pix_payment_evidence() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF TG_OP = 'INSERT' OR OLD.pix_payment_id IS NOT DISTINCT FROM NEW.pix_payment_id THEN
+    PERFORM 1
+    FROM pix_payments
+    WHERE id = NEW.pix_payment_id
+    FOR UPDATE;
+    RETURN NEW;
+  END IF;
+
+  PERFORM 1
+  FROM pix_payments
+  WHERE id IN (OLD.pix_payment_id, NEW.pix_payment_id)
+  ORDER BY id
+  FOR UPDATE;
+
+  RETURN NEW;
+END;
 $$;
 
 
@@ -2656,6 +2717,40 @@ CREATE FUNCTION public.reconciliation_run_has_outbox_evidence(run_id_to_check bi
     WHERE aggregate_type = 'ReconciliationRun'
       AND aggregate_id = run_id_to_check
       AND event_type IN ('reconciliation.matched', 'reconciliation.discrepant')
+  );
+$$;
+
+
+--
+-- Name: refund_pix_payment_evidence_valid(bigint); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.refund_pix_payment_evidence_valid(pix_payment_id_to_check bigint) RETURNS boolean
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM pix_payments pix_payment
+    WHERE pix_payment.id = pix_payment_id_to_check
+      AND COALESCE((
+        SELECT SUM(refund.amount_cents)
+        FROM refunds refund
+        WHERE refund.pix_payment_id = pix_payment.id
+          AND refund.status = 'settled'
+      ), 0) <= pix_payment.amount_cents
+      AND NOT EXISTS (
+        SELECT 1
+        FROM refunds refund
+        WHERE refund.pix_payment_id = pix_payment.id
+          AND refund.status = 'settled'
+          AND (
+            refund.organization_id <> pix_payment.organization_id
+            OR refund.wallet_id <> pix_payment.wallet_id
+            OR refund.currency <> pix_payment.currency
+            OR pix_payment.status <> 'settled'
+            OR pix_payment.reversal_journal_entry_id IS NOT NULL
+          )
+      )
   );
 $$;
 
@@ -5521,6 +5616,13 @@ CREATE TRIGGER pix_payments_prevent_evidence_mutation BEFORE DELETE OR UPDATE ON
 
 
 --
+-- Name: pix_payments pix_payments_refund_evidence_after_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE CONSTRAINT TRIGGER pix_payments_refund_evidence_after_write AFTER UPDATE OF status, amount_cents, organization_id, wallet_id, currency, reversal_journal_entry_id ON public.pix_payments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_pix_payment_refund_evidence();
+
+
+--
 -- Name: pix_payments pix_payments_state_evidence_after_write; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -5581,6 +5683,20 @@ CREATE TRIGGER reconciliation_runs_prevent_evidence_mutation BEFORE DELETE OR UP
 --
 
 CREATE CONSTRAINT TRIGGER refunds_journal_evidence_after_write AFTER INSERT OR UPDATE ON public.refunds DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_financial_command_journal_evidence();
+
+
+--
+-- Name: refunds refunds_lock_pix_payment_before_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refunds_lock_pix_payment_before_write BEFORE INSERT OR UPDATE OF pix_payment_id, status, amount_cents, organization_id, wallet_id, currency ON public.refunds FOR EACH ROW EXECUTE FUNCTION public.lock_refund_pix_payment_evidence();
+
+
+--
+-- Name: refunds refunds_pix_payment_evidence_after_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE CONSTRAINT TRIGGER refunds_pix_payment_evidence_after_write AFTER INSERT OR UPDATE OF pix_payment_id, status, amount_cents, organization_id, wallet_id, currency ON public.refunds DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_refund_pix_payment_evidence();
 
 
 --
@@ -6148,6 +6264,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602220500'),
 ('20260602215500'),
 ('20260602214500'),
 ('20260602213000'),

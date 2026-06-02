@@ -515,6 +515,9 @@ module Database
         payouts_prevent_evidence_mutation
         refunds_state_evidence_after_write
         refunds_prevent_evidence_mutation
+        refunds_lock_pix_payment_before_write
+        refunds_pix_payment_evidence_after_write
+        pix_payments_refund_evidence_after_write
         med_cases_state_evidence_after_write
         med_cases_prevent_evidence_mutation
         pix_payments_state_evidence_after_write
@@ -545,15 +548,32 @@ module Database
           WHERE proname = 'med_case_has_refund_evidence'
         )
       SQL
+      refund_limit_function_present = catalog_value(<<~SQL.squish)
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_proc
+          WHERE proname = 'refund_pix_payment_evidence_valid'
+        )
+      SQL
+      refund_limit_mismatches = if refund_limit_function_present
+        ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
+          SELECT COUNT(*)
+          FROM pix_payments
+          WHERE NOT refund_pix_payment_evidence_valid(id)
+        SQL
+      end
       present_triggers = enabled_triggers & expected_triggers
       missing_triggers = expected_triggers - present_triggers
 
       Check.new(
         name: :financial_state_evidence_guards,
-        ok: aggregate_function_present && med_resolution_functions_present && missing_triggers.empty?,
+        ok: aggregate_function_present && med_resolution_functions_present && refund_limit_function_present &&
+          refund_limit_mismatches.to_i.zero? && missing_triggers.empty?,
         details: {
           aggregate_function_present:,
           med_resolution_functions_present:,
+          refund_limit_function_present:,
+          refund_limit_mismatches: refund_limit_mismatches.to_i,
           present_triggers: present_triggers.sort,
           missing_triggers:
         }

@@ -84,6 +84,8 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     state_guard_check = checks.find { |check| check.name == :financial_state_evidence_guards }
     assert state_guard_check.details.fetch(:aggregate_function_present)
     assert state_guard_check.details.fetch(:med_resolution_functions_present)
+    assert state_guard_check.details.fetch(:refund_limit_function_present)
+    assert_equal 0, state_guard_check.details.fetch(:refund_limit_mismatches)
     assert_empty state_guard_check.details.fetch(:missing_triggers)
     assert_equal %w[
       fundings_prevent_evidence_mutation
@@ -93,7 +95,10 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
       payouts_prevent_evidence_mutation
       payouts_state_evidence_after_write
       pix_payments_prevent_evidence_mutation
+      pix_payments_refund_evidence_after_write
       pix_payments_state_evidence_after_write
+      refunds_lock_pix_payment_before_write
+      refunds_pix_payment_evidence_after_write
       refunds_prevent_evidence_mutation
       refunds_state_evidence_after_write
       split_entries_prevent_evidence_mutation

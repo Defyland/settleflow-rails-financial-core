@@ -47,10 +47,11 @@
 
 1. Confirm the source Pix payment is `settled`.
 2. Sum existing settled refunds for the Pix payment and verify the requested refund does not exceed the original Pix amount.
-3. For MED, open a `MedCase` first; terminal resolution must be requested in `/ops` and approved by a second admin through maker-checker.
-4. When a MED case is accepted, verify the case references an approved `operator_approval` with action `med_case.accept` and exactly one linked settled `refund` using deterministic key `med_case.refund:<id>`.
-5. If a MED case is rejected, verify the case references an approved `operator_approval` with action `med_case.reject` and no refund or journal entry was created for that case.
-6. Do not mix direct Pix reversal with settled refunds for the same Pix payment.
+3. Run `bin/rails database:verify_consistency` and confirm `financial_state_evidence_guards.refund_limit_mismatches=0`.
+4. For MED, open a `MedCase` first; terminal resolution must be requested in `/ops` and approved by a second admin through maker-checker.
+5. When a MED case is accepted, verify the case references an approved `operator_approval` with action `med_case.accept` and exactly one linked settled `refund` using deterministic key `med_case.refund:<id>`.
+6. If a MED case is rejected, verify the case references an approved `operator_approval` with action `med_case.reject` and no refund or journal entry was created for that case.
+7. Do not mix direct Pix reversal with settled refunds for the same Pix payment.
 
 ## Split mismatch
 

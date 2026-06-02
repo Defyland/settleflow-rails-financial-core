@@ -807,6 +807,57 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     end
   end
 
+  test "database rejects direct over-refund and reversal after settled refund evidence" do
+    fund_wallet(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-refund-limit-funding",
+      amount_cents: 1_000
+    )
+    pix_payment = create_pix_payment(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-refund-limit-pix",
+      amount_cents: 100
+    )
+    PixPayments::Settle.call(organization: @organization, pix_payment:)
+    Refunds::Create.call(
+      organization: @organization,
+      pix_payment:,
+      external_id: "db-invariant-refund-limit-first",
+      amount_cents: 60,
+      reason: "customer_request",
+      idempotency_key: "db-invariant-refund-limit-first"
+    )
+
+    assert_database_constraint_violation do
+      insert_direct_refund_with_journal!(
+        pix_payment:,
+        external_id: "db-invariant-refund-limit-over",
+        amount_cents: 41,
+        idempotency_key: "db-invariant-refund-limit-over"
+      )
+    end
+
+    assert_database_constraint_violation do
+      journal_id = insert_balanced_journal!(
+        event_type: "pix.payment.reversed",
+        reference_type: "PixPayment",
+        reference_id: pix_payment.id,
+        idempotency_key: "pix_payment.reverse:#{pix_payment.id}",
+        debit_account: Ledger::AccountLocator.platform_cash(organization: @organization, currency: "BRL"),
+        credit_account: @wallet.liability_account,
+        amount_cents: pix_payment.amount_cents
+      )
+      pix_payment.update_columns(
+        status: "reversed",
+        reversal_journal_entry_id: journal_id,
+        reversed_at: Time.current,
+        reversal_reason: "direct_reversal_after_refund"
+      )
+    end
+  end
+
   test "database rejects direct wallet command state and split entry tampering" do
     destination_one = create_wallet(organization: @organization)
     destination_two = create_wallet(organization: @organization)
@@ -1024,6 +1075,35 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     ])
 
     journal_id
+  end
+
+  def insert_direct_refund_with_journal!(pix_payment:, external_id:, amount_cents:, idempotency_key:)
+    refund_id = Refund.insert!({
+      organization_id: @organization.id,
+      wallet_id: pix_payment.wallet_id,
+      pix_payment_id: pix_payment.id,
+      external_id:,
+      amount_cents:,
+      currency: pix_payment.currency,
+      status: "settled",
+      reason: "direct_refund",
+      settled_at: Time.current,
+      idempotency_key:,
+      created_at: Time.current,
+      updated_at: Time.current
+    }).first.fetch("id")
+
+    journal_id = insert_balanced_journal!(
+      event_type: "refund.settled",
+      reference_type: "Refund",
+      reference_id: refund_id,
+      idempotency_key:,
+      debit_account: Ledger::AccountLocator.platform_cash(organization: @organization, currency: pix_payment.currency),
+      credit_account: pix_payment.wallet.liability_account,
+      amount_cents:
+    )
+
+    Refund.where(id: refund_id).update_all(journal_entry_id: journal_id)
   end
 
   def outbox_event_for(aggregate, event_type)

@@ -27,7 +27,7 @@ Financial journal-evidence triggers are also deferrable. They allow the service 
 
 - Pix settlement locks `pix_payments`.
 - Payout settlement locks `payouts`.
-- Refund creation locks the source `pix_payments`.
+- Refund creation locks the source `pix_payments`; PostgreSQL also locks the source Pix row on direct refund writes and rejects cumulative settled refunds above the Pix amount.
 - MED acceptance/rejection requires ops maker-checker. The checker execution locks `med_cases`; acceptance then uses refund locking on the source Pix payment and stores the approved operator approval on the MED case.
 - Transfers, splits, Pix creation, and payout scheduling lock the source wallet projection before debiting.
 
