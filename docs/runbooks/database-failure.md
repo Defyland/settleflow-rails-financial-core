@@ -21,6 +21,16 @@
 ```bash
 bin/rails database:verify_consistency
 bin/rails database:backup_restore_drill
+bin/rails database:pitr_readiness_check
 bin/rails database:rebuild_balance_projections
 bin/rails database:explain_queries
 ```
+
+`database:backup_restore_drill` is a logical restore drill. Do not claim PITR readiness from that command alone.
+
+For PITR incidents, validate the external restore chain before reopening writes:
+
+1. Confirm the restored base backup and WAL archive cover the target time.
+2. Recover into an isolated PostgreSQL instance with the target timestamp or LSN.
+3. Run `database:verify_consistency`, projection rebuild dry-run, reconciliation for affected dates, and critical query explains.
+4. Compare restored WAL LSN and incident timeline before promoting the instance.

@@ -69,6 +69,24 @@ namespace :database do
     puts "Backup restore drill ok source=#{result.source_database} restored=#{result.restored_database} dump=#{result.dump_path}"
   end
 
+  desc "Check PostgreSQL WAL/PITR readiness without pretending to run a physical restore"
+  task pitr_readiness_check: :environment do
+    checks = Database::PitrReadiness.call
+    checks.each do |check|
+      status = check.ok ? "ok" : "failed"
+      puts "#{check.name}=#{status} #{check.details.to_json}"
+    end
+
+    output_dir = Rails.root.join("benchmarks/database")
+    FileUtils.mkdir_p(output_dir)
+    output_path = output_dir.join("pitr_readiness.json")
+    File.write(output_path, JSON.pretty_generate(checks.map(&:to_h)))
+    puts "Wrote #{output_path}"
+
+    strict = ActiveModel::Type::Boolean.new.cast(ENV["STRICT"])
+    abort "PITR readiness failed" if strict && checks.any? { |check| !check.ok }
+  end
+
   desc "Write EXPLAIN plans for critical financial queries into benchmarks/database/explain"
   task :explain_queries, [ :organization_slug ] => :environment do |_task, args|
     organization = if args[:organization_slug].present?

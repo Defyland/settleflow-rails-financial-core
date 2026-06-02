@@ -1,0 +1,59 @@
+[
+  {
+    "name": "postgresql_adapter",
+    "ok": true,
+    "details": {
+      "adapter": "postgresql"
+    }
+  },
+  {
+    "name": "wal_level_supports_pitr",
+    "ok": true,
+    "details": {
+      "wal_level": "replica",
+      "accepted": [
+        "replica",
+        "logical"
+      ]
+    }
+  },
+  {
+    "name": "wal_archive_mode_enabled",
+    "ok": false,
+    "details": {
+      "archive_mode": "off",
+      "accepted": [
+        "on",
+        "always"
+      ]
+    }
+  },
+  {
+    "name": "wal_archive_destination_configured",
+    "ok": false,
+    "details": {
+      "archive_command": "(disabled)",
+      "archive_library": "",
+      "rejected_commands": [
+        "",
+        "(disabled)",
+        "/bin/true",
+        "true"
+      ]
+    }
+  },
+  {
+    "name": "wal_senders_available",
+    "ok": true,
+    "details": {
+      "max_wal_senders": 10
+    }
+  },
+  {
+    "name": "current_wal_lsn_observable",
+    "ok": true,
+    "details": {
+      "current_wal_lsn": "0/2F220C10"
+    }
+  }
+]
