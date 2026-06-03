@@ -1588,6 +1588,107 @@ $$;
 
 
 --
+-- Name: outbox_event_expected_command_identity(public.outbox_events); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.outbox_event_expected_command_identity(event_row public.outbox_events) RETURNS text
+    LANGUAGE plpgsql STABLE
+    AS $$
+DECLARE
+  expected_key text;
+BEGIN
+  IF event_row.aggregate_type = 'Funding' THEN
+    SELECT funding.idempotency_key
+      INTO expected_key
+      FROM fundings funding
+     WHERE funding.id = event_row.aggregate_id
+       AND funding.organization_id = event_row.organization_id
+       AND event_row.event_type = 'wallet.funded';
+    RETURN expected_key;
+  END IF;
+
+  IF event_row.aggregate_type = 'Transfer' THEN
+    SELECT transfer.idempotency_key
+      INTO expected_key
+      FROM transfers transfer
+     WHERE transfer.id = event_row.aggregate_id
+       AND transfer.organization_id = event_row.organization_id
+       AND event_row.event_type = 'wallet.transfer.posted';
+    RETURN expected_key;
+  END IF;
+
+  IF event_row.aggregate_type = 'SplitPayment' THEN
+    SELECT split_payment.idempotency_key
+      INTO expected_key
+      FROM split_payments split_payment
+     WHERE split_payment.id = event_row.aggregate_id
+       AND split_payment.organization_id = event_row.organization_id
+       AND event_row.event_type = 'split.posted';
+    RETURN expected_key;
+  END IF;
+
+  IF event_row.aggregate_type = 'PixPayment' THEN
+    SELECT CASE
+             WHEN event_row.event_type IN ('pix.payment.approved', 'pix.payment.pending_review', 'pix.payment.rejected')
+               THEN pix_payment.idempotency_key
+             WHEN event_row.event_type = 'pix.payment.settled'
+               THEN 'pix_payment.settle:' || pix_payment.id::text
+             WHEN event_row.event_type = 'pix.payment.reversed'
+               THEN 'pix_payment.reverse:' || pix_payment.id::text
+           END
+      INTO expected_key
+      FROM pix_payments pix_payment
+     WHERE pix_payment.id = event_row.aggregate_id
+       AND pix_payment.organization_id = event_row.organization_id;
+    RETURN expected_key;
+  END IF;
+
+  IF event_row.aggregate_type = 'Payout' THEN
+    SELECT CASE
+             WHEN event_row.event_type = 'payout.scheduled'
+               THEN payout.idempotency_key
+             WHEN event_row.event_type = 'payout.settled'
+               THEN 'payout.settle:' || payout.id::text
+           END
+      INTO expected_key
+      FROM payouts payout
+     WHERE payout.id = event_row.aggregate_id
+       AND payout.organization_id = event_row.organization_id;
+    RETURN expected_key;
+  END IF;
+
+  IF event_row.aggregate_type = 'Refund' THEN
+    SELECT refund.idempotency_key
+      INTO expected_key
+      FROM refunds refund
+     WHERE refund.id = event_row.aggregate_id
+       AND refund.organization_id = event_row.organization_id
+       AND event_row.event_type = 'refund.settled';
+    RETURN expected_key;
+  END IF;
+
+  IF event_row.aggregate_type = 'MedCase' THEN
+    SELECT CASE
+             WHEN event_row.event_type = 'med.case.opened'
+               THEN med_case.idempotency_key
+             WHEN event_row.event_type = 'med.case.rejected'
+               THEN 'med_case.reject:' || med_case.id::text
+             WHEN event_row.event_type = 'med.case.refunded'
+               THEN 'med_case.accept:' || med_case.id::text
+           END
+      INTO expected_key
+      FROM med_cases med_case
+     WHERE med_case.id = event_row.aggregate_id
+       AND med_case.organization_id = event_row.organization_id;
+    RETURN expected_key;
+  END IF;
+
+  RETURN NULL;
+END;
+$$;
+
+
+--
 -- Name: outbox_event_has_aggregate_evidence(public.outbox_events); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -1901,6 +2002,71 @@ BEGIN
   END IF;
 
   RETURN true;
+END;
+$$;
+
+
+--
+-- Name: outbox_legacy_command_identity_exceptions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.outbox_legacy_command_identity_exceptions (
+    id bigint NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id bigint NOT NULL,
+    outbox_event_id bigint NOT NULL,
+    aggregate_type character varying NOT NULL,
+    aggregate_id bigint NOT NULL,
+    event_type character varying NOT NULL,
+    payload_sha256 character varying NOT NULL,
+    expected_idempotency_key character varying NOT NULL,
+    reason character varying NOT NULL,
+    accepted_at timestamp(6) without time zone NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT legacy_outbox_exceptions_expected_key_present_check CHECK ((btrim((expected_idempotency_key)::text) <> ''::text)),
+    CONSTRAINT legacy_outbox_exceptions_payload_sha256_hex_check CHECK (((payload_sha256)::text ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT legacy_outbox_exceptions_reason_present_check CHECK ((btrim((reason)::text) <> ''::text))
+);
+
+
+--
+-- Name: outbox_legacy_command_identity_exception_valid(public.outbox_legacy_command_identity_exceptions); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.outbox_legacy_command_identity_exception_valid(exception_row public.outbox_legacy_command_identity_exceptions) RETURNS boolean
+    LANGUAGE plpgsql STABLE
+    AS $$
+DECLARE
+  event_row outbox_events%ROWTYPE;
+  expected_key text;
+BEGIN
+  SELECT *
+    INTO event_row
+    FROM outbox_events
+   WHERE id = exception_row.outbox_event_id;
+
+  IF event_row.id IS NULL THEN
+    RETURN false;
+  END IF;
+
+  expected_key := outbox_event_expected_command_identity(event_row);
+
+  RETURN event_row.organization_id = exception_row.organization_id
+    AND event_row.aggregate_type = exception_row.aggregate_type
+    AND event_row.aggregate_id = exception_row.aggregate_id
+    AND event_row.event_type = exception_row.event_type
+    AND event_row.status = 'published'
+    AND event_row.published_at IS NOT NULL
+    AND event_row.payload_sha256 IS NOT NULL
+    AND event_row.payload_sha256 = exception_row.payload_sha256
+    AND event_row.idempotency_key IS NULL
+    AND expected_key IS NOT NULL
+    AND expected_key = exception_row.expected_idempotency_key
+    AND btrim(exception_row.reason) <> ''
+    AND outbox_event_has_aggregate_evidence(event_row)
+    AND NOT outbox_event_has_command_identity_evidence(event_row);
 END;
 $$;
 
@@ -2286,6 +2452,31 @@ BEGIN
     AND NEW.payload_sha256 IS NOT NULL
     AND NOT (OLD.status = 'publishing' AND NEW.status = 'published') THEN
     RAISE EXCEPTION 'outbox event payload hash can only be set during publication';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: prevent_outbox_legacy_command_identity_exception_mutation(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.prevent_outbox_legacy_command_identity_exception_mutation() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'legacy outbox command identity exceptions are append-only evidence';
+  END IF;
+
+  IF TG_OP = 'UPDATE' THEN
+    RAISE EXCEPTION 'legacy outbox command identity exceptions are immutable evidence';
+  END IF;
+
+  IF NOT outbox_legacy_command_identity_exception_valid(NEW) THEN
+    RAISE EXCEPTION 'legacy outbox command identity exception evidence is invalid';
   END IF;
 
   RETURN NEW;
@@ -3490,6 +3681,25 @@ ALTER SEQUENCE public.outbox_events_id_seq OWNED BY public.outbox_events.id;
 
 
 --
+-- Name: outbox_legacy_command_identity_exceptions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.outbox_legacy_command_identity_exceptions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: outbox_legacy_command_identity_exceptions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.outbox_legacy_command_identity_exceptions_id_seq OWNED BY public.outbox_legacy_command_identity_exceptions.id;
+
+
+--
 -- Name: payouts; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -4125,6 +4335,13 @@ ALTER TABLE ONLY public.outbox_events ALTER COLUMN id SET DEFAULT nextval('publi
 
 
 --
+-- Name: outbox_legacy_command_identity_exceptions id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.outbox_legacy_command_identity_exceptions ALTER COLUMN id SET DEFAULT nextval('public.outbox_legacy_command_identity_exceptions_id_seq'::regclass);
+
+
+--
 -- Name: payouts id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -4361,6 +4578,14 @@ ALTER TABLE ONLY public.outbox_events
 
 
 --
+-- Name: outbox_legacy_command_identity_exceptions outbox_legacy_command_identity_exceptions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.outbox_legacy_command_identity_exceptions
+    ADD CONSTRAINT outbox_legacy_command_identity_exceptions_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: payouts payouts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4476,6 +4701,34 @@ CREATE UNIQUE INDEX idx_balance_projection_wallet_currency ON public.balance_pro
 --
 
 CREATE UNIQUE INDEX idx_balance_snapshots_wallet_day ON public.balance_snapshots USING btree (organization_id, wallet_id, currency, captured_on);
+
+
+--
+-- Name: idx_legacy_outbox_exceptions_aggregate; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_legacy_outbox_exceptions_aggregate ON public.outbox_legacy_command_identity_exceptions USING btree (aggregate_type, aggregate_id, event_type);
+
+
+--
+-- Name: idx_legacy_outbox_exceptions_event; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_legacy_outbox_exceptions_event ON public.outbox_legacy_command_identity_exceptions USING btree (outbox_event_id);
+
+
+--
+-- Name: idx_legacy_outbox_exceptions_org; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_legacy_outbox_exceptions_org ON public.outbox_legacy_command_identity_exceptions USING btree (organization_id);
+
+
+--
+-- Name: idx_legacy_outbox_exceptions_public_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_legacy_outbox_exceptions_public_id ON public.outbox_legacy_command_identity_exceptions USING btree (public_id);
 
 
 --
@@ -5655,6 +5908,13 @@ CREATE TRIGGER outbox_events_prevent_evidence_mutation BEFORE INSERT OR DELETE O
 
 
 --
+-- Name: outbox_legacy_command_identity_exceptions outbox_legacy_command_identity_exceptions_prevent_mutation; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER outbox_legacy_command_identity_exceptions_prevent_mutation BEFORE INSERT OR DELETE OR UPDATE ON public.outbox_legacy_command_identity_exceptions FOR EACH ROW EXECUTE FUNCTION public.prevent_outbox_legacy_command_identity_exception_mutation();
+
+
+--
 -- Name: payouts payouts_journal_evidence_after_write; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -5948,11 +6208,27 @@ ALTER TABLE ONLY public.refunds
 
 
 --
+-- Name: outbox_legacy_command_identity_exceptions fk_rails_323fa922ed; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.outbox_legacy_command_identity_exceptions
+    ADD CONSTRAINT fk_rails_323fa922ed FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
 -- Name: split_entries fk_rails_3b1e99c548; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.split_entries
     ADD CONSTRAINT fk_rails_3b1e99c548 FOREIGN KEY (split_payment_id) REFERENCES public.split_payments(id);
+
+
+--
+-- Name: outbox_legacy_command_identity_exceptions fk_rails_410a8535fc; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.outbox_legacy_command_identity_exceptions
+    ADD CONSTRAINT fk_rails_410a8535fc FOREIGN KEY (outbox_event_id) REFERENCES public.outbox_events(id);
 
 
 --
@@ -6346,6 +6622,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260602224500'),
 ('20260602223500'),
 ('20260602222500'),
 ('20260602221500'),

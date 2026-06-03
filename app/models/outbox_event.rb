@@ -10,6 +10,7 @@ class OutboxEvent < ApplicationRecord
   ].freeze
 
   belongs_to :organization
+  has_one :outbox_legacy_command_identity_exception, dependent: :restrict_with_exception
 
   enum :status, { pending: "pending", publishing: "publishing", published: "published", dead_lettered: "dead_lettered" }
 

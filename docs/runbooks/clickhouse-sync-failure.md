@@ -6,7 +6,7 @@ ClickHouse failure is an analytics incident, not a financial correctness inciden
 2. Inspect `processed_events` with processor `clickhouse_financial_events`.
 3. Check ClickHouse availability and insert errors.
 4. Run `bin/rails database:verify_consistency` and confirm `processed_event_evidence_guards=ok`; do not backfill while processed-event evidence diverges from published outbox evidence.
-5. Confirm `outbox_evidence_guards` reports `mutable_command_identity_mismatches=0`. Treat published legacy command-identity mismatches as historical analytics annotations, not rows to edit, because the published payload hash is terminal evidence.
+5. Confirm `outbox_evidence_guards` reports `mutable_command_identity_mismatches=0` and `unaccepted_published_legacy_command_identity_mismatches=0`. Published legacy command-identity mismatches must either have immutable exception evidence in `outbox_legacy_command_identity_exceptions` or be treated as an incident; do not edit published outbox rows because the payload hash is terminal evidence.
 6. Recreate schema if needed:
 
 ```bash

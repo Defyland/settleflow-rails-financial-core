@@ -622,6 +622,59 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     assert_database_constraint_violation { event.update_columns(payload_sha256: "b" * 64) }
   end
 
+  test "database accepts only immutable evidence for published legacy outbox command identity gaps" do
+    fund_wallet(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-legacy-outbox-funding",
+      amount_cents: 2_000
+    )
+    pix_payment = create_pix_payment(
+      organization: @organization,
+      wallet: @wallet,
+      external_id: "db-invariant-legacy-outbox-pix",
+      amount_cents: 100
+    )
+    PixPayments::Settle.call(organization: @organization, pix_payment:)
+    legacy_event = insert_legacy_pix_settlement_outbox_event(pix_payment)
+    expected_key = "pix_payment.settle:#{pix_payment.id}"
+
+    assert_database_constraint_violation do
+      @organization.outbox_legacy_command_identity_exceptions.create!(
+        outbox_event: legacy_event,
+        aggregate_type: legacy_event.aggregate_type,
+        aggregate_id: legacy_event.aggregate_id,
+        event_type: legacy_event.event_type,
+        payload_sha256: legacy_event.payload_sha256,
+        expected_idempotency_key: "wrong:#{pix_payment.id}",
+        reason: "published_immutable_envelope_predates_command_identity_guard",
+        accepted_at: Time.current
+      )
+    end
+
+    exception = @organization.outbox_legacy_command_identity_exceptions.create!(
+      outbox_event: legacy_event,
+      aggregate_type: legacy_event.aggregate_type,
+      aggregate_id: legacy_event.aggregate_id,
+      event_type: legacy_event.event_type,
+      payload_sha256: legacy_event.payload_sha256,
+      expected_idempotency_key: expected_key,
+      reason: "published_immutable_envelope_predates_command_identity_guard",
+      accepted_at: Time.current,
+      metadata: { test_evidence: true }
+    )
+
+    outbox_guard_check = Database::ConsistencyVerifier.call.find { |check| check.name == :outbox_evidence_guards }
+    assert outbox_guard_check.ok, outbox_guard_check.details.inspect
+    assert_equal 1, outbox_guard_check.details.fetch(:published_legacy_command_identity_mismatches)
+    assert_equal 1, outbox_guard_check.details.fetch(:accepted_published_legacy_command_identity_mismatches)
+    assert_equal 0, outbox_guard_check.details.fetch(:unaccepted_published_legacy_command_identity_mismatches)
+    assert_equal 0, outbox_guard_check.details.fetch(:legacy_exception_evidence_mismatches)
+
+    assert_database_constraint_violation { exception.update_columns(reason: "tampered") }
+    assert_database_constraint_violation { OutboxLegacyCommandIdentityException.where(id: exception.id).delete_all }
+  end
+
   test "database rejects direct processed event evidence tampering" do
     funding = fund_wallet(
       organization: @organization,
@@ -1074,6 +1127,54 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
       payload_sha256: Outbox::Publisher.payload_sha256(Outbox::Publisher.envelope_for(event))
     )
     event.reload
+  end
+
+  def insert_legacy_pix_settlement_outbox_event(pix_payment)
+    public_id = SecureRandom.uuid
+    created_at = Time.current
+    payload = {
+      pix_payment_id: pix_payment.public_id,
+      amount_cents: pix_payment.amount_cents,
+      currency: pix_payment.currency
+    }
+    envelope = {
+      id: public_id,
+      event_type: "pix.payment.settled",
+      aggregate_type: "PixPayment",
+      aggregate_id: pix_payment.id,
+      organization_id: @organization.public_id,
+      payload:,
+      created_at: created_at.iso8601
+    }
+    payload_sha256 = Outbox::Publisher.payload_sha256(envelope)
+
+    event_id = with_disabled_legacy_outbox_insert_guards do
+      OutboxEvent.insert!({
+        public_id:,
+        organization_id: @organization.id,
+        aggregate_type: "PixPayment",
+        aggregate_id: pix_payment.id,
+        event_type: "pix.payment.settled",
+        status: "published",
+        attempts: 1,
+        published_at: created_at,
+        payload:,
+        payload_sha256:,
+        created_at:,
+        updated_at: created_at
+      }).first.fetch("id")
+    end
+    OutboxEvent.find(event_id)
+  end
+
+  def with_disabled_legacy_outbox_insert_guards
+    connection = ActiveRecord::Base.connection
+    connection.execute("ALTER TABLE outbox_events DISABLE TRIGGER outbox_events_command_identity_before_write")
+    connection.execute("ALTER TABLE outbox_events DISABLE TRIGGER outbox_events_prevent_evidence_mutation")
+    yield
+  ensure
+    connection.execute("ALTER TABLE outbox_events ENABLE TRIGGER outbox_events_prevent_evidence_mutation")
+    connection.execute("ALTER TABLE outbox_events ENABLE TRIGGER outbox_events_command_identity_before_write")
   end
 
   def post_test_journal

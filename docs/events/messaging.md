@@ -2,7 +2,7 @@
 
 SettleFlow uses a transactional outbox and ActiveJob. Publisher delivery is adapter-based: the default adapter writes a canonical event envelope to structured logs, and `OUTBOX_WEBHOOK_URL` enables an HTTP publisher that posts the same envelope with the outbox public ID as the downstream idempotency key. The HTTP publisher has bounded open/read timeouts and can sign payloads with `OUTBOX_WEBHOOK_SECRET`. This keeps the repository self-contained while preserving the seam needed for RabbitMQ, Redpanda, Pub/Sub, or webhook delivery.
 
-PostgreSQL requires new financial outbox rows for funding, transfer, split, Pix, payout, refund, and MED aggregates to carry the command idempotency key that matches the aggregate lifecycle. Published legacy rows are immutable delivery evidence; if they predate this guard and lack command identity, the consistency verifier reports them as legacy instead of rewriting the published envelope hash.
+PostgreSQL requires new financial outbox rows for funding, transfer, split, Pix, payout, refund, and MED aggregates to carry the command idempotency key that matches the aggregate lifecycle. Published legacy rows are immutable delivery evidence; if they predate this guard and lack command identity, they must have an immutable `outbox_legacy_command_identity_exceptions` row that records the original payload hash, expected command key, and acceptance reason instead of rewriting the published envelope hash.
 
 For public versioned financial event contracts, see [docs/events/README.md](README.md). Internal outbox event names may differ from the public contract taxonomy; publishers should map internal domain events to the versioned public schema before exposing them to external consumers.
 

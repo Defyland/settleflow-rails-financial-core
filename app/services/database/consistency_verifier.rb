@@ -84,6 +84,7 @@ module Database
         outbox_events_delivery_state_check
       ]
       expected_triggers = %w[
+        outbox_legacy_command_identity_exceptions_prevent_mutation
         outbox_events_prevent_evidence_mutation
         outbox_events_aggregate_evidence_before_write
         outbox_events_med_resolution_payload_before_write
@@ -97,7 +98,10 @@ module Database
       enabled_triggers = ActiveRecord::Base.connection.select_values(<<~SQL.squish)
         SELECT tgname
         FROM pg_trigger
-        WHERE tgrelid = 'outbox_events'::regclass
+        WHERE tgrelid IN (
+            'outbox_events'::regclass,
+            to_regclass('public.outbox_legacy_command_identity_exceptions')
+          )
           AND NOT tgisinternal
           AND tgenabled <> 'D'
       SQL
@@ -120,6 +124,21 @@ module Database
           SELECT 1
           FROM pg_proc
           WHERE proname = 'outbox_event_has_command_identity_evidence'
+        )
+      SQL
+      legacy_exception_table_present = catalog_value(<<~SQL.squish)
+        SELECT to_regclass('public.outbox_legacy_command_identity_exceptions') IS NOT NULL
+      SQL
+      legacy_exception_functions_present = catalog_value(<<~SQL.squish)
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_proc
+          WHERE proname = 'outbox_event_expected_command_identity'
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM pg_proc
+          WHERE proname = 'outbox_legacy_command_identity_exception_valid'
         )
       SQL
       aggregate_evidence_mismatches = if aggregate_function_present
@@ -148,6 +167,38 @@ module Database
             AND NOT outbox_event_has_command_identity_evidence(outbox_events)
         SQL
       end
+      legacy_exception_evidence_mismatches = if legacy_exception_table_present && legacy_exception_functions_present
+        ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
+          SELECT COUNT(*)
+          FROM outbox_legacy_command_identity_exceptions exception
+          WHERE NOT outbox_legacy_command_identity_exception_valid(exception)
+        SQL
+      end
+      accepted_published_legacy_command_identity_mismatches = if legacy_exception_table_present && legacy_exception_functions_present && command_identity_function_present
+        ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
+          SELECT COUNT(*)
+          FROM outbox_events event
+          JOIN outbox_legacy_command_identity_exceptions exception
+            ON exception.outbox_event_id = event.id
+           AND outbox_legacy_command_identity_exception_valid(exception)
+          WHERE event.aggregate_type IN ('Funding', 'Transfer', 'SplitPayment', 'PixPayment', 'Payout', 'Refund', 'MedCase')
+            AND event.payload_sha256 IS NOT NULL
+            AND NOT outbox_event_has_command_identity_evidence(event)
+        SQL
+      end
+      unaccepted_published_legacy_command_identity_mismatches = if legacy_exception_table_present && legacy_exception_functions_present && command_identity_function_present
+        ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
+          SELECT COUNT(*)
+          FROM outbox_events event
+          LEFT JOIN outbox_legacy_command_identity_exceptions exception
+            ON exception.outbox_event_id = event.id
+           AND outbox_legacy_command_identity_exception_valid(exception)
+          WHERE event.aggregate_type IN ('Funding', 'Transfer', 'SplitPayment', 'PixPayment', 'Payout', 'Refund', 'MedCase')
+            AND event.payload_sha256 IS NOT NULL
+            AND NOT outbox_event_has_command_identity_evidence(event)
+            AND exception.id IS NULL
+        SQL
+      end
       present_constraints = enabled_constraints & expected_constraints
       present_triggers = enabled_triggers & expected_triggers
       missing_constraints = expected_constraints - present_constraints
@@ -156,19 +207,27 @@ module Database
       Check.new(
         name: :outbox_evidence_guards,
         ok: aggregate_function_present && med_payload_function_present && command_identity_function_present &&
+          legacy_exception_table_present && legacy_exception_functions_present &&
           aggregate_evidence_mismatches.to_i.zero? && mutable_command_identity_mismatches.to_i.zero? &&
+          legacy_exception_evidence_mismatches.to_i.zero? &&
+          unaccepted_published_legacy_command_identity_mismatches.to_i.zero? &&
           missing_constraints.empty? && missing_triggers.empty?,
         details: {
           aggregate_function_present:,
           med_payload_function_present:,
           command_identity_function_present:,
+          legacy_exception_table_present:,
+          legacy_exception_functions_present:,
           present_constraints: present_constraints.sort,
           missing_constraints:,
           present_triggers: present_triggers.sort,
           missing_triggers:,
           aggregate_evidence_mismatches: aggregate_evidence_mismatches.to_i,
           mutable_command_identity_mismatches: mutable_command_identity_mismatches.to_i,
-          published_legacy_command_identity_mismatches: published_legacy_command_identity_mismatches.to_i
+          published_legacy_command_identity_mismatches: published_legacy_command_identity_mismatches.to_i,
+          accepted_published_legacy_command_identity_mismatches: accepted_published_legacy_command_identity_mismatches.to_i,
+          unaccepted_published_legacy_command_identity_mismatches: unaccepted_published_legacy_command_identity_mismatches.to_i,
+          legacy_exception_evidence_mismatches: legacy_exception_evidence_mismatches.to_i
         }
       )
     end

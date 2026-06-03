@@ -13,11 +13,16 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     assert outbox_guard_check.details.fetch(:aggregate_function_present)
     assert outbox_guard_check.details.fetch(:med_payload_function_present)
     assert outbox_guard_check.details.fetch(:command_identity_function_present)
+    assert outbox_guard_check.details.fetch(:legacy_exception_table_present)
+    assert outbox_guard_check.details.fetch(:legacy_exception_functions_present)
     assert_empty outbox_guard_check.details.fetch(:missing_constraints)
     assert_empty outbox_guard_check.details.fetch(:missing_triggers)
     assert_equal 0, outbox_guard_check.details.fetch(:aggregate_evidence_mismatches)
     assert_equal 0, outbox_guard_check.details.fetch(:mutable_command_identity_mismatches)
     assert_equal 0, outbox_guard_check.details.fetch(:published_legacy_command_identity_mismatches)
+    assert_equal 0, outbox_guard_check.details.fetch(:accepted_published_legacy_command_identity_mismatches)
+    assert_equal 0, outbox_guard_check.details.fetch(:unaccepted_published_legacy_command_identity_mismatches)
+    assert_equal 0, outbox_guard_check.details.fetch(:legacy_exception_evidence_mismatches)
     assert_equal %w[
       outbox_events_delivery_state_check
       outbox_events_payload_sha256_hex_check
@@ -28,6 +33,7 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
       outbox_events_command_identity_before_write
       outbox_events_med_resolution_payload_before_write
       outbox_events_prevent_evidence_mutation
+      outbox_legacy_command_identity_exceptions_prevent_mutation
     ], outbox_guard_check.details.fetch(:present_triggers)
     idempotency_guard_check = checks.find { |check| check.name == :idempotency_evidence_guards }
     assert idempotency_guard_check.details.fetch(:mutation_trigger_present)

@@ -23,7 +23,7 @@
 - Balance projections cannot go negative, must match their wallet organization/currency in PostgreSQL, and cannot be directly adjusted without a transaction-local ledger/rebuild write context.
 - Balance snapshots are append-only projection-vs-ledger evidence; PostgreSQL enforces their wallet organization/currency and difference calculation.
 - Reconciliation runs and rows are immutable after outbox evidence; PostgreSQL enforces provider-vs-ledger discrepancy math and row status evidence.
-- Outbox event envelopes are immutable in PostgreSQL after insert; events must start pending/unpublished, published delivery evidence is terminal, and financial events must match a real aggregate row, organization, event type, command idempotency key, and key payload identifiers. Published legacy events without command identity are not rewritten because that would change the published envelope hash.
+- Outbox event envelopes are immutable in PostgreSQL after insert; events must start pending/unpublished, published delivery evidence is terminal, and financial events must match a real aggregate row, organization, event type, command idempotency key, and key payload identifiers. Published legacy events without command identity are not rewritten because that would change the published envelope hash; they require immutable exception evidence tied to the original hash and expected command key.
 - Processed-event rows must match a published outbox event by organization, public event ID, event type, and payload hash before they can drive ClickHouse ingestion state.
 - Audit logs are append-only and hash-chained.
 - Audit hash-chain anchors are append-only and can be exported to an external evidence sink.
