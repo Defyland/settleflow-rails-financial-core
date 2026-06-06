@@ -96,7 +96,7 @@ class RefundAndMedLifecycleTest < ActiveSupport::TestCase
     assert_raises(Errors::ValidationError) do
       MedCases::Accept.call(organization: @organization, med_case: stale_med_case, operator: maker)
     end
-    assert_equal 1, @organization.refunds.where(idempotency_key: "med_case.refund:#{med_case.id}").count
+    assert_equal 1, @organization.refunds.where(idempotency_key: FinancialContracts.med_case_refund_key(med_case)).count
   end
 
   test "rejects a MED case without ledger mutation" do

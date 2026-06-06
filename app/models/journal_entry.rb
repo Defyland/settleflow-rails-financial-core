@@ -1,15 +1,5 @@
 class JournalEntry < ApplicationRecord
-  SUPPORTED_EVENT_TYPES = [
-    "wallet.funded",
-    "wallet.transfer.posted",
-    "split.posted",
-    "pix.payment.approved",
-    "pix.payment.settled",
-    "pix.payment.reversed",
-    "payout.scheduled",
-    "payout.settled",
-    "refund.settled"
-  ].freeze
+  SUPPORTED_EVENT_TYPES = FinancialContracts::JOURNAL_EVENT_TYPES
 
   before_update :raise_immutable_record
   before_destroy :raise_immutable_record, prepend: true

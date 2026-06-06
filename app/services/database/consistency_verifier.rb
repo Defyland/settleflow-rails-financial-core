@@ -78,18 +78,8 @@ module Database
     end
 
     def outbox_evidence_guards_check
-      expected_constraints = %w[
-        outbox_events_payload_sha256_hex_check
-        outbox_events_status_check
-        outbox_events_delivery_state_check
-      ]
-      expected_triggers = %w[
-        outbox_legacy_command_identity_exceptions_prevent_mutation
-        outbox_events_prevent_evidence_mutation
-        outbox_events_aggregate_evidence_before_write
-        outbox_events_med_resolution_payload_before_write
-        outbox_events_command_identity_before_write
-      ]
+      expected_constraints = FinancialContracts::OUTBOX_EVIDENCE_CONSTRAINTS
+      expected_triggers = FinancialContracts::OUTBOX_EVIDENCE_TRIGGERS
       enabled_constraints = ActiveRecord::Base.connection.select_values(<<~SQL.squish)
         SELECT conname
         FROM pg_constraint
@@ -149,23 +139,31 @@ module Database
         SQL
       end
       mutable_command_identity_mismatches = if command_identity_function_present
-        ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
-          SELECT COUNT(*)
-          FROM outbox_events
-          WHERE aggregate_type IN ('Funding', 'Transfer', 'SplitPayment', 'PixPayment', 'Payout', 'Refund', 'MedCase')
-            AND payload_sha256 IS NULL
-            AND status <> 'published'
-            AND NOT outbox_event_has_command_identity_evidence(outbox_events)
-        SQL
+        sql = ActiveRecord::Base.send(
+          :sanitize_sql_array,
+          [ <<~SQL.squish, FinancialContracts::FINANCIAL_COMMAND_AGGREGATE_TYPES ]
+            SELECT COUNT(*)
+            FROM outbox_events
+            WHERE aggregate_type IN (?)
+              AND payload_sha256 IS NULL
+              AND status <> 'published'
+              AND NOT outbox_event_has_command_identity_evidence(outbox_events)
+          SQL
+        )
+        ActiveRecord::Base.connection.select_value(sql).to_i
       end
       published_legacy_command_identity_mismatches = if command_identity_function_present
-        ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
-          SELECT COUNT(*)
-          FROM outbox_events
-          WHERE aggregate_type IN ('Funding', 'Transfer', 'SplitPayment', 'PixPayment', 'Payout', 'Refund', 'MedCase')
-            AND payload_sha256 IS NOT NULL
-            AND NOT outbox_event_has_command_identity_evidence(outbox_events)
-        SQL
+        sql = ActiveRecord::Base.send(
+          :sanitize_sql_array,
+          [ <<~SQL.squish, FinancialContracts::FINANCIAL_COMMAND_AGGREGATE_TYPES ]
+            SELECT COUNT(*)
+            FROM outbox_events
+            WHERE aggregate_type IN (?)
+              AND payload_sha256 IS NOT NULL
+              AND NOT outbox_event_has_command_identity_evidence(outbox_events)
+          SQL
+        )
+        ActiveRecord::Base.connection.select_value(sql).to_i
       end
       legacy_exception_evidence_mismatches = if legacy_exception_table_present && legacy_exception_functions_present
         ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
@@ -175,29 +173,37 @@ module Database
         SQL
       end
       accepted_published_legacy_command_identity_mismatches = if legacy_exception_table_present && legacy_exception_functions_present && command_identity_function_present
-        ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
-          SELECT COUNT(*)
-          FROM outbox_events event
-          JOIN outbox_legacy_command_identity_exceptions exception
-            ON exception.outbox_event_id = event.id
-           AND outbox_legacy_command_identity_exception_valid(exception)
-          WHERE event.aggregate_type IN ('Funding', 'Transfer', 'SplitPayment', 'PixPayment', 'Payout', 'Refund', 'MedCase')
-            AND event.payload_sha256 IS NOT NULL
-            AND NOT outbox_event_has_command_identity_evidence(event)
-        SQL
+        sql = ActiveRecord::Base.send(
+          :sanitize_sql_array,
+          [ <<~SQL.squish, FinancialContracts::FINANCIAL_COMMAND_AGGREGATE_TYPES ]
+            SELECT COUNT(*)
+            FROM outbox_events event
+            JOIN outbox_legacy_command_identity_exceptions exception
+              ON exception.outbox_event_id = event.id
+             AND outbox_legacy_command_identity_exception_valid(exception)
+            WHERE event.aggregate_type IN (?)
+              AND event.payload_sha256 IS NOT NULL
+              AND NOT outbox_event_has_command_identity_evidence(event)
+          SQL
+        )
+        ActiveRecord::Base.connection.select_value(sql).to_i
       end
       unaccepted_published_legacy_command_identity_mismatches = if legacy_exception_table_present && legacy_exception_functions_present && command_identity_function_present
-        ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
-          SELECT COUNT(*)
-          FROM outbox_events event
-          LEFT JOIN outbox_legacy_command_identity_exceptions exception
-            ON exception.outbox_event_id = event.id
-           AND outbox_legacy_command_identity_exception_valid(exception)
-          WHERE event.aggregate_type IN ('Funding', 'Transfer', 'SplitPayment', 'PixPayment', 'Payout', 'Refund', 'MedCase')
-            AND event.payload_sha256 IS NOT NULL
-            AND NOT outbox_event_has_command_identity_evidence(event)
-            AND exception.id IS NULL
-        SQL
+        sql = ActiveRecord::Base.send(
+          :sanitize_sql_array,
+          [ <<~SQL.squish, FinancialContracts::FINANCIAL_COMMAND_AGGREGATE_TYPES ]
+            SELECT COUNT(*)
+            FROM outbox_events event
+            LEFT JOIN outbox_legacy_command_identity_exceptions exception
+              ON exception.outbox_event_id = event.id
+             AND outbox_legacy_command_identity_exception_valid(exception)
+            WHERE event.aggregate_type IN (?)
+              AND event.payload_sha256 IS NOT NULL
+              AND NOT outbox_event_has_command_identity_evidence(event)
+              AND exception.id IS NULL
+          SQL
+        )
+        ActiveRecord::Base.connection.select_value(sql).to_i
       end
       present_constraints = enabled_constraints & expected_constraints
       present_triggers = enabled_triggers & expected_triggers
@@ -239,35 +245,23 @@ module Database
         idempotency_keys_identity_present_check
         idempotency_keys_response_state_check
       ]
-      expected_command_constraints = {
-        "fundings" => "fundings_idempotency_key_required_check",
-        "transfers" => "transfers_idempotency_key_required_check",
-        "split_payments" => "split_payments_idempotency_key_required_check",
-        "pix_payments" => "pix_payments_idempotency_key_required_check",
-        "payouts" => "payouts_idempotency_key_required_check",
-        "refunds" => "refunds_idempotency_key_required_check",
-        "med_cases" => "med_cases_idempotency_key_required_check"
-      }
+      expected_command_constraints = FinancialContracts::IDEMPOTENCY_REQUIRED_COMMAND_CONSTRAINTS
       enabled_constraints = ActiveRecord::Base.connection.select_values(<<~SQL.squish)
         SELECT conname
         FROM pg_constraint
         WHERE conrelid = 'idempotency_keys'::regclass
       SQL
-      command_constraints = ActiveRecord::Base.connection.exec_query(<<~SQL.squish).to_a.to_h do |row|
-        SELECT cls.relname AS table_name, con.conname AS constraint_name
-        FROM pg_constraint con
-        JOIN pg_class cls ON cls.oid = con.conrelid
-        WHERE cls.relname IN ('fundings', 'transfers', 'split_payments', 'pix_payments', 'payouts', 'refunds', 'med_cases')
-          AND con.conname IN (
-            'fundings_idempotency_key_required_check',
-            'transfers_idempotency_key_required_check',
-            'split_payments_idempotency_key_required_check',
-            'pix_payments_idempotency_key_required_check',
-            'payouts_idempotency_key_required_check',
-            'refunds_idempotency_key_required_check',
-            'med_cases_idempotency_key_required_check'
-          )
-      SQL
+      command_constraints_sql = ActiveRecord::Base.send(
+        :sanitize_sql_array,
+        [ <<~SQL.squish, expected_command_constraints.keys, expected_command_constraints.values ]
+          SELECT cls.relname AS table_name, con.conname AS constraint_name
+          FROM pg_constraint con
+          JOIN pg_class cls ON cls.oid = con.conrelid
+          WHERE cls.relname IN (?)
+            AND con.conname IN (?)
+        SQL
+      )
+      command_constraints = ActiveRecord::Base.connection.exec_query(command_constraints_sql).to_a.to_h do |row|
         [ row.fetch("table_name"), row.fetch("constraint_name") ]
       end
       present_constraints = enabled_constraints & expected_constraints
@@ -504,54 +498,58 @@ module Database
           AND NOT tgisinternal
           AND tgenabled <> 'D'
       SQL
-      evidence_mismatches = ActiveRecord::Base.connection.select_value(<<~SQL.squish).to_i
-        SELECT
-          (
-            SELECT COUNT(*)
-            FROM reconciliation_runs rr
-            WHERE btrim(provider) = ''
-               OR status NOT IN ('matched', 'discrepant')
-               OR discrepancy_cents <> provider_balance_cents - ledger_balance_cents
-               OR NOT EXISTS (
-                 SELECT 1
-                 FROM outbox_events oe
-                 WHERE oe.aggregate_type = 'ReconciliationRun'
-                   AND oe.aggregate_id = rr.id
-                   AND oe.event_type IN ('reconciliation.matched', 'reconciliation.discrepant')
-               )
-               OR NOT EXISTS (
-                 SELECT 1
-                 FROM reconciliation_rows row
-                 WHERE row.reconciliation_run_id = rr.id
-               )
-               OR (status = 'matched' AND EXISTS (
-                 SELECT 1
-                 FROM reconciliation_rows row
-                 WHERE row.reconciliation_run_id = rr.id
-                   AND row.status <> 'matched'
-               ))
-               OR (status = 'discrepant' AND NOT EXISTS (
-                 SELECT 1
-                 FROM reconciliation_rows row
-                 WHERE row.reconciliation_run_id = rr.id
-                   AND row.status <> 'matched'
-               ))
-          )
-          +
-          (
-            SELECT COUNT(*)
-            FROM reconciliation_rows row
-            LEFT JOIN reconciliation_runs run ON run.id = row.reconciliation_run_id
-            LEFT JOIN journal_entries journal ON journal.id = row.journal_entry_id
-            WHERE run.id IS NULL
-               OR run.organization_id <> row.organization_id
-               OR (journal.id IS NOT NULL AND journal.organization_id <> row.organization_id)
-               OR (row.status = 'matched' AND row.difference_cents <> 0)
-               OR (row.status = 'discrepant' AND row.difference_cents = 0)
-               OR (row.status = 'missing_in_ledger' AND (row.ledger_amount_cents <> 0 OR row.provider_amount_cents = 0))
-               OR (row.status = 'missing_in_provider' AND (row.provider_amount_cents <> 0 OR row.ledger_amount_cents = 0))
-          )
-      SQL
+      evidence_mismatches_sql = ActiveRecord::Base.send(
+        :sanitize_sql_array,
+        [ <<~SQL.squish, FinancialContracts::RECONCILIATION_EVENT_TYPES ]
+          SELECT
+            (
+              SELECT COUNT(*)
+              FROM reconciliation_runs rr
+              WHERE btrim(provider) = ''
+                 OR status NOT IN ('matched', 'discrepant')
+                 OR discrepancy_cents <> provider_balance_cents - ledger_balance_cents
+                 OR NOT EXISTS (
+                   SELECT 1
+                   FROM outbox_events oe
+                   WHERE oe.aggregate_type = 'ReconciliationRun'
+                     AND oe.aggregate_id = rr.id
+                     AND oe.event_type IN (?)
+                 )
+                 OR NOT EXISTS (
+                   SELECT 1
+                   FROM reconciliation_rows row
+                   WHERE row.reconciliation_run_id = rr.id
+                 )
+                 OR (status = 'matched' AND EXISTS (
+                   SELECT 1
+                   FROM reconciliation_rows row
+                   WHERE row.reconciliation_run_id = rr.id
+                     AND row.status <> 'matched'
+                 ))
+                 OR (status = 'discrepant' AND NOT EXISTS (
+                   SELECT 1
+                   FROM reconciliation_rows row
+                   WHERE row.reconciliation_run_id = rr.id
+                     AND row.status <> 'matched'
+                 ))
+            )
+            +
+            (
+              SELECT COUNT(*)
+              FROM reconciliation_rows row
+              LEFT JOIN reconciliation_runs run ON run.id = row.reconciliation_run_id
+              LEFT JOIN journal_entries journal ON journal.id = row.journal_entry_id
+              WHERE run.id IS NULL
+                 OR run.organization_id <> row.organization_id
+                 OR (journal.id IS NOT NULL AND journal.organization_id <> row.organization_id)
+                 OR (row.status = 'matched' AND row.difference_cents <> 0)
+                 OR (row.status = 'discrepant' AND row.difference_cents = 0)
+                 OR (row.status = 'missing_in_ledger' AND (row.ledger_amount_cents <> 0 OR row.provider_amount_cents = 0))
+                 OR (row.status = 'missing_in_provider' AND (row.provider_amount_cents <> 0 OR row.ledger_amount_cents = 0))
+            )
+        SQL
+      )
+      evidence_mismatches = ActiveRecord::Base.connection.select_value(evidence_mismatches_sql).to_i
       present_constraints = enabled_constraints & expected_constraints
       present_triggers = enabled_triggers & expected_triggers
       missing_constraints = expected_constraints - present_constraints
@@ -571,27 +569,7 @@ module Database
     end
 
     def financial_state_evidence_guards_check
-      expected_triggers = %w[
-        fundings_state_evidence_after_write
-        fundings_prevent_evidence_mutation
-        transfers_state_evidence_after_write
-        transfers_prevent_evidence_mutation
-        split_payments_state_evidence_after_write
-        split_payments_prevent_evidence_mutation
-        split_entries_state_evidence_after_write
-        split_entries_prevent_evidence_mutation
-        payouts_state_evidence_after_write
-        payouts_prevent_evidence_mutation
-        refunds_state_evidence_after_write
-        refunds_prevent_evidence_mutation
-        refunds_lock_pix_payment_before_write
-        refunds_pix_payment_evidence_after_write
-        pix_payments_refund_evidence_after_write
-        med_cases_state_evidence_after_write
-        med_cases_prevent_evidence_mutation
-        pix_payments_state_evidence_after_write
-        pix_payments_prevent_evidence_mutation
-      ]
+      expected_triggers = FinancialContracts::FINANCIAL_STATE_EVIDENCE_TRIGGERS
       enabled_triggers = ActiveRecord::Base.connection.select_values(<<~SQL.squish)
         SELECT tgname
         FROM pg_trigger
@@ -690,16 +668,7 @@ module Database
     end
 
     def financial_journal_evidence_guards_check
-      expected_triggers = %w[
-        journal_entries_financial_evidence_after_write
-        ledger_lines_financial_evidence_after_write
-        fundings_journal_evidence_after_write
-        transfers_journal_evidence_after_write
-        split_payments_journal_evidence_after_write
-        pix_payments_journal_evidence_after_write
-        payouts_journal_evidence_after_write
-        refunds_journal_evidence_after_write
-      ]
+      expected_triggers = FinancialContracts::FINANCIAL_JOURNAL_EVIDENCE_TRIGGERS
       enabled_triggers = ActiveRecord::Base.connection.select_values(<<~SQL.squish)
         SELECT tgname
         FROM pg_trigger

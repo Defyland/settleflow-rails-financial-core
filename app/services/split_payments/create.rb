@@ -46,7 +46,7 @@ module SplitPayments
         end
         journal_entry = Ledger::JournalPoster.call(
           organization:,
-          event_type: "split.posted",
+          event_type: FinancialContracts::Events::SPLIT_POSTED,
           reference: split_payment,
           idempotency_key:,
           correlation_id:,
@@ -57,7 +57,7 @@ module SplitPayments
         OutboxEvents::Emit.call(
           organization:,
           aggregate: split_payment,
-          event_type: "split.posted",
+          event_type: FinancialContracts::Events::SPLIT_POSTED,
           correlation_id:,
           idempotency_key:,
           payload: {

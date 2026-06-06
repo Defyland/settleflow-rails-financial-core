@@ -23,18 +23,8 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     assert_equal 0, outbox_guard_check.details.fetch(:accepted_published_legacy_command_identity_mismatches)
     assert_equal 0, outbox_guard_check.details.fetch(:unaccepted_published_legacy_command_identity_mismatches)
     assert_equal 0, outbox_guard_check.details.fetch(:legacy_exception_evidence_mismatches)
-    assert_equal %w[
-      outbox_events_delivery_state_check
-      outbox_events_payload_sha256_hex_check
-      outbox_events_status_check
-    ], outbox_guard_check.details.fetch(:present_constraints)
-    assert_equal %w[
-      outbox_events_aggregate_evidence_before_write
-      outbox_events_command_identity_before_write
-      outbox_events_med_resolution_payload_before_write
-      outbox_events_prevent_evidence_mutation
-      outbox_legacy_command_identity_exceptions_prevent_mutation
-    ], outbox_guard_check.details.fetch(:present_triggers)
+    assert_equal FinancialContracts::OUTBOX_EVIDENCE_CONSTRAINTS.sort, outbox_guard_check.details.fetch(:present_constraints)
+    assert_equal FinancialContracts::OUTBOX_EVIDENCE_TRIGGERS.sort, outbox_guard_check.details.fetch(:present_triggers)
     idempotency_guard_check = checks.find { |check| check.name == :idempotency_evidence_guards }
     assert idempotency_guard_check.details.fetch(:mutation_trigger_present)
     assert_empty idempotency_guard_check.details.fetch(:missing_constraints)
@@ -45,15 +35,8 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
       idempotency_keys_response_state_check
       idempotency_keys_status_check
     ], idempotency_guard_check.details.fetch(:present_constraints)
-    assert_equal %w[
-      fundings_idempotency_key_required_check
-      med_cases_idempotency_key_required_check
-      payouts_idempotency_key_required_check
-      pix_payments_idempotency_key_required_check
-      refunds_idempotency_key_required_check
-      split_payments_idempotency_key_required_check
-      transfers_idempotency_key_required_check
-    ], idempotency_guard_check.details.fetch(:present_command_constraints)
+    assert_equal FinancialContracts::IDEMPOTENCY_REQUIRED_COMMAND_CONSTRAINTS.values.sort,
+      idempotency_guard_check.details.fetch(:present_command_constraints)
     processed_event_guard_check = checks.find { |check| check.name == :processed_event_evidence_guards }
     assert processed_event_guard_check.details.fetch(:mutation_trigger_present)
     assert_empty processed_event_guard_check.details.fetch(:missing_constraints)
@@ -99,41 +82,14 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     assert state_guard_check.details.fetch(:unique_split_destination_index_present)
     assert_equal 0, state_guard_check.details.fetch(:duplicate_split_destination_rows)
     assert_empty state_guard_check.details.fetch(:missing_triggers)
-    assert_equal %w[
-      fundings_prevent_evidence_mutation
-      fundings_state_evidence_after_write
-      med_cases_prevent_evidence_mutation
-      med_cases_state_evidence_after_write
-      payouts_prevent_evidence_mutation
-      payouts_state_evidence_after_write
-      pix_payments_prevent_evidence_mutation
-      pix_payments_refund_evidence_after_write
-      pix_payments_state_evidence_after_write
-      refunds_lock_pix_payment_before_write
-      refunds_pix_payment_evidence_after_write
-      refunds_prevent_evidence_mutation
-      refunds_state_evidence_after_write
-      split_entries_prevent_evidence_mutation
-      split_entries_state_evidence_after_write
-      split_payments_prevent_evidence_mutation
-      split_payments_state_evidence_after_write
-      transfers_prevent_evidence_mutation
-      transfers_state_evidence_after_write
-    ], state_guard_check.details.fetch(:present_triggers)
+    assert_equal FinancialContracts::FINANCIAL_STATE_EVIDENCE_TRIGGERS.sort,
+      state_guard_check.details.fetch(:present_triggers)
     journal_guard_check = checks.find { |check| check.name == :financial_journal_evidence_guards }
     assert journal_guard_check.details.fetch(:evidence_functions_present)
     assert_empty journal_guard_check.details.fetch(:missing_triggers)
     assert_equal 0, journal_guard_check.details.fetch(:evidence_mismatches)
-    assert_equal %w[
-      fundings_journal_evidence_after_write
-      journal_entries_financial_evidence_after_write
-      ledger_lines_financial_evidence_after_write
-      payouts_journal_evidence_after_write
-      pix_payments_journal_evidence_after_write
-      refunds_journal_evidence_after_write
-      split_payments_journal_evidence_after_write
-      transfers_journal_evidence_after_write
-    ], journal_guard_check.details.fetch(:present_triggers)
+    assert_equal FinancialContracts::FINANCIAL_JOURNAL_EVIDENCE_TRIGGERS.sort,
+      journal_guard_check.details.fetch(:present_triggers)
     journal_taxonomy_check = checks.find { |check| check.name == :journal_event_taxonomy }
     assert journal_taxonomy_check.details.fetch(:constraint_validated)
     assert_equal JournalEntry::SUPPORTED_EVENT_TYPES, journal_taxonomy_check.details.fetch(:supported_event_types)

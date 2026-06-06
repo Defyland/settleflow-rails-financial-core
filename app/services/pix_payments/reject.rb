@@ -26,9 +26,9 @@ module PixPayments
         OutboxEvents::Emit.call(
           organization:,
           aggregate: pix_payment,
-          event_type: "pix.payment.rejected",
+          event_type: FinancialContracts::Events::PIX_PAYMENT_REJECTED,
           correlation_id:,
-          idempotency_key: "pix_payment.reject:#{pix_payment.id}",
+          idempotency_key: FinancialContracts.pix_payment_rejection_key(pix_payment),
           payload: {
             pix_payment_id: pix_payment.public_id,
             wallet_id: pix_payment.wallet.public_id,

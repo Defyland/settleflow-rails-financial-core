@@ -43,13 +43,13 @@ module PixPayments
 
         if risk_score >= REJECT_THRESHOLD
           pix_payment.update!(status: "rejected", failure_code: "risk_rejected")
-          emit(pix_payment, "pix.payment.rejected")
+          emit(pix_payment, FinancialContracts::Events::PIX_PAYMENT_REJECTED)
           return pix_payment
         end
 
         if risk_score >= REVIEW_THRESHOLD
           pix_payment.update!(status: "pending_review")
-          emit(pix_payment, "pix.payment.pending_review")
+          emit(pix_payment, FinancialContracts::Events::PIX_PAYMENT_PENDING_REVIEW)
           return pix_payment
         end
 
@@ -58,7 +58,7 @@ module PixPayments
         Accounts::BootstrapOrganizationLedger.call(organization:, currency:)
         journal_entry = Ledger::JournalPoster.call(
           organization:,
-          event_type: "pix.payment.approved",
+          event_type: FinancialContracts::Events::PIX_PAYMENT_APPROVED,
           reference: pix_payment,
           idempotency_key:,
           correlation_id:,
@@ -69,7 +69,7 @@ module PixPayments
           ]
         )
         pix_payment.update!(status: "approved", journal_entry:)
-        emit(pix_payment, "pix.payment.approved")
+        emit(pix_payment, FinancialContracts::Events::PIX_PAYMENT_APPROVED)
         PixSettlementJob.perform_later(pix_payment.id)
         pix_payment
       end

@@ -43,7 +43,7 @@ class Payout < ApplicationRecord
       operator_approval.subject_type == self.class.name &&
       operator_approval.subject_id == id &&
       operator_approval.approved? &&
-      operator_approval.action == "payout.settle_early"
+      operator_approval.action == FinancialContracts::Actions::PAYOUT_SETTLE_EARLY
 
     errors.add(:operator_approval, "must match the approved early payout settlement action")
   end

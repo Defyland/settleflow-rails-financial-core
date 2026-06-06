@@ -33,7 +33,7 @@ module Fundings
         )
         journal_entry = Ledger::JournalPoster.call(
           organization:,
-          event_type: "wallet.funded",
+          event_type: FinancialContracts::Events::WALLET_FUNDED,
           reference: funding,
           idempotency_key:,
           correlation_id:,
@@ -47,7 +47,7 @@ module Fundings
         OutboxEvents::Emit.call(
           organization:,
           aggregate: funding,
-          event_type: "wallet.funded",
+          event_type: FinancialContracts::Events::WALLET_FUNDED,
           correlation_id:,
           idempotency_key:,
           payload: { funding_id: funding.public_id, wallet_id: wallet.public_id, amount_cents:, currency: }

@@ -42,7 +42,7 @@ module Payouts
         )
         journal_entry = Ledger::JournalPoster.call(
           organization:,
-          event_type: "payout.scheduled",
+          event_type: FinancialContracts::Events::PAYOUT_SCHEDULED,
           reference: payout,
           idempotency_key:,
           correlation_id:,
@@ -53,7 +53,7 @@ module Payouts
           ]
         )
         payout.update!(journal_entry:)
-        emit(payout, "payout.scheduled")
+        emit(payout, FinancialContracts::Events::PAYOUT_SCHEDULED)
         payout
       end
     end

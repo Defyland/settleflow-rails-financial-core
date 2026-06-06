@@ -42,7 +42,7 @@ module Refunds
         )
         journal_entry = Ledger::JournalPoster.call(
           organization:,
-          event_type: "refund.settled",
+          event_type: FinancialContracts::Events::REFUND_SETTLED,
           reference: refund,
           idempotency_key:,
           correlation_id:,
@@ -56,7 +56,7 @@ module Refunds
         OutboxEvents::Emit.call(
           organization:,
           aggregate: refund,
-          event_type: "refund.settled",
+          event_type: FinancialContracts::Events::REFUND_SETTLED,
           correlation_id:,
           idempotency_key:,
           payload: {

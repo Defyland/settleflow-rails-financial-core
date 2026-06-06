@@ -38,7 +38,7 @@ module Transfers
         )
         journal_entry = Ledger::JournalPoster.call(
           organization:,
-          event_type: "wallet.transfer.posted",
+          event_type: FinancialContracts::Events::WALLET_TRANSFER_POSTED,
           reference: transfer,
           idempotency_key:,
           correlation_id:,
@@ -52,7 +52,7 @@ module Transfers
         OutboxEvents::Emit.call(
           organization:,
           aggregate: transfer,
-          event_type: "wallet.transfer.posted",
+          event_type: FinancialContracts::Events::WALLET_TRANSFER_POSTED,
           correlation_id:,
           idempotency_key:,
           payload: {

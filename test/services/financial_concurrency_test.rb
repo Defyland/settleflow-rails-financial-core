@@ -100,7 +100,7 @@ class FinancialConcurrencyTest < ActiveSupport::TestCase
 
     assert_single_success(results)
     assert med_case.reload.refunded?
-    assert_equal 1, organization.refunds.where(idempotency_key: "med_case.refund:#{med_case.id}").count
+    assert_equal 1, organization.refunds.where(idempotency_key: FinancialContracts.med_case_refund_key(med_case)).count
     assert_equal requested.approval.id, med_case.operator_approval_id
   end
 

@@ -37,7 +37,7 @@ class MedCase < ApplicationRecord
       return
     end
 
-    expected_action = refunded? ? "med_case.accept" : "med_case.reject"
+    expected_action = refunded? ? FinancialContracts::Actions::MED_CASE_ACCEPT : FinancialContracts::Actions::MED_CASE_REJECT
     return if operator_approval.organization_id == organization_id &&
       operator_approval.subject_type == self.class.name &&
       operator_approval.subject_id == id &&
@@ -60,7 +60,7 @@ class MedCase < ApplicationRecord
       refund.amount_cents == amount_cents &&
       refund.currency == currency &&
       refund.status == "settled" &&
-      refund.idempotency_key == "med_case.refund:#{id}"
+      refund.idempotency_key == FinancialContracts.med_case_refund_key(self)
 
     errors.add(:refund, "must match the MED case Pix payment, amount, currency, and deterministic key")
   end

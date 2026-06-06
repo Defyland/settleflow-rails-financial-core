@@ -20,11 +20,12 @@ module PixPayments
         raise Errors::ValidationError.new("Pix payment already has settled refunds") if pix_payment.refunds.settled.exists?
 
         Accounts::BootstrapOrganizationLedger.call(organization:, currency: pix_payment.currency)
+        reversal_key = FinancialContracts.pix_payment_reversal_key(pix_payment)
         journal_entry = Ledger::JournalPoster.call(
           organization:,
-          event_type: "pix.payment.reversed",
+          event_type: FinancialContracts::Events::PIX_PAYMENT_REVERSED,
           reference: pix_payment,
-          idempotency_key: "pix_payment.reverse:#{pix_payment.id}",
+          idempotency_key: reversal_key,
           correlation_id:,
           metadata: { external_id: pix_payment.external_id, reason: },
           lines: [
@@ -42,9 +43,9 @@ module PixPayments
         OutboxEvents::Emit.call(
           organization:,
           aggregate: pix_payment,
-          event_type: "pix.payment.reversed",
+          event_type: FinancialContracts::Events::PIX_PAYMENT_REVERSED,
           correlation_id:,
-          idempotency_key: "pix_payment.reverse:#{pix_payment.id}",
+          idempotency_key: reversal_key,
           payload: {
             pix_payment_id: pix_payment.public_id,
             wallet_id: pix_payment.wallet.public_id,

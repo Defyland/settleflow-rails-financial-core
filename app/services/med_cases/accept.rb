@@ -18,7 +18,7 @@ module MedCases
       raise Errors::ValidationError.new("MED case must be opened before refund", details: { status: med_case.status }) unless med_case.opened?
 
       Ops::MakerChecker.call(
-        action: "med_case.accept",
+        action: FinancialContracts::Actions::MED_CASE_ACCEPT,
         subject: med_case,
         operator:,
         reason:,
@@ -34,7 +34,7 @@ module MedCases
           amount_cents: med_case.amount_cents,
           currency: med_case.currency,
           reason: "med_accepted:#{med_case.reason}",
-          idempotency_key: "med_case.refund:#{med_case.id}",
+          idempotency_key: FinancialContracts.med_case_refund_key(med_case),
           correlation_id: correlation_id || med_case.correlation_id,
           metadata: med_case.metadata.merge("med_case_id" => med_case.public_id)
         )
@@ -42,9 +42,9 @@ module MedCases
         OutboxEvents::Emit.call(
           organization:,
           aggregate: med_case,
-          event_type: "med.case.refunded",
+          event_type: FinancialContracts::Events::MED_CASE_REFUNDED,
           correlation_id: correlation_id || med_case.correlation_id,
-          idempotency_key: "med_case.accept:#{med_case.id}",
+          idempotency_key: FinancialContracts.med_case_acceptance_key(med_case),
           payload: {
             med_case_id: med_case.public_id,
             refund_id: refund.public_id,

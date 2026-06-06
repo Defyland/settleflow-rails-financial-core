@@ -18,7 +18,7 @@ module MedCases
       raise Errors::ValidationError.new("MED case must be opened before rejection", details: { status: med_case.status }) unless med_case.opened?
 
       Ops::MakerChecker.call(
-        action: "med_case.reject",
+        action: FinancialContracts::Actions::MED_CASE_REJECT,
         subject: med_case,
         operator:,
         reason:,
@@ -36,9 +36,9 @@ module MedCases
         OutboxEvents::Emit.call(
           organization:,
           aggregate: med_case,
-          event_type: "med.case.rejected",
+          event_type: FinancialContracts::Events::MED_CASE_REJECTED,
           correlation_id: correlation_id || med_case.correlation_id,
-          idempotency_key: "med_case.reject:#{med_case.id}",
+          idempotency_key: FinancialContracts.med_case_rejection_key(med_case),
           payload: {
             med_case_id: med_case.public_id,
             pix_payment_id: med_case.pix_payment.public_id,

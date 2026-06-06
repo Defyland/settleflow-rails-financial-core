@@ -18,11 +18,12 @@ module PixPayments
         raise Errors::ValidationError.new("Pix payment must be approved before settlement", details: { status: pix_payment.status }) unless pix_payment.approved?
 
         Accounts::BootstrapOrganizationLedger.call(organization:, currency: pix_payment.currency)
+        settlement_key = FinancialContracts.pix_payment_settlement_key(pix_payment)
         journal_entry = Ledger::JournalPoster.call(
           organization:,
-          event_type: "pix.payment.settled",
+          event_type: FinancialContracts::Events::PIX_PAYMENT_SETTLED,
           reference: pix_payment,
-          idempotency_key: "pix_payment.settle:#{pix_payment.id}",
+          idempotency_key: settlement_key,
           correlation_id:,
           metadata: { external_id: pix_payment.external_id },
           lines: [
@@ -34,9 +35,9 @@ module PixPayments
         OutboxEvents::Emit.call(
           organization:,
           aggregate: pix_payment,
-          event_type: "pix.payment.settled",
+          event_type: FinancialContracts::Events::PIX_PAYMENT_SETTLED,
           correlation_id:,
-          idempotency_key: "pix_payment.settle:#{pix_payment.id}",
+          idempotency_key: settlement_key,
           payload: {
             pix_payment_id: pix_payment.public_id,
             amount_cents: pix_payment.amount_cents,

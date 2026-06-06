@@ -31,7 +31,7 @@ class ReconciliationRun < ApplicationRecord
     OutboxEvent.exists?(
       aggregate_type: self.class.name,
       aggregate_id: id,
-      event_type: [ "reconciliation.matched", "reconciliation.discrepant" ]
+      event_type: FinancialContracts::RECONCILIATION_EVENT_TYPES
     )
   end
 end

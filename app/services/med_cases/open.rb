@@ -40,7 +40,7 @@ module MedCases
         OutboxEvents::Emit.call(
           organization:,
           aggregate: med_case,
-          event_type: "med.case.opened",
+          event_type: FinancialContracts::Events::MED_CASE_OPENED,
           correlation_id:,
           idempotency_key:,
           payload: {

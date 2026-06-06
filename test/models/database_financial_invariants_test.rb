@@ -637,7 +637,7 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     )
     PixPayments::Settle.call(organization: @organization, pix_payment:)
     legacy_event = insert_legacy_pix_settlement_outbox_event(pix_payment)
-    expected_key = "pix_payment.settle:#{pix_payment.id}"
+    expected_key = FinancialContracts.pix_payment_settlement_key(pix_payment)
 
     assert_database_constraint_violation do
       @organization.outbox_legacy_command_identity_exceptions.create!(
@@ -842,7 +842,7 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
         event_type: "payout.settled",
         reference_type: "Payout",
         reference_id: payout.id,
-        idempotency_key: "payout.settle:#{payout.id}",
+        idempotency_key: FinancialContracts.payout_settlement_key(payout),
         debit_account: Ledger::AccountLocator.payout_clearing(organization: @organization, currency: payout.currency),
         credit_account: Ledger::AccountLocator.platform_cash(organization: @organization, currency: payout.currency),
         amount_cents: payout.amount_cents

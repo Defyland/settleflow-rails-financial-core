@@ -21,7 +21,7 @@ module Payouts
         raise Errors::AuthorizationError.new("Early payout settlement requires ops maker-checker approval") if operator.blank?
 
         return Ops::MakerChecker.call(
-          action: "payout.settle_early",
+          action: FinancialContracts::Actions::PAYOUT_SETTLE_EARLY,
           subject: payout,
           operator:,
           reason:,
@@ -52,11 +52,12 @@ module Payouts
         end
 
         Accounts::BootstrapOrganizationLedger.call(organization:, currency: payout.currency)
+        settlement_key = FinancialContracts.payout_settlement_key(payout)
         journal_entry = Ledger::JournalPoster.call(
           organization:,
-          event_type: "payout.settled",
+          event_type: FinancialContracts::Events::PAYOUT_SETTLED,
           reference: payout,
-          idempotency_key: "payout.settle:#{payout.id}",
+          idempotency_key: settlement_key,
           correlation_id:,
           metadata: { external_id: payout.external_id, settlement_due_on: payout.settlement_due_on.iso8601 },
           lines: [
@@ -73,9 +74,9 @@ module Payouts
         OutboxEvents::Emit.call(
           organization:,
           aggregate: payout,
-          event_type: "payout.settled",
+          event_type: FinancialContracts::Events::PAYOUT_SETTLED,
           correlation_id:,
-          idempotency_key: "payout.settle:#{payout.id}",
+          idempotency_key: settlement_key,
           payload: {
             payout_id: payout.public_id,
             wallet_id: payout.wallet.public_id,

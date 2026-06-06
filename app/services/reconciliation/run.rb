@@ -43,10 +43,11 @@ module Reconciliation
           )
         )
 
+        event_type = run.matched? ? FinancialContracts::Events::RECONCILIATION_MATCHED : FinancialContracts::Events::RECONCILIATION_DISCREPANT
         OutboxEvents::Emit.call(
           organization:,
           aggregate: run,
-          event_type: "reconciliation.#{run.status}",
+          event_type:,
           correlation_id:,
           payload: {
             reconciliation_run_id: run.public_id,

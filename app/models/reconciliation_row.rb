@@ -84,7 +84,7 @@ class ReconciliationRow < ApplicationRecord
     return unless OutboxEvent.exists?(
       aggregate_type: "ReconciliationRun",
       aggregate_id: reconciliation_run_id,
-      event_type: [ "reconciliation.matched", "reconciliation.discrepant" ]
+      event_type: FinancialContracts::RECONCILIATION_EVENT_TYPES
     )
 
     errors.add(:base, "reconciliation rows with outbox evidence are immutable")
