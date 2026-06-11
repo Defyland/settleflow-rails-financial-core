@@ -85,6 +85,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CustomerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "409":
           $ref: "#/components/responses/IdempotencyConflict"
         "422":
@@ -135,6 +137,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WalletResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
         "422":
           $ref: "#/components/responses/ValidationError"
   /v1/wallets/{id}:
@@ -221,6 +227,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FundingResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
         "422":
           $ref: "#/components/responses/ValidationError"
   /v1/fundings/{id}:
@@ -267,6 +277,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransferResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
         "422":
           $ref: "#/components/responses/ValidationError"
   /v1/transfers/{id}:
@@ -313,6 +327,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SplitPaymentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
         "422":
           $ref: "#/components/responses/ValidationError"
   /v1/split_payments/{id}:
@@ -359,6 +377,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PayoutResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
         "422":
           $ref: "#/components/responses/ValidationError"
   /v1/payouts/{id}:
@@ -388,6 +410,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PayoutResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
         "422":
           $ref: "#/components/responses/ValidationError"
   /v1/pix_payments:
@@ -421,6 +449,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PixPaymentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
         "422":
           $ref: "#/components/responses/ValidationError"
   /v1/pix_payments/{id}:
@@ -450,6 +482,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PixPaymentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
         "422":
           $ref: "#/components/responses/ValidationError"
   /v1/refunds:
@@ -483,6 +519,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RefundResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
         "422":
           $ref: "#/components/responses/ValidationError"
   /v1/refunds/{id}:
@@ -529,6 +569,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MedCaseResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
         "422":
           $ref: "#/components/responses/ValidationError"
   /v1/med_cases/{id}:
@@ -547,23 +591,21 @@ paths:
   /v1/med_cases/{id}/accept:
     post:
       operationId: acceptMedCase
-      summary: Accept a fake MED case and create its linked refund.
+      summary: Terminal MED acceptance is blocked in the public API and requires ops maker-checker approval.
       parameters:
         - $ref: "#/components/parameters/PublicId"
         - $ref: "#/components/parameters/IdempotencyKey"
       responses:
-        "200":
-          description: MED case refunded.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MedCaseResponse"
-        "422":
-          $ref: "#/components/responses/ValidationError"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
   /v1/med_cases/{id}/reject:
     post:
       operationId: rejectMedCase
-      summary: Reject a fake MED case without ledger mutation.
+      summary: Terminal MED rejection is blocked in the public API and requires ops maker-checker approval.
       parameters:
         - $ref: "#/components/parameters/PublicId"
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -578,14 +620,12 @@ paths:
                 reason:
                   type: string
       responses:
-        "200":
-          description: MED case rejected.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MedCaseResponse"
-        "422":
-          $ref: "#/components/responses/ValidationError"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
   /v1/ledger_entries:
     get:
       operationId: listLedgerEntries
@@ -643,6 +683,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReconciliationRunResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
   /v1/reconciliation_runs/{id}:
     get:
       operationId: getReconciliationRun
@@ -700,7 +746,7 @@ components:
     IdempotencyKey:
       name: Idempotency-Key
       in: header
-      required: false
+      required: true
       schema:
         type: string
         maxLength: 255
@@ -713,6 +759,18 @@ components:
   responses:
     Unauthorized:
       description: Missing or invalid API key.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    BadRequest:
+      description: Malformed request or missing required idempotency key.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Authenticated principal is not authorized for this operation.
       content:
         application/json:
           schema:

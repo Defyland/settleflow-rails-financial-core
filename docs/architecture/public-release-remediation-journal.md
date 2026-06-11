@@ -160,3 +160,26 @@ Verification:
 Decision notes:
 
 - Kept the database columns and snapshot fields as internal storage/invariant surface for now. The remediation removes the misleading API and operator promise until real pending/blocked transitions exist.
+
+### Session 1: R7 API/OpenAPI drift
+
+Implemented:
+
+- Marked the shared OpenAPI `Idempotency-Key` parameter as required.
+- Added documented `400` and `409` responses to all idempotent public write commands.
+- Added documented `403` responses where runtime authorization blocks public writes.
+- Changed MED accept/reject OpenAPI docs to describe the actual public behavior: terminal resolution is forbidden and requires ops maker-checker approval.
+- Removed false `200` success responses from public MED accept/reject.
+- Added missing error-format docs for `authorization_failed` and `idempotency_key_required`.
+- Added an OpenAPI contract test for idempotency response documentation and MED forbidden behavior.
+
+Verification:
+
+- `bin/rails test test/services/openapi_contract_test.rb test/requests/financial_extensions_api_test.rb`
+- Result: 3 runs, 85 assertions, 0 failures, 0 errors, 0 skips.
+- `ruby -e "require 'yaml'; YAML.load_file('openapi.yaml'); puts 'openapi.yaml parsed'"`
+- Result: `openapi.yaml parsed`.
+- `bin/rubocop test/services/openapi_contract_test.rb`
+- Result: 1 file inspected, no offenses.
+- `ruby -ryaml -e 'doc=YAML.load_file("openapi.yaml"); doc["paths"].each { |path, ops| ops.each { |method, spec| next unless method == "post"; puts "#{path}: #{spec.fetch("responses").keys.join(",")}" } }'`
+- Result: every POST with `Idempotency-Key` documents `400` and `409`; MED accept/reject document `400,403,409` and no `200`.

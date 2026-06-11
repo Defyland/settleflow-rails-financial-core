@@ -19,6 +19,8 @@ All API errors use the same envelope:
 Standard codes:
 
 - `authentication_failed`: missing, invalid, or suspended API key.
+- `authorization_failed`: authenticated API credential is not allowed to perform the operation.
+- `idempotency_key_required`: mutating request omitted the required `Idempotency-Key` header.
 - `not_found`: missing resource or cross-tenant access attempt.
 - `validation_failed`: malformed input, failed model validation, or unsupported state transition.
 - `insufficient_funds`: wallet projection cannot cover a debit.
