@@ -19,6 +19,13 @@ class Wallet < ApplicationRecord
   validates :external_id, uniqueness: { scope: :organization_id }
 
   def liability_account
-    ledger_accounts.find_by!(account_type: "liability", normal_balance: "credit", currency:)
+    @liability_account ||= begin
+      if ledger_accounts.loaded?
+        ledger_accounts.detect { |account| account.account_type == "liability" && account.normal_balance == "credit" && account.currency == currency } ||
+          raise(ActiveRecord::RecordNotFound, "Couldn't find liability account for Wallet #{id}")
+      else
+        ledger_accounts.find_by!(account_type: "liability", normal_balance: "credit", currency:)
+      end
+    end
   end
 end

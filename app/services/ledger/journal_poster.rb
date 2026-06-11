@@ -75,16 +75,21 @@ module Ledger
     end
 
     def apply_balance_projection!(journal_entry)
-      journal_entry.ledger_lines.includes(ledger_account: :wallet).find_each do |line|
+      deltas = Hash.new(0)
+
+      journal_entry.ledger_lines.includes(ledger_account: :wallet).each do |line|
         wallet = line.ledger_account.wallet
         next if wallet.blank?
 
-        projection = BalanceProjection.find_by!(
-          organization:,
-          wallet:,
-          currency: line.currency
-        )
-        projection.apply_available_delta!(available_delta(line))
+        deltas[[ wallet.id, line.currency ]] += available_delta(line)
+      end
+
+      projections = BalanceProjection
+        .where(organization:, wallet_id: deltas.keys.map(&:first), currency: deltas.keys.map(&:second).uniq)
+        .index_by { |projection| [ projection.wallet_id, projection.currency ] }
+
+      deltas.each do |key, delta_cents|
+        projections.fetch(key).apply_available_delta!(delta_cents)
       end
     end
 

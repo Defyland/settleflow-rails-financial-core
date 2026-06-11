@@ -25,6 +25,31 @@ class LedgerJournalPosterTest < ActiveSupport::TestCase
     assert_equal 2_500, @destination_wallet.balance_projection.reload.available_cents
   end
 
+  test "applies net projection deltas per wallet and currency" do
+    transfer = journal_reference("journal-poster-netted-reference", amount_cents: 2_500, idempotency_key: "journal-poster-netted")
+    journal = nil
+
+    ActiveRecord::Base.transaction do
+      journal = Ledger::JournalPoster.call(
+        organization: @organization,
+        event_type: "wallet.transfer.posted",
+        reference: transfer,
+        idempotency_key: "journal-poster-netted",
+        lines: [
+          { account: @source_wallet.liability_account, direction: "debit", amount_cents: 3_000, currency: "BRL" },
+          { account: @source_wallet.liability_account, direction: "credit", amount_cents: 500, currency: "BRL" },
+          { account: @destination_wallet.liability_account, direction: "credit", amount_cents: 3_000, currency: "BRL" },
+          { account: @destination_wallet.liability_account, direction: "debit", amount_cents: 500, currency: "BRL" }
+        ]
+      )
+      transfer.update!(journal_entry: journal)
+    end
+
+    assert_equal 4, journal.ledger_lines.count
+    assert_equal 7_500, @source_wallet.balance_projection.reload.available_cents
+    assert_equal 2_500, @destination_wallet.balance_projection.reload.available_cents
+  end
+
   test "rejects unbalanced journal entries before persistence" do
     assert_raises(Errors::ValidationError) do
       Ledger::JournalPoster.call(

@@ -249,6 +249,9 @@ Implemented:
 - Updated transfers to lock both source and destination wallet projections before the funds check and ledger post.
 - Updated split payments to lock source and destination wallet projections before the funds check and ledger post.
 - Added a regression test that posts inverse transfers concurrently and proves both complete without deadlock or balance drift.
+- Changed `Ledger::JournalPoster` to batch-load balance projections and apply one net delta per wallet/currency instead of looking up a projection for every ledger line.
+- Changed `Wallet#liability_account` to reuse preloaded/memoized ledger accounts.
+- Added a regression test covering multiple same-wallet lines that collapse into a net projection delta.
 
 Verification:
 
@@ -256,8 +259,13 @@ Verification:
 - Result: 12 runs, 66 assertions, 0 failures, 0 errors, 0 skips.
 - `bin/rubocop app/services/wallets/projection_locker.rb app/services/transfers/create.rb app/services/split_payments/create.rb test/services/financial_concurrency_test.rb`
 - Result: 4 files inspected, no offenses.
+- `bin/rails test test/services/ledger_journal_poster_test.rb test/services/transfer_create_test.rb test/services/split_payment_create_test.rb test/services/financial_concurrency_test.rb`
+- Result: 19 runs, 88 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop app/services/ledger/journal_poster.rb app/models/wallet.rb test/services/ledger_journal_poster_test.rb`
+- Result: 3 files inspected, no offenses.
 
 Decision notes:
 
 - The helper locks projections instead of wallets because the contested invariant is the projected liability balance, and existing money paths already use projection locking for funds checks.
 - Sorting by wallet id removes opposite-order lock acquisition between inverse transfers and split destinations while keeping the change local to the current transaction-script services.
+- Projection batching is kept inside `JournalPoster` because projection maintenance is a ledger side effect, not a caller responsibility.
