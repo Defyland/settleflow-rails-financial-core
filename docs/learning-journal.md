@@ -1,6 +1,6 @@
 # SettleFlow Learning Journal
 
-Este journal documenta a história do repositório até o commit `9df9e43`. O commit que atualiza este próprio arquivo é entrega documental, não uma decisão nova de domínio, então a timeline abaixo para antes dele de propósito.
+Este journal documenta a história do repositório até o commit `9df9e43`. A timeline para ali de propósito porque os commits posteriores nesta branch são refinamentos documentais do próprio journal, não decisões novas de produto ou de domínio.
 
 ## Como este journal usa evidências
 
@@ -18,6 +18,24 @@ Este journal documenta a história do repositório até o commit `9df9e43`. O co
 
 - Escopo:
   commits já gravados até `9df9e43`. Alterações ainda não commitadas na árvore de trabalho não entram como fato histórico.
+
+## O que o histórico não prova
+
+- O histórico não prova a ordem interna exata de red, green e refactor dentro de um commit atômico.
+  Quando isso não aparece separado em commits diferentes ou em testes adicionados antes/depois, o journal assume só o que o diff permite afirmar.
+
+- O histórico não prova quais alternativas foram de fato debatidas em conversa privada.
+  Só ADRs, mensagens de commit ou docs explícitas sustentam "alternativa rejeitada historicamente".
+  Fora disso, este texto trata alternativas como plausíveis ou como inferência comparativa.
+
+- O histórico não prova incidentes reais de produção.
+  Concorrência, replay, privacidade e operabilidade aparecem aqui como riscos modelados e como lacunas fechadas pelo código, não como postmortem de ambiente real.
+
+- O histórico não prova que a árvore de trabalho atual seja o mesmo estado analisado.
+  Nesta passagem existiam mudanças não commitadas fora do journal; elas foram excluídas das afirmações históricas.
+
+- O histórico não prova intenção psicológica individual.
+  O máximo confiável é a combinação `commit + diff + testes + docs/ADR`.
 
 ## 1. Objetivo do projeto
 
@@ -175,7 +193,150 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
 - Base usada:
   commits `63618c2`, `0f83617`, `97a34fd`, `d2355a6`, `76d9c2a`, `4584b85`, `8f72783`, `b4b14bf`, `d035016`, `9df9e43`; `app/services/wallets/projection_locker.rb`, `app/services/ledger/journal_poster.rb`, `config/routes.rb`, `lib/database/*`, `redocly.yaml`, `bin/critical_money_branch_coverage`, `test/services/financial_branch_coverage_test.rb`.
 
-## 4. Decisão por decisão: o que foi feito, por que foi feito, alternativas rejeitadas
+## Features importantes como unidades completas
+
+### Pipeline financeiro core: comando idempotente, ledger, projeção e outbox
+
+- Problema que resolve:
+  criar dinheiro, mover saldo e liquidar eventos financeiros sem depender de saldo mutável opaco nem de publicação assíncrona desconectada do commit principal.
+- Commits da feature:
+  `70a8841`, `9035824`, `8a6117b`, `593ebd2`, `9b17f12`, `d692a31`, `63618c2`, `0f83617`.
+- Arquivos principais:
+  `app/controllers/v1/fundings_controller.rb`, `app/services/idempotency/runner.rb`, `app/services/fundings/create.rb`, `app/services/transfers/create.rb`, `app/services/pix_payments/settle.rb`, `app/services/ledger/journal_poster.rb`, `app/services/outbox/publisher.rb`, `app/jobs/outbox_publish_job.rb`, `app/services/wallets/projection_locker.rb`.
+- Por que a solução final tomou essa forma:
+  o histórico converge para um caminho síncrono e explícito no mesmo processo Rails: validar o comando, postar o ledger, atualizar projeção derivada e só então publicar evidência assíncrona por outbox.
+  Isso combina com `docs/adr/0001-double-entry-ledger.md`, `docs/adr/0002-transactional-outbox-solid-queue.md` e `docs/adr/0006-ledger-and-outbox-before-event-sourcing.md`.
+- Alternativa rejeitada historicamente:
+  saldo mutável puro e event sourcing puro aparecem explicitamente como alternativas descartadas em `docs/adr/0006-ledger-and-outbox-before-event-sourcing.md`.
+- Alternativa plausível:
+  publicar direto em broker externo e recalcular projeções fora do caminho de escrita.
+  O git não mostra essa rejeição como fato, mas a implementação atual prefere consistência local e replay simples a desacoplamento maior.
+- Prós e contras da forma escolhida:
+  a favor, o fluxo fica auditável ponta a ponta e o replay continua localizado no próprio banco.
+  contra, o caminho de escrita fica mais pesado, depende de locks mais cuidadosos e carrega latência extra para manter coerência local.
+- Testes que protegem a feature:
+  `test/requests/idempotency_test.rb`, `test/services/funding_create_test.rb`, `test/services/transfer_create_test.rb`, `test/services/pix_payment_lifecycle_test.rb`, `test/services/ledger_journal_poster_test.rb`, `test/jobs/outbox_publish_job_test.rb`, `test/services/financial_concurrency_test.rb`.
+- Limites em produção:
+  ainda não há broker externo, backpressure distribuído nem isolamento de throughput entre domínio financeiro e publicação de eventos.
+
+### Console ops e governança maker-checker no mesmo monólito
+
+- Problema que resolve:
+  mostrar que aprovação humana, reversão e observação operacional fazem parte do problema financeiro e não só da camada de suporte.
+- Commits da feature:
+  `05c2bcb`, `56ec94c`, `1bd1df9`, `b69e3ba`, `6a40b98`, `65a8e80`, `37e3180`, `3847dcb`, `a8d1171`.
+- Arquivos principais:
+  `app/controllers/ops/*`, `app/views/ops/*`, `app/models/user.rb`, `app/models/session.rb`, `app/policies/ops/capability_policy.rb`, `app/services/ops/maker_checker.rb`, `test/system/ops_console_test.rb`, `test/requests/ops_console_request_test.rb`.
+- Por que a solução final tomou essa forma:
+  o projeto preferiu manter UI humana e API sobre o mesmo domínio para reaproveitar modelo, transações e testes.
+  Depois, o histórico corrige o excesso inicial de E2E e deixa o browser test mais estreito, com a governança principal protegida por request/service tests.
+- Alternativa rejeitada historicamente:
+  `docs/adr/0004-hybrid-hotwire-monolith.md` registra a escolha contra separar backoffice em outro app logo no primeiro corte.
+- Alternativa plausível:
+  usar IAM/policy engine externo e granularidade de permissão mais fina desde o início.
+  O histórico atual não prova que isso foi debatido formalmente; a escolha observável foi coarse-grained por simplicidade.
+- Prós e contras da forma escolhida:
+  a favor, há um único modelo mental para operador e integração.
+  contra, o monólito carrega responsabilidades de produto e backoffice no mesmo deploy, e os papéis `viewer/operator/admin` são amplos demais para produção madura.
+- Testes que protegem a feature:
+  `test/system/ops_console_test.rb`, `test/requests/ops_console_request_test.rb`, `test/controllers/sessions_controller_test.rb`, `test/controllers/passwords_controller_test.rb`.
+- Limites em produção:
+  não há MFA, SSO, escopo fino por tenant/time/região nem isolamento físico entre console e API pública.
+
+### Extensões de negócio: payout, refund, split e MED como verbos próprios
+
+- Problema que resolve:
+  impedir que fluxos com lifecycle e governança diferentes virem apenas flags escondidas em transferência genérica.
+- Commits da feature:
+  `387e90a`, `48be481`, `929c4f9`, `b693532`, `0d4ca54`, `e51d574`.
+- Arquivos principais:
+  `app/services/payouts/*`, `app/services/refunds/create.rb`, `app/services/split_payments/create.rb`, `app/services/med_cases/*`, `app/models/payout.rb`, `app/models/refund.rb`, `app/models/split_payment.rb`, `app/models/med_case.rb`.
+- Por que a solução final tomou essa forma:
+  cada fluxo ganhou seus próprios estados, serializers, controllers e guards de banco.
+  Isso reduz ambiguidade na leitura porque cada verbo financeiro expõe seus próprios pré-requisitos e evidências.
+- Alternativa plausível:
+  um modelo genérico de `financial_operation` ou reuso massivo de `Transfers::Create` com flags.
+  O histórico não documenta rejeição formal disso, mas a implementação escolhida foi na direção oposta: objetos e contratos dedicados por fluxo.
+- Prós e contras da forma escolhida:
+  a favor, regras específicas de payout/MED/refund/split ficam mais localizadas.
+  contra, o número de classes, endpoints e testes cresce rápido.
+- Testes que protegem a feature:
+  `test/requests/financial_extensions_api_test.rb`, `test/services/payout_lifecycle_test.rb`, `test/services/refund_and_med_lifecycle_test.rb`, `test/services/split_payment_create_test.rb`.
+- Limites em produção:
+  continua faltando uma camada mais madura de AML/fraud, limites operacionais por perfil e processos externos reais de clearing/dispute.
+
+### Reconciliação explicável como snapshot operacional, não como fechamento contábil
+
+- Problema que resolve:
+  permitir que a operação entenda de onde vem uma divergência de saldo sem depender de leitura manual do ledger bruto.
+- Commits da feature:
+  `0eb1911`, `dde2aab`, `b4b14bf`.
+- Arquivos principais:
+  `app/services/reconciliation/run.rb`, `app/services/reconciliation/ledger_snapshot.rb`, `app/services/reconciliation/rows_builder.rb`, `app/services/wallets/balance_explainer.rb`, `app/models/reconciliation_run.rb`, `app/models/reconciliation_row.rb`, `docs/database/reconciliation-data-model.md`.
+- Por que a solução final tomou essa forma:
+  o projeto começou com reconciliação mais resumida e depois adicionou rows, explicadores e statement lines para transformar divergência em artefato investigável.
+- Alternativa plausível:
+  manter só um resumo agregado ou chamar isso de fechamento contábil periódico.
+  O commit `b4b14bf` mostra precisamente a correção de linguagem: snapshot operacional e não fechamento.
+- Prós e contras da forma escolhida:
+  a favor, a operação ganha explicação e drill-down.
+  contra, cresce o volume de leitura derivada e ainda não existe cutoff contábil forte por período.
+- Testes que protegem a feature:
+  `test/services/reconciliation_run_test.rb`, `test/models/reconciliation_row_test.rb`, `test/requests/financial_workflow_test.rb`.
+- Limites em produção:
+  não resolve fechamento formal de período, lançamentos tardios nem trilha de ajuste contábil entre competências.
+
+### Banco como contrato executável para invariantes e readiness
+
+- Problema que resolve:
+  proteger o core financeiro contra bypass de Active Record, drift de evidência e documentação operacional que não falha quando a hipótese deixa de valer.
+- Commits da feature:
+  `205da77`, `3b10d5e`, `132b5e8`, `ea7b5f9`, `d20ac86`, `ca69cb9`, `60a0f97` até `775fef5`, `d13051a`.
+- Arquivos principais:
+  `db/migrate/*financial*`, `db/structure.sql`, `lib/database/consistency_verifier.rb`, `lib/database/consistency_checks/*`, `lib/tasks/database_engineering.rake`, `app/services/balance_snapshots/capture.rb`, `app/models/outbox_legacy_command_identity_exception.rb`.
+- Por que a solução final tomou essa forma:
+  Ruby continua orquestrando o domínio, mas Postgres e os verificadores em `lib/database/*` passaram a carregar a última linha de defesa e parte do readiness operacional.
+- Alternativa rejeitada historicamente:
+  `docs/adr/0001-double-entry-ledger.md` e `docs/adr/0006-ledger-and-outbox-before-event-sourcing.md` já empurravam a arquitetura para contratos fortes em volta do ledger, não para saldo mutável frouxo.
+- Alternativa plausível:
+  deixar tudo em validação Ruby ou mover toda a regra para stored procedures.
+  O histórico não prova uma discussão formal entre essas duas pontas; o que existe é uma solução intermediária clara.
+- Prós e contras da forma escolhida:
+  a favor, invariantes críticas sobrevivem a `update_columns`, scripts e integrações externas.
+  contra, o custo de ler migrations, triggers e testes de invariantes sobe muito e o onboarding fica mais duro.
+- Testes que protegem a feature:
+  `test/models/database_financial_invariants_test.rb`, `test/services/database_consistency_verifier_test.rb`, `test/services/database_migration_safety_checker_test.rb`, `test/services/database_partition_feasibility_test.rb`, `test/services/database_pitr_readiness_test.rb`, `test/services/audit_log_worm_readiness_test.rb`.
+- Limites em produção:
+  o projeto ainda é challenge repo; readiness checks, WORM e PITR continuam simulações/guias locais, não garantia operacional de uma plataforma 24x7.
+
+### Contrato público honesto: autenticação, eventos, OpenAPI e redaction
+
+- Problema que resolve:
+  parar de expor superfícies, campos e documentos públicos mais permissivos do que o runtime realmente sustenta.
+- Commits da feature:
+  `9397a1a`, `cffccbe`, `178c4e4`, `e5afdab`, `2315d41`, `b0fe05e`, `70eb0f3`, `539cf6a`, `97a34fd`, `9df9e43`.
+- Arquivos principais:
+  `app/controllers/v1/base_controller.rb`, `app/services/audit_logs/request_logger.rb`, `app/services/audit_logs/parameter_sanitizer.rb`, `docs/events/outbox_event.v1.json`, `openapi.yaml`, `app/services/privacy/redactor.rb`, `app/views/ops/pix_payments/*`, `bin/critical_money_branch_coverage`.
+- Por que a solução final tomou essa forma:
+  a revisão de release mostrou que a maior fragilidade não era só regra de negócio; era também honestidade do boundary público.
+  A sequência de commits corta compatibilidades perigosas, alinha contratos ao envelope real, remove campos não sustentados e mascara PII por padrão.
+- Alternativa plausível:
+  manter documentação aspiracional, endpoint público de outbox para debug e respostas cruas até existir ACL fina por campo.
+  O histórico não sustenta essa opção como rejeitada formalmente, mas os commits recentes mostram a decisão contrária.
+- Prós e contras da forma escolhida:
+  a favor, o cliente externo passa a enxergar menos promessas falsas e menos PII.
+  contra, algumas superfícies convenientes de debug somem e certas respostas ficam menos ricas do que poderiam ser num produto mais maduro.
+- Testes que protegem a feature:
+  `test/requests/api_authentication_test.rb`, `test/requests/api_audit_logging_test.rb`, `test/jobs/outbox_sweep_job_test.rb`, `test/services/outbox_event_contract_test.rb`, `test/services/openapi_contract_test.rb`, `test/requests/privacy_redaction_test.rb`, `test/services/financial_branch_coverage_test.rb`.
+- Limites em produção:
+  ainda falta ACL fina por campo, rotação mais sofisticada de credenciais e política de versionamento público de eventos além do envelope atual.
+
+## 4. Decisão por decisão: o que foi feito, por que foi feito e quais alternativas aparecem no histórico ou como inferência comparativa
+
+- Legenda de leitura:
+  quando ADR, doc ou mensagem de commit sustentam descarte explícito, a alternativa é tratada como histórica.
+  quando isso não existe, a alternativa abaixo deve ser lida como plausível ou como inferência comparativa a partir da forma atual do código.
+  os subtópicos antigos preservam a etiqueta curta `Alternativas rejeitadas:` por continuidade editorial, mas a qualificação histórica ou plausível depende sempre da base citada em cada bloco.
 
 ### Rails 8 monolítico com `/v1` e `/ops`
 
@@ -1214,18 +1375,24 @@ Dito isso, o histórico posterior registra TDD e teste-dirigido por correção e
   os comandos abaixo foram executados na revisão final do estado funcional que antecede os últimos commits documentais/refactors leves deste mesmo dia.
   Para `63618c2`, `0f83617`, `97a34fd` e `9df9e43`, o journal se apoia em `git show`, arquivos tocados e testes adicionados no próprio commit; ele não finge um rerun completo separado por commit quando isso não aconteceu.
 
-- Checks executados:
+- Checks executados na revisão funcional anterior:
   `bin/rails db:test:prepare`
   `COVERAGE=1 bin/rails test`
   `bin/rails test:system`
+  parse de `openapi.yaml`
+  parse/validação de `docs/events/*.v1.json`
+
+- Checks rerodados nesta atualização documental:
   `bin/rubocop`
   `bin/brakeman --no-pager`
   `bin/bundler-audit`
   `bin/rails zeitwerk:check`
+  `bin/critical_money_branch_coverage`
   `bin/rails database:verify_consistency`
   `bin/rails database:migration_safety_check`
-  parse de `openapi.yaml`
-  parse/validação de `docs/events/*.v1.json`
+  `bin/rails test test/services/database_consistency_verifier_test.rb test/models/database_financial_invariants_test.rb test/services/financial_branch_coverage_test.rb test/services/ledger_journal_poster_test.rb test/services/financial_concurrency_test.rb test/services/openapi_contract_test.rb test/services/outbox_event_contract_test.rb test/requests/privacy_redaction_test.rb`
+  validação automática da timeline contra `git log`
+  `git diff --check -- docs/learning-journal.md`
 
 - Achados bloqueantes:
   Nenhum depois dos checks.
@@ -1249,6 +1416,8 @@ Dito isso, o histórico posterior registra TDD e teste-dirigido por correção e
   `9df9e43` para transformar a discussão de branch coverage crítico em gate executável dentro do CI.
   `test/services/database_consistency_verifier_test.rb` concentrava várias garantias independentes num único teste, o que piorava a localização de regressão.
   `test/models/database_financial_invariants_test.rb` continua grande, mas os cenários são focados e o custo de dividir tudo nesta entrega seria maior do que o ganho imediato.
+  `bin/rails zeitwerk:check` ainda alerta que `test/mailers/previews` não participa do eager loading.
+  Isso não é bug funcional neste escopo, mas continua sendo um detalhe Rails real que vale manter explícito.
 
 - Ajuste feito:
   `81a86c2` dividiu a suíte do consistency verifier em testes por boundary.
@@ -1264,8 +1433,11 @@ Dito isso, o histórico posterior registra TDD e teste-dirigido por correção e
   Nenhum novo na revisão atual.
 
 - Achados não bloqueantes:
-  `lib/database/consistency_verifier.rb` ainda é um hotspot grande.
-  Isso é um smell real, mas hoje ele espelha um catálogo grande de invariantes de banco que ainda está se estabilizando. Quebrá-lo agora sem uma mudança funcional junto correria o risco de mover complexidade de lugar em vez de reduzi-la.
+  `lib/database/consistency_verifier.rb` deixou de ser o hotspot principal; hoje ele só orquestra checks em `lib/database/consistency_checks/*`.
+  O hotspot real passou a ser `test/models/database_financial_invariants_test.rb`, com 1295 linhas no estado atual.
+  Isso não bloqueia porque os cenários continuam focados por invariant, mas já cobra mais esforço de navegação do que o ideal.
+  `app/services/reconciliation/rows_builder.rb` também merece vigilância.
+  O arquivo ainda está coerente com uma única responsabilidade, porém concentra normalização de input, matching de ledger e materialização de rows; se novos tipos de linha entrarem, a tendência natural é virar o próximo ponto de decomposição.
 
 - Correções já presentes no histórico e confirmadas nesta revisão:
   `593ebd2` corrigiu revalidação de estado de Pix sob lock.
@@ -1275,6 +1447,25 @@ Dito isso, o histórico posterior registra TDD e teste-dirigido por correção e
   `63618c2` tornou explícita a ordem de lock para transfer/split.
   `0f83617` agregou delta de projeção por wallet/moeda antes da escrita.
   `d2355a6` separou tooling de banco do domínio da app ao mover esse conjunto para `lib/database`.
+
+### Revisão adversarial do próprio journal
+
+- O que a revisão encontrou:
+  o texto anterior ainda não tinha uma seção nominal para "o que o histórico não prova".
+  As features principais estavam explicadas em decisões pontuais, mas não como unidades completas com problema, commits, arquivos, alternativas, testes e limites.
+  A seção de revisão Rails ainda citava `lib/database/consistency_verifier.rb` como hotspot grande, mesmo depois da decomposição para `lib/database/consistency_checks/*`.
+  A timeline já estava correta, mas faltava registrar a validação automática recente como evidência explícita.
+
+- O que foi corrigido e por quê:
+  esta atualização adicionou a seção `O que o histórico não prova` para reduzir risco de causalidade inventada.
+  Adicionou a seção `Features importantes como unidades completas` para tornar repetível a leitura por feature e não só por commit isolado.
+  Ajustou a linguagem de seção 4 para deixar claro quando alternativa é histórica e quando é só inferência comparativa.
+  Atualizou a revisão Rails para refletir o hotspot real atual e não um estado anterior do código.
+  Registrou a rerodagem de `rubocop`, `brakeman`, `bundler-audit`, `zeitwerk`, `critical_money_branch_coverage`, `database:verify_consistency`, `database:migration_safety_check` e do conjunto de testes mais diretamente ligado às decisões documentadas.
+
+- Risco residual que continua sendo inferência:
+  a motivação exata dentro de commits grandes continua parcialmente inferida a partir do diff e dos testes.
+  Sem PR discussions, notas privadas ou commits mais granulares, o journal não consegue provar a conversa interna que levou a cada escolha; ele só consegue mostrar a melhor leitura sustentada pelo histórico público do repositório.
 
 ### Observações de leitura importante
 
