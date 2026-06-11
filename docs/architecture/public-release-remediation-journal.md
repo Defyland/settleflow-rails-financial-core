@@ -269,3 +269,16 @@ Decision notes:
 - The helper locks projections instead of wallets because the contested invariant is the projected liability balance, and existing money paths already use projection locking for funds checks.
 - Sorting by wallet id removes opposite-order lock acquisition between inverse transfers and split destinations while keeping the change local to the current transaction-script services.
 - Projection batching is kept inside `JournalPoster` because projection maintenance is a ledger side effect, not a caller responsibility.
+
+### Session 1: R12 maintainability and public-release framing
+
+Implemented:
+
+- Removed the self-validating `docs/architecture/senior-tech-lead-validation.md` guide.
+- Removed the README link to that guide and replaced portfolio-reviewer framing with neutral backend-pattern language.
+- Updated README security wording so legacy organization API keys are described as disabled-by-default development/test compatibility, matching R2.
+
+Verification:
+
+- `/Applications/Codex.app/Contents/Resources/rg -n "senior-tech-lead-validation|Senior and Tech Lead Validation|senior-level backend evidence|Legacy organization API key digests remain supported" README.md docs`
+- Result: no remaining references outside the remediation spec requirement itself.

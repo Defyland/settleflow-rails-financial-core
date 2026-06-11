@@ -14,7 +14,7 @@ Many fintech demos store mutable balances directly on an account row. That hides
 
 - Fintech platform teams building digital accounts or wallet products.
 - Backend engineers evaluating ledger and settlement design.
-- Portfolio reviewers looking for senior-level backend evidence beyond CRUD.
+- Engineers comparing Rails backend patterns beyond CRUD examples.
 
 ## 4. Main features
 
@@ -35,7 +35,6 @@ Many fintech demos store mutable balances directly on an account row. That hides
 The API layer authenticates a tenant, validates idempotency, and delegates financial commands to service objects. The browser layer uses Rails auth sessions for operators and calls the same domain services for controlled actions. Services run inside database transactions, post balanced journal entries through `Ledger::JournalPoster`, update projections, and emit outbox events. Jobs publish outbox events and settle approved Pix payments asynchronously.
 
 See [docs/architecture/overview.md](docs/architecture/overview.md).
-For the senior/tech-lead evaluation rationale, see [docs/architecture/senior-tech-lead-validation.md](docs/architecture/senior-tech-lead-validation.md).
 
 ## 6. Tech stack
 
@@ -105,7 +104,7 @@ k6 scenarios are in [benchmarks/k6-financial-workflow.js](benchmarks/k6-financia
 
 ## 14. Security considerations
 
-- API credentials are stored as HMAC-SHA256 digests with lookup prefixes, optional expiry, revocation, scopes, and last-used timestamps. Legacy organization API key digests remain supported for seed/demo compatibility.
+- API credentials are stored as HMAC-SHA256 digests with lookup prefixes, optional expiry, revocation, scopes, and last-used timestamps. Legacy organization API key digests are disabled by default and only available through development/test compatibility configuration.
 - All v1 endpoints require `X-Api-Key`.
 - Human operators authenticate through Rails sessions backed by `bcrypt` password hashes.
 - Tenant isolation is enforced by scoping every query through `current_organization`.
