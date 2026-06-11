@@ -1,6 +1,20 @@
 class OutboxEvent < ApplicationRecord
   MAX_ATTEMPTS = 5
   PUBLISHING_LOCK_TIMEOUT = 10.minutes
+  CREATION_UNPUBLISHED_DEFAULTS = {
+    status: "pending",
+    attempts: 0,
+    published_at: nil,
+    last_error: nil,
+    next_attempt_at: nil,
+    last_attempted_at: nil,
+    dead_lettered_at: nil,
+    error_class: nil,
+    publisher: nil,
+    published_to: nil,
+    publisher_message_id: nil,
+    payload_sha256: nil
+  }.freeze
   RETRY_BACKOFF = [
     1.minute,
     5.minutes,
@@ -114,7 +128,7 @@ class OutboxEvent < ApplicationRecord
   end
 
   def publishable?
-    pending_due? || (publishing? && publishing_stale?)
+    claimable_for_publish?
   end
 
   private
@@ -134,18 +148,10 @@ class OutboxEvent < ApplicationRecord
   def new_records_start_unpublished
     return unless new_record?
 
-    return if pending? &&
-      attempts.zero? &&
-      published_at.blank? &&
-      last_error.blank? &&
-      next_attempt_at.blank? &&
-      last_attempted_at.blank? &&
-      dead_lettered_at.blank? &&
-      error_class.blank? &&
-      publisher.blank? &&
-      published_to.blank? &&
-      publisher_message_id.blank? &&
-      payload_sha256.blank?
+    invalid_defaults = CREATION_UNPUBLISHED_DEFAULTS.filter_map do |attribute, expected_value|
+      attribute unless public_send(attribute) == expected_value
+    end
+    return if invalid_defaults.empty?
 
     errors.add(:base, "outbox events must start pending and unpublished")
   end
