@@ -1,6 +1,6 @@
 # SettleFlow Learning Journal
 
-Este journal documenta a história do repositório até o commit `539cf6a`. O commit que atualiza este próprio arquivo é entrega documental, não uma decisão nova de domínio, então a timeline abaixo para antes dele de propósito.
+Este journal documenta a história do repositório até o commit `a8d1171`. O commit que atualiza este próprio arquivo é entrega documental, não uma decisão nova de domínio, então a timeline abaixo para antes dele de propósito.
 
 ## 1. Objetivo do projeto
 
@@ -109,7 +109,7 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
 - `app/services/financial_contracts.rb` centralizou nomes de evento, chaves de idempotência e listas de triggers esperados.
 - Isso reduziu duplicação espalhada entre models, services, verificadores e testes.
 
-### Fase 7: revisão de release, remediações e ajuste de learnability (`df0b0ea` a `539cf6a`, 2026-06-11)
+### Fase 7: revisão de release, remediações e ajuste de learnability (`df0b0ea` a `a8d1171`, 2026-06-11)
 
 - `df0b0ea` abriu uma trilha explícita de remediação em `docs/architecture/public-release-remediation-spec.md` e `docs/architecture/public-release-remediation-journal.md`.
 - `22cf3c1` corrigiu uma lacuna real: carteiras e clientes tinham estados (`active`, `blocked`, `closed`), mas vários fluxos ainda não respeitavam isso. O conserto entrou em `app/services/financial_lifecycle/status_guard.rb` e nos serviços que criam/movem dinheiro.
@@ -123,6 +123,7 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
 - `70eb0f3` introduziu redaction padrão de PII em serializers, responses idempotentes e telas ops.
 - `515b79c` corrigiu o caminho de consistência em que rebuild e snapshot podiam usar leitura velha antes do lock.
 - `539cf6a` corrigiu um bloqueante encontrado só na validação final: a camada de masking passou a usar `::Privacy::Redactor` explicitamente e o system test de ops foi alinhado ao comportamento mascarado.
+- `a8d1171` fechou a superfície de leitura global do ops para admins e tornou `/ready` menos verboso em caso de falha.
 
 ## 4. Decisão por decisão: o que foi feito, por que foi feito, alternativas rejeitadas
 
@@ -309,6 +310,16 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
   Tratar drift só com auditoria posterior.
   A solução escolhida foi reavaliar o valor dentro da fronteira transacional.
 
+### Superfícies operacionais devem falhar sem vazar detalhes
+
+- O que foi feito:
+  `a8d1171` alterou `app/controllers/health/readiness_controller.rb`, `app/controllers/ops/base_controller.rb` e os testes de request correspondentes.
+- Por que foi feito:
+  `/ready` não precisa entregar stack/detail de banco para o caller, e páginas globais do ops não deveriam ficar abertas para qualquer papel autenticado.
+- Alternativas rejeitadas:
+  Manter logs e resposta HTTP com o mesmo detalhe.
+  Confiar só em capability checks de ação sensível, deixando leitura global aberta.
+
 ## 5. Prós e contras de cada decisão arquitetural importante
 
 | Decisão | Prós | Contras |
@@ -389,6 +400,10 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
   Evidência: `539cf6a`.
   Correção: qualificar `::Privacy::Redactor` nos pontos de uso e alinhar `test/system/ops_console_test.rb` ao comportamento mascarado.
 
+- As superfícies de leitura global e readiness ainda estavam generosas demais.
+  Evidência: `a8d1171`.
+  Correção: reduzir detalhe em `/ready` e exigir admin para leitura global do ops.
+
 - O verificador de consistência tinha cobertura boa, mas falhava mal como material de aprendizado.
   Evidência: antes de `81a86c2`, `test/services/database_consistency_verifier_test.rb` concentrava várias garantias em um único teste.
   Correção: separar asserções por boundary para localizar regressão mais rápido.
@@ -450,7 +465,11 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
    `539cf6a` nasceu de uma falha de integração real no `bin/ci`.
    O ciclo foi: o gate final quebrou por `NameError` em serializers/helpers e por uma expectativa antiga no system test; o conserto qualificou o namespace e passou a validar o texto mascarado.
 
-14. Refactor guiado por cobertura
+14. Ops/readiness como boundary explícito
+   `a8d1171` reforçou `test/requests/operability_test.rb` e `test/requests/ops_console_request_test.rb`.
+   O ciclo foi: transformar uma preocupação de exposição excessiva em contrato testável de request.
+
+15. Refactor guiado por cobertura
    `81a86c2` não mudou regra de negócio; ele mudou a forma de falha da suíte.
    Isso é o "refactor" do ciclo: a lógica já estava verde, então a revisão tratou de melhorar a legibilidade e a localização do feedback sem mexer no comportamento.
 
@@ -511,6 +530,10 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
 
 - Rebuild e snapshot consistentes:
   `test/services/balance_snapshot_and_rebuild_test.rb`
+
+- Readiness e superfícies globais do ops:
+  `test/requests/operability_test.rb`
+  `test/requests/ops_console_request_test.rb`
 
 - Ferramentas operacionais de banco:
   `test/services/database_migration_safety_checker_test.rb`
@@ -615,6 +638,7 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
 | 2026-06-11 | `70eb0f3` | Responses públicos e telas ops ainda expunham PII demais | Redact public financial responses | Teste(s): `privacy_redaction_test.rb` |
 | 2026-06-11 | `515b79c` | Rebuild e snapshot ainda podiam persistir leitura velha | Recalculate projections under lock | Teste(s): `balance_snapshot_and_rebuild_test.rb` |
 | 2026-06-11 | `539cf6a` | O rollout de privacidade ainda quebrava lookup de constante e teste sistêmico | Qualify privacy redactor lookups | Teste(s): `pix_payments_api_test.rb`, `idempotency_test.rb`, `ops_console_request_test.rb`, `ops_console_test.rb` |
+| 2026-06-11 | `a8d1171` | Readiness e leitura global do ops ainda expunham mais do que precisavam | Protect global read surfaces | Teste(s): `operability_test.rb`, `ops_console_request_test.rb` |
 
 ## 10. Checklist de boundaries para futuras features
 
@@ -740,6 +764,7 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
   `70eb0f3` para redaction padrão de PII.
   `515b79c` para rebuild/snapshot sob lock real.
   `539cf6a` para o bloqueante de masking encontrado só no gate final.
+  `a8d1171` para restringir leitura global do ops e reduzir detalhe em `/ready`.
   `test/services/database_consistency_verifier_test.rb` concentrava várias garantias independentes num único teste, o que piorava a localização de regressão.
   `test/models/database_financial_invariants_test.rb` continua grande, mas os cenários são focados e o custo de dividir tudo nesta entrega seria maior do que o ganho imediato.
 
