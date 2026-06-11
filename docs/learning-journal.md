@@ -252,6 +252,11 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
   seguir adicionando fluxos de negócio antes de endurecer auth/outbox/runtime.
   tratar publisher, métricas e rate limiting como detalhes de infraestrutura sem contrato de teste.
   O repositório preferiu fechar essas bordas primeiro.
+- Detalhe por commit:
+  `8a6117b` concentra o primeiro aperto: cria `ApiCredential`, endurece `V1::BaseController`, reforça `Idempotency::Runner`, adiciona metadata de delivery ao outbox e faz `reconciliation_run_test.rb` acompanhar a mudança. O efeito observável é mover o boundary de autenticação e replay para objetos mais explícitos e mais testáveis.
+  `a9dbd6a` não mexe em domínio financeiro; ele fecha o publisher HTTP e o runtime local. Os arquivos tocados mostram retry/erro mais controlado em `HttpPublisher` e rate limiting local testado em `rack_attack_test.rb`.
+  `3fbc141` endurece segurança de sessão e superfície operacional: `Authentication`, `MetricsController`, `ApplicationJob`, `Session`, `User` e testes de controllers/operability mudam juntos. A leitura segura aqui é que a stack humana e observável estava sendo apertada antes de crescer novamente.
+  `34be4c7` não cria regra nova de runtime; ele alinha README, ADRs e docs de segurança/deployment ao boundary endurecido que os três commits anteriores já tinham materializado.
 - Base usada:
   commits `8a6117b`, `a9dbd6a`, `3fbc141`, `34be4c7`; `app/models/api_credential.rb`, `app/controllers/v1/base_controller.rb`, `app/controllers/concerns/authentication.rb`, `app/controllers/observability/metrics_controller.rb`, `app/services/outbox/publisher.rb`, `app/services/outbox/publishers/http_publisher.rb`, `config/initializers/rack_attack.rb`, `test/requests/api_authentication_test.rb`, `test/requests/idempotency_test.rb`, `test/services/outbox_publish_job_test.rb`, `test/services/outbox_http_publisher_test.rb`, `test/requests/operability_test.rb`.
 
@@ -354,6 +359,17 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
   Só runbooks em Markdown.
   Só CI genérico sem checks de domínio.
   Depender apenas de tooling externo de plataforma para validar suposições que já estavam explícitas neste código.
+- Detalhe por commit:
+  `ea7b5f9` introduz o primeiro corte executável de benchmark: `CriticalQueryExplainer`, `LargeSeed`, tasks em `database_engineering.rake` e artefatos de explain. O compromisso aqui é medir queries críticas com cenário reproduzível, não só falar sobre performance.
+  `6003930` organiza a base documental do pack de banco. O volume de arquivos em `docs/database/*`, `docs/runbooks/*` e `docs/security/*` indica que a equipe precisou nomear as suposições antes de transformá-las em gates sucessivos.
+  `d20ac86` cria `MigrationSafetyChecker` e `PartitionPlan`. Isso separa duas perguntas diferentes: "esta migration é segura?" e "qual topologia de partições o sistema espera?".
+  `ca69cb9` adiciona `BenchmarkRunner`, `ConsistencyVerifier`, `RedisTemporaryLock` e expande as tasks. Aqui a documentação deixa de ser só descritiva e passa a ter comandos que falham quando uma hipótese do ambiente deixa de valer.
+  `bc06ebf` transforma backup/restore em drill executável por `BackupRestoreDrill`, com integração na task de engenharia.
+  `cb44df0` ancora a hash chain em `AuditLogAnchor`, acrescenta `BenchmarkThresholds` e `PartitionReadiness`. O movimento é sair de "rodar benchmark" para "rodar benchmark com critério" e "verificar se o particionamento está pronto".
+  `2e2e964` adiciona `PartitionFeasibility`, que não decide só o plano futuro, mas verifica se o estado atual ainda consegue alcançar o plano.
+  `cf74bdc` aperta o benchmark com `benchmark volume profile`. Os arquivos tocados mostram que não bastava rodar medições; era preciso saber com que volume e perfil elas foram produzidas.
+  `f982987` adiciona `PitrReadiness`. O foco muda de documentação de backup para readiness verificável de point-in-time recovery.
+  `549451a` fecha o ciclo com `WormReadiness`, trazendo um gate específico para exportação auditável/WORM em vez de diluir isso em checks genéricos de banco.
 - Base usada:
   commits `ea7b5f9`, `6003930`, `d20ac86`, `ca69cb9`, `bc06ebf`, `cb44df0`, `2e2e964`, `cf74bdc`, `f982987`, `549451a`; `lib/tasks/database_engineering.rake`, `lib/database/benchmark_runner.rb`, `lib/database/migration_safety_checker.rb`, `lib/database/partition_plan.rb`, `lib/database/partition_readiness.rb`, `lib/database/partition_feasibility.rb`, `lib/database/pitr_readiness.rb`, `docs/database/partitioning-plan.md`, `docs/database/backup-restore.md`, `test/services/database_benchmark_runner_test.rb`, `test/services/database_migration_safety_checker_test.rb`, `test/services/database_partition_plan_test.rb`, `test/services/database_partition_feasibility_test.rb`, `test/services/database_pitr_readiness_test.rb`, `test/services/audit_log_worm_readiness_test.rb`.
 
@@ -390,6 +406,27 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
 - Alternativas rejeitadas:
   manter enforcement apenas nos services Ruby.
   condensar tudo em triggers genéricas com menos vocabulário de domínio.
+- Detalhe por commit:
+  `60a0f97` fecha a evidência do outbox como fato publicável: a migration cria guards para `outbox_events`, `ClickHouseSync` e o mapper/testes downstream são atualizados para refletir esse contrato.
+  `68c0f56` endurece evidência de estado financeiro. O vínculo com `pix_payment_reject_test.rb` mostra que a preocupação não era só estrutura SQL, mas transições de estado que precisavam deixar rastro coerente.
+  `4ab223a` exige evidência para comandos de wallet. `Funding`, `Transfer`, serializer de funding e `Fundings::Create` entram no diff porque a regra precisava alcançar tanto persistência quanto contrato público mínimo.
+  `f4f5b3e` fecha replay idempotente como evidência, não só como comportamento de controller. `IdempotencyKey` e `idempotency_test.rb` mudam junto da migration, o que sustenta essa leitura.
+  `8ecee8e` protege `processed_events` e o consumo operacional do outbox. O fato de tocar `OutboxEventsController`, `ProcessedEvent`, `ClickHouseSync` e testes correlatos mostra uma preocupação com afterlife do evento, não só com sua criação.
+  `01a1d85` endurece a trilha de balances. `BalanceProjection`, `BalanceSnapshot` e `BalanceSnapshots::Capture` aparecem juntos porque projeção e snapshot passam a precisar de evidência compatível.
+  `5a490bf` move maker-checker para o mesmo regime: `OperatorApproval` ganha guards próprios, em vez de depender só da política Rails e do service de aprovação.
+  `1f0a4f6` fecha reconciliação como evidência de banco. `ReconciliationRun`, `ReconciliationRow` e seus testes entram juntos porque a reconciliação já não era só cálculo em memória.
+  `6df1387` exige evidência de aggregate no outbox. Os testes de publish, mapper e sync mudam juntos, sustentando que o aggregate do evento precisava continuar identificável em toda a cadeia.
+  `62bd0e0` previne tampering de aggregates financeiros já gravados. Aqui o foco é menos payload e mais impedir mutação posterior de identidades sensíveis.
+  `f850a78` endurece evidência do journal financeiro em si. A combinação de migration, ADR do ledger e testes de invariantes mostra que o lançamento contábil precisava carregar referência e forma mais fechadas.
+  `76f5cbf` fecha a taxonomia de eventos do journal. `JournalEntry` e `ledger_journal_poster_test.rb` mudam junto da migration, então a regra sai do campo "convenção" e vira enum/contrato verificável.
+  `b693532` exige governança explícita para resolução de MED. O diff toca controllers ops/público, `MedCase`, policies, maker-checker e views, indicando que a decisão atravessa banco, UI e fluxo operacional.
+  `0d4ca54` complementa o commit anterior exigindo que o outbox de MED carregue a evidência correta de resolução. A preocupação aqui já não é "quem pode resolver", e sim "o evento emitido prova o que aconteceu?".
+  `64deac6` exige idempotency key para os comandos financeiros centrais. O alcance em `Funding`, `Transfer`, `PixPayment`, `Payout`, `Refund`, `SplitPayment` e `MedCase` mostra que a regra foi tratada como contrato transversal de escrita.
+  `e5f4e93` amarra identidade de comando no outbox. Os services de `med_cases`, `payouts` e lifecycle de Pix aparecem porque não bastava existir outbox; ele precisava apontar para o comando certo.
+  `48be481` coloca um guard específico para limite de refund sobre Pix. Aqui o repositório evita esconder uma regra de produto relevante dentro de uma trigger financeira genérica.
+  `929c4f9` governa early settlement de payout. `Payout`, serializer, `Payouts::Settle`, OpenAPI e testes indicam uma decisão que afeta regra de negócio, contrato público e evidência de banco ao mesmo tempo.
+  `e51d574` exige unicidade de destinos em split. O fato de tocar arquitetura, indexing strategy e incident response junto da migration mostra que isso foi tratado tanto como regra lógica quanto como custo operacional.
+  `775fef5` fecha o write gate de `BalanceProjection`. `WriteGate`, `Ledger::JournalPoster`, rebuild, helper de domínio e invariantes indicam que a projeção derivada deixou de aceitar escrita por caminhos arbitrários.
 - Base usada:
   commits `60a0f97`, `68c0f56`, `4ab223a`, `f4f5b3e`, `8ecee8e`, `01a1d85`, `5a490bf`, `1f0a4f6`, `6df1387`, `62bd0e0`, `f850a78`, `76f5cbf`, `b693532`, `0d4ca54`, `64deac6`, `e5f4e93`, `48be481`, `929c4f9`, `e51d574`, `775fef5`; `db/structure.sql`, migrations `20260602170000` a `20260602223500`, `lib/database/consistency_verifier.rb`, `test/models/database_financial_invariants_test.rb`, `test/services/database_consistency_verifier_test.rb`.
 
