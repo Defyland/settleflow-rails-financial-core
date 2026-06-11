@@ -16,10 +16,10 @@ class SplitPaymentSerializer
           destination_wallet_id: entry.destination_wallet.public_id,
           amount_cents: entry.amount_cents,
           currency: entry.currency,
-          metadata: Privacy::Redactor.metadata(entry.metadata)
+          metadata: ::Privacy::Redactor.metadata(entry.metadata)
         }
       end,
-      metadata: Privacy::Redactor.metadata(split_payment.metadata),
+      metadata: ::Privacy::Redactor.metadata(split_payment.metadata),
       created_at: split_payment.created_at.iso8601
     }
   end

@@ -61,6 +61,6 @@
     <div class="panel__header">
       <h2>Metadata</h2>
     </div>
-    <pre><%= JSON.pretty_generate(Privacy::Redactor.metadata(@pix_payment.metadata)) %></pre>
+    <pre><%= JSON.pretty_generate(::Privacy::Redactor.metadata(@pix_payment.metadata)) %></pre>
   </div>
 </section>

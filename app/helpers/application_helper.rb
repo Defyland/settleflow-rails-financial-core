@@ -12,10 +12,10 @@ module ApplicationHelper
   end
 
   def masked_name(value)
-    Privacy::Redactor.name(value)
+    ::Privacy::Redactor.name(value)
   end
 
   def masked_contact(value)
-    Privacy::Redactor.contact(value)
+    ::Privacy::Redactor.contact(value)
   end
 end

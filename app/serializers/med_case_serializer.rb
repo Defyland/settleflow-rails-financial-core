@@ -12,7 +12,7 @@ class MedCaseSerializer
       reason: med_case.reason,
       opened_at: med_case.opened_at.iso8601,
       resolved_at: med_case.resolved_at&.iso8601,
-      metadata: Privacy::Redactor.metadata(med_case.metadata),
+      metadata: ::Privacy::Redactor.metadata(med_case.metadata),
       created_at: med_case.created_at.iso8601
     }
   end

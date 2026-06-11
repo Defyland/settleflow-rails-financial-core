@@ -14,9 +14,9 @@ class PayoutSerializer
       settlement_due_on: payout.settlement_due_on.iso8601,
       settled_at: payout.settled_at&.iso8601,
       destination_kind: payout.destination_kind,
-      destination_reference: Privacy::Redactor.reference(payout.destination_reference),
+      destination_reference: ::Privacy::Redactor.reference(payout.destination_reference),
       failure_code: payout.failure_code,
-      metadata: Privacy::Redactor.metadata(payout.metadata),
+      metadata: ::Privacy::Redactor.metadata(payout.metadata),
       created_at: payout.created_at.iso8601
     }
   end

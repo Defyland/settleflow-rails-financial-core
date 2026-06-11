@@ -9,7 +9,7 @@ class FundingSerializer
       currency: funding.currency,
       status: funding.status,
       failure_code: funding.failure_code,
-      metadata: Privacy::Redactor.metadata(funding.metadata),
+      metadata: ::Privacy::Redactor.metadata(funding.metadata),
       created_at: funding.created_at.iso8601
     }
   end

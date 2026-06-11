@@ -63,11 +63,13 @@ class OpsConsoleTest < ApplicationSystemTestCase
     assert_selector :link, "Pix review", href: ops_pix_payments_path(status: "pending_review")
     visit ops_pix_payments_path(status: "pending_review")
     assert_current_path ops_pix_payments_path, ignore_query: true
-    assert_text "Manual Review Receiver", wait: 10
+    assert_text "[FILTERED]", wait: 10
+    assert_no_text "Manual Review Receiver"
 
     assert_selector :link, @pending_pix_payment.public_id.to_s.first(8), href: ops_pix_payment_path(@pending_pix_payment.public_id)
     visit ops_pix_payment_path(@pending_pix_payment.public_id)
     assert_current_path ops_pix_payment_path(@pending_pix_payment.public_id), ignore_query: true
+    assert_text "[FILTERED]"
     assert_text "RISK SCORE"
     assert_button "Reject"
   end
