@@ -1,0 +1,51 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+
+ROOT = File.expand_path("..", __dir__)
+COVERAGE_PATH = File.join(ROOT, "coverage", ".resultset.json")
+THRESHOLD = Float(ENV.fetch("CRITICAL_MONEY_BRANCH_COVERAGE", "85"))
+
+CRITICAL_FILES = %w[
+  app/services/fundings/create.rb
+  app/services/transfers/create.rb
+  app/services/split_payments/create.rb
+  app/services/pix_payments/create.rb
+  app/services/pix_payments/settle.rb
+  app/services/pix_payments/reject.rb
+  app/services/pix_payments/reverse.rb
+  app/services/payouts/create.rb
+  app/services/payouts/settle.rb
+  app/services/refunds/create.rb
+  app/services/med_cases/open.rb
+  app/services/med_cases/accept.rb
+  app/services/med_cases/reject.rb
+  app/services/ledger/journal_poster.rb
+  app/services/reconciliation/run.rb
+  app/services/reconciliation/rows_builder.rb
+  app/services/reconciliation/ledger_snapshot.rb
+  app/services/idempotency/runner.rb
+].freeze
+
+abort "Coverage result not found at #{COVERAGE_PATH}. Run COVERAGE=1 bin/rails test first." unless File.exist?(COVERAGE_PATH)
+
+resultset = JSON.parse(File.read(COVERAGE_PATH))
+coverage = resultset.values.first.fetch("coverage")
+
+covered = 0
+total = 0
+
+CRITICAL_FILES.each do |relative_path|
+  absolute_path = File.join(ROOT, relative_path)
+  file_coverage = coverage.fetch(absolute_path) { abort "Coverage missing for #{relative_path}" }
+  branch_outcomes = file_coverage.fetch("branches", {}).values.flat_map(&:values)
+
+  total += branch_outcomes.size
+  covered += branch_outcomes.count { |count| count.to_i.positive? }
+end
+
+percentage = total.zero? ? 100.0 : covered * 100.0 / total
+puts "critical money branch coverage: %.2f%% (%d/%d)" % [ percentage, covered, total ]
+
+abort "Critical money branch coverage is below #{THRESHOLD}%." if percentage < THRESHOLD

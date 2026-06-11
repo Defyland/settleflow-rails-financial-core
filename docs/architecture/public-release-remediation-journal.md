@@ -329,3 +329,22 @@ Verification:
 
 - `npx --yes @redocly/cli lint openapi.yaml`
 - Result: OpenAPI validated with no warnings.
+
+### Session 1: Critical money branch coverage follow-up
+
+Implemented:
+
+- Added `test/services/financial_branch_coverage_test.rb` covering cross-organization, currency, invalid-state, invalid-entry, refund/MED, payout, journal, and reconciliation failure branches in money-moving services.
+- Added `bin/critical_money_branch_coverage` to enforce at least 85% branch coverage across the critical money service subset.
+- Added the critical money branch coverage guard to `bin/ci` immediately after `COVERAGE=1 bin/rails test`.
+
+Verification:
+
+- `bin/rails test test/services/financial_branch_coverage_test.rb`
+- Result: 7 runs, 72 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop test/services/financial_branch_coverage_test.rb`
+- Result: 1 file inspected, no offenses.
+- `COVERAGE=1 bin/rails test`
+- Result: 219 runs, 1370 assertions, 0 failures, 0 errors, 0 skips; line 91.79%, global branch 70.92%.
+- `bin/critical_money_branch_coverage`
+- Result: critical money branch coverage 85.78% (199/232).

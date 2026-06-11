@@ -3,6 +3,7 @@ set -euo pipefail
 
 bin/rails db:test:prepare
 COVERAGE=1 bin/rails test
+bin/critical_money_branch_coverage
 bin/rails test:system
 bin/rubocop
 bin/brakeman --no-pager
