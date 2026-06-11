@@ -139,18 +139,9 @@ bin/rails server
 
 Ruby is pinned in both `.ruby-version` and `.tool-versions`. The repo also pins local Node.js and ripgrep versions for contributors using asdf-compatible tooling.
 
-Default seed creates a demo organization. Development API key:
-
-```text
-settleflow_dev_key_change_me
-```
-
-Default development operator:
-
-```text
-email: ops@settleflow.local
-password: settleflow-dev-password-123
-```
+Default seed creates a demo organization and a scoped `ApiCredential`.
+In development, `db:seed` prints the generated API credential and the operator password for a newly created operator.
+Set `SETTLEFLOW_DEMO_API_KEY` and `SETTLEFLOW_OPERATOR_PASSWORD` locally if you need stable credentials.
 
 Optional PostgreSQL, ClickHouse, and Redis via Docker:
 

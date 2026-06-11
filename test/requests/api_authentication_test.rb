@@ -67,4 +67,26 @@ class ApiAuthenticationTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
     assert_equal "authorization_failed", json_body.dig("error", "code")
   end
+
+  test "rejects legacy organization API keys when compatibility is disabled" do
+    api_key = "legacy-disabled-key"
+    create_organization(api_key:)
+
+    with_legacy_organization_api_keys(false) do
+      get "/v1/customers", headers: auth_headers(api_key)
+    end
+
+    assert_response :unauthorized
+    assert_equal "authentication_failed", json_body.dig("error", "code")
+  end
+
+  private
+
+  def with_legacy_organization_api_keys(enabled)
+    previous = Rails.application.config.x.api.allow_legacy_organization_api_keys
+    Rails.application.config.x.api.allow_legacy_organization_api_keys = enabled
+    yield
+  ensure
+    Rails.application.config.x.api.allow_legacy_organization_api_keys = previous
+  end
 end

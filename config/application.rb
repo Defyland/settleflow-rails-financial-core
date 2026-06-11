@@ -43,5 +43,6 @@ module SettleflowRailsFinancialCore
 
     config.active_storage.variant_processor = :disabled
     config.active_record.schema_format = :sql
+    config.x.api.allow_legacy_organization_api_keys = false
   end
 end

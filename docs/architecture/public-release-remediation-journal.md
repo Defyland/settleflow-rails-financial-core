@@ -50,3 +50,24 @@ Verification:
 Decision notes:
 
 - Existing settlement jobs (`PixPayments::Settle`, `Payouts::Settle`) were not blocked by later wallet status changes because the wallet balance was already debited before settlement. Blocking settlement would strand clearing balances rather than protect customer funds.
+
+### Session 1: R2 API credential and seed hardening
+
+Implemented:
+
+- Added `config.x.api.allow_legacy_organization_api_keys`, defaulting to `false`.
+- Enabled legacy organization API keys only in development/test compatibility configuration.
+- Updated V1 authentication so `Organization.authenticate_api_key` is not consulted when the compatibility flag is disabled.
+- Added an integration test proving a legacy organization API key is rejected when compatibility is disabled.
+- Changed seeds to create a scoped `ApiCredential` for the demo organization instead of publishing a known organization-level API key.
+- Removed known default API key/password values from `.env.example`, README, API examples, and benchmark docs.
+- Made demo seeds refuse non-development/test execution unless explicitly allowed.
+
+Verification:
+
+- `bin/rails test test/requests/api_authentication_test.rb`
+- Result: 6 runs, 13 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rails runner -e test 'ActiveRecord::Base.transaction(requires_new: true) { load Rails.root.join("db/seeds.rb"); raise ActiveRecord::Rollback }'`
+- Result: passed.
+- `bin/rubocop app/controllers/v1/base_controller.rb config/application.rb config/environments/development.rb config/environments/test.rb db/seeds.rb test/requests/api_authentication_test.rb`
+- Result: 6 files inspected, no offenses.

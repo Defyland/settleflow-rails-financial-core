@@ -3,7 +3,7 @@
 Set the API key and correlation ID:
 
 ```bash
-export API_KEY=settleflow_dev_key_change_me
+export API_KEY="<development API credential printed by bin/rails db:seed>"
 export BASE_URL=http://localhost:3000
 ```
 

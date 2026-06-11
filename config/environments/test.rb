@@ -43,4 +43,7 @@ Rails.application.configure do
 
   # Raise error when a before_action's only/except options reference missing actions.
   config.action_controller.raise_on_missing_callback_actions = true
+
+  # Compatibility only: request tests still create organizations with legacy API keys.
+  config.x.api.allow_legacy_organization_api_keys = true
 end

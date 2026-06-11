@@ -11,7 +11,8 @@ module V1
     def authenticate_organization!
       api_key = request.headers["X-Api-Key"].to_s
       credential = ApiCredential.authenticate(api_key)
-      organization = credential&.organization || Organization.authenticate_api_key(api_key)
+      organization = credential&.organization
+      organization ||= Organization.authenticate_api_key(api_key) if legacy_organization_api_keys_enabled?
       raise Errors::AuthenticationError if organization.blank?
 
       Current.organization = organization
@@ -59,6 +60,10 @@ module V1
       return raw_metadata.to_unsafe_h if raw_metadata.respond_to?(:to_unsafe_h)
 
       raw_metadata
+    end
+
+    def legacy_organization_api_keys_enabled?
+      Rails.application.config.x.api.allow_legacy_organization_api_keys
     end
   end
 end
