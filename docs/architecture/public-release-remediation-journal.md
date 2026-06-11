@@ -205,3 +205,22 @@ Verification:
 Decision notes:
 
 - This change redacts by default because the API has no field-level privilege model. Full PII can be added later through explicit privileged endpoints/scopes rather than accidental default serializers.
+
+### Session 1: R9 consistency tools
+
+Implemented:
+
+- Changed `BalanceProjections::Rebuilder` so `apply: true` locks the projection first, then recalculates the ledger balance inside the transaction before writing.
+- Added a regression test proving apply mode does not use the stale dry-run balance when the ledger value changes between calculation and lock.
+- Changed `BalanceSnapshots::Capture` to capture each wallet inside a transaction after locking its projection, so projection and ledger comparison are read within a single per-wallet boundary.
+
+Verification:
+
+- `bin/rails test test/services/balance_snapshot_and_rebuild_test.rb test/services/database_consistency_verifier_test.rb`
+- Result: 9 runs, 89 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop app/services/balance_projections/rebuilder.rb app/services/balance_snapshots/capture.rb test/services/balance_snapshot_and_rebuild_test.rb`
+- Result: 3 files inspected, no offenses.
+
+Decision notes:
+
+- Reconciliation snapshot isolation remains a larger semantic decision. This pass fixed the concrete stale-write path and the daily balance snapshot read boundary without changing reconciliation output semantics.

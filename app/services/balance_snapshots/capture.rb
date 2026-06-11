@@ -14,7 +14,18 @@ module BalanceSnapshots
     def call
       captured_at = Time.current
       organization.wallets.includes(:balance_projection, :ledger_accounts).find_each.map do |wallet|
+        capture_wallet(wallet, captured_at:)
+      end
+    end
+
+    private
+
+    attr_reader :organization, :captured_on, :source, :metadata
+
+    def capture_wallet(wallet, captured_at:)
+      ActiveRecord::Base.transaction do
         projection = wallet.balance_projection
+        projection.lock!
         ledger_available_cents = wallet.liability_account.balance_cents
 
         snapshot = organization.balance_snapshots.find_or_initialize_by(
@@ -36,9 +47,5 @@ module BalanceSnapshots
         snapshot
       end
     end
-
-    private
-
-    attr_reader :organization, :captured_on, :source, :metadata
   end
 end

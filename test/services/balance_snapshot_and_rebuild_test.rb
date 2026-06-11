@@ -39,4 +39,31 @@ class BalanceSnapshotAndRebuildTest < ActiveSupport::TestCase
     assert_equal 10_000, applied.rebuilt_available_cents
     assert_equal 10_000, @wallet.balance_projection.reload.available_cents
   end
+
+  test "recalculates rebuilt balance after locking before applying" do
+    force_balance_projection_drift!(@wallet.balance_projection, available_cents: 9_000)
+    original_balance_cents = LedgerAccount.instance_method(:balance_cents)
+    calls = 0
+    wallet_id = @wallet.id
+
+    LedgerAccount.define_method(:balance_cents) do
+      if self.wallet_id == wallet_id
+        calls += 1
+        calls == 1 ? 10_000 : 12_000
+      else
+        original_balance_cents.bind_call(self)
+      end
+    end
+
+    dry_run = BalanceProjections::Rebuilder.call(organization: @organization, wallet: @wallet).fetch(0)
+    applied = BalanceProjections::Rebuilder.call(organization: @organization, wallet: @wallet, apply: true).fetch(0)
+
+    assert_equal 10_000, dry_run.rebuilt_available_cents
+    assert_equal 12_000, applied.rebuilt_available_cents
+    assert_equal 12_000, @wallet.balance_projection.reload.available_cents
+  ensure
+    LedgerAccount.define_method(:balance_cents) do
+      original_balance_cents.bind_call(self)
+    end
+  end
 end
