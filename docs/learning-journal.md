@@ -1,6 +1,6 @@
 # SettleFlow Learning Journal
 
-Este journal documenta a história do repositório até o commit `2315d41`. O commit que atualiza este próprio arquivo é entrega documental, não uma decisão nova de domínio, então a timeline abaixo para antes dele de propósito.
+Este journal documenta a história do repositório até o commit `539cf6a`. O commit que atualiza este próprio arquivo é entrega documental, não uma decisão nova de domínio, então a timeline abaixo para antes dele de propósito.
 
 ## 1. Objetivo do projeto
 
@@ -109,7 +109,7 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
 - `app/services/financial_contracts.rb` centralizou nomes de evento, chaves de idempotência e listas de triggers esperados.
 - Isso reduziu duplicação espalhada entre models, services, verificadores e testes.
 
-### Fase 7: revisão de release, remediações e ajuste de learnability (`df0b0ea` a `2315d41`, 2026-06-11)
+### Fase 7: revisão de release, remediações e ajuste de learnability (`df0b0ea` a `539cf6a`, 2026-06-11)
 
 - `df0b0ea` abriu uma trilha explícita de remediação em `docs/architecture/public-release-remediation-spec.md` e `docs/architecture/public-release-remediation-journal.md`.
 - `22cf3c1` corrigiu uma lacuna real: carteiras e clientes tinham estados (`active`, `blocked`, `closed`), mas vários fluxos ainda não respeitavam isso. O conserto entrou em `app/services/financial_lifecycle/status_guard.rb` e nos serviços que criam/movem dinheiro.
@@ -119,6 +119,8 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
 - `178c4e4` adicionou um sweep recorrente para `OutboxEvent.publishable`, em vez de depender só de jobs disparados pontualmente.
 - `e5afdab` alinhou `docs/events` ao envelope real publicado pelo outbox, removendo o contrato público imaginário.
 - `2315d41` parou de expor `pending_cents` e `blocked_cents` como se o produto já sustentasse essas semânticas de forma completa.
+- `b0fe05e` finalmente alinhou `openapi.yaml` ao runtime real para idempotência, `403` públicos e o comportamento proibido de MED fora do fluxo ops.
+- `539cf6a` corrigiu um bloqueante encontrado só na validação final: a camada de masking passou a usar `::Privacy::Redactor` explicitamente e o system test de ops foi alinhado ao comportamento mascarado.
 
 ## 4. Decisão por decisão: o que foi feito, por que foi feito, alternativas rejeitadas
 
@@ -272,6 +274,17 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
   Implementar toda a semântica de hold/bloqueio só para preservar shape de resposta.
   Continuar expondo campos enganadores.
 
+### OpenAPI deve documentar o comportamento real, não o desejado
+
+- O que foi feito:
+  `b0fe05e` ajustou `openapi.yaml`, `docs/api/error-format.md` e criou `test/services/openapi_contract_test.rb`.
+- Por que foi feito:
+  O repositório já exigia `Idempotency-Key` e já bloqueava resolução pública de MED, mas a especificação ainda dava a entender caminhos mais permissivos.
+- Alternativas rejeitadas:
+  Manter a spec otimista até a feature completa existir.
+  Alterar o runtime só para bater com a spec antiga.
+  A decisão correta foi fazer a spec seguir o software.
+
 ## 5. Prós e contras de cada decisão arquitetural importante
 
 | Decisão | Prós | Contras |
@@ -336,6 +349,14 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
   Evidência: `2315d41`.
   Correção: esconder campos antes de afirmar uma semântica que o domínio ainda não entrega.
 
+- O OpenAPI também estava mais permissivo do que o runtime.
+  Evidência: `b0fe05e`.
+  Correção: documentar `Idempotency-Key` obrigatório, `403` públicos e o comportamento real de MED.
+
+- O rollout de masking introduziu um bug de lookup de constante e deixou um system test esperando PII crua.
+  Evidência: `539cf6a`.
+  Correção: qualificar `::Privacy::Redactor` nos pontos de uso e alinhar `test/system/ops_console_test.rb` ao comportamento mascarado.
+
 - O verificador de consistência tinha cobertura boa, mas falhava mal como material de aprendizado.
   Evidência: antes de `81a86c2`, `test/services/database_consistency_verifier_test.rb` concentrava várias garantias em um único teste.
   Correção: separar asserções por boundary para localizar regressão mais rápido.
@@ -381,7 +402,15 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
    `e5afdab` adicionou `test/services/outbox_event_contract_test.rb`.
    O teste materializa um princípio importante: docs de evento têm de nascer do envelope real ou são dívida, não contrato.
 
-10. Refactor guiado por cobertura
+10. OpenAPI como contrato executável
+   `b0fe05e` adicionou `test/services/openapi_contract_test.rb`.
+   O ciclo foi: transformar drift documental em teste de contrato, em vez de confiar em revisão visual do YAML.
+
+11. Privacy masking validado no caminho real
+   `539cf6a` nasceu de uma falha de integração real no `bin/ci`.
+   O ciclo foi: o gate final quebrou por `NameError` em serializers/helpers e por uma expectativa antiga no system test; o conserto qualificou o namespace e passou a validar o texto mascarado.
+
+12. Refactor guiado por cobertura
    `81a86c2` não mudou regra de negócio; ele mudou a forma de falha da suíte.
    Isso é o "refactor" do ciclo: a lógica já estava verde, então a revisão tratou de melhorar a legibilidade e a localização do feedback sem mexer no comportamento.
 
@@ -402,6 +431,11 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
 - Auditoria sanitizada de API:
   `test/requests/api_audit_logging_test.rb`
 
+- Privacy masking no fluxo humano e em serializers:
+  `test/system/ops_console_test.rb`
+  `test/requests/pix_payments_api_test.rb`
+  `test/requests/idempotency_test.rb`
+
 - Outbox transacional e retry:
   `test/jobs/outbox_publish_job_test.rb`
   `test/jobs/outbox_sweep_job_test.rb`
@@ -410,6 +444,9 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
 
 - Contrato público do envelope de eventos:
   `test/services/outbox_event_contract_test.rb`
+
+- Contrato OpenAPI alinhado ao runtime:
+  `test/services/openapi_contract_test.rb`
 
 - Pix lifecycle, settlement e reversal:
   `test/services/pix_payment_lifecycle_test.rb`
@@ -528,6 +565,8 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
 | 2026-06-11 | `178c4e4` | O outbox ainda dependia de disparos pontuais, sem sweep recorrente | Add publishable event sweep | Teste(s): `outbox_publish_job_test.rb`, `outbox_sweep_job_test.rb` |
 | 2026-06-11 | `e5afdab` | Os schemas públicos de eventos ainda não batiam com o envelope emitido | Align contracts with outbox envelope | Teste(s): `outbox_event_contract_test.rb` |
 | 2026-06-11 | `2315d41` | A API e o ops ainda expunham buckets de saldo não implementados por completo | Hide unimplemented balance buckets | Teste(s): `financial_workflow_test.rb` |
+| 2026-06-11 | `b0fe05e` | O OpenAPI ainda descrevia idempotência e MED de forma divergente do runtime | Document idempotency and MED auth behavior | Teste(s): `openapi_contract_test.rb` |
+| 2026-06-11 | `539cf6a` | O rollout de privacidade ainda quebrava lookup de constante e teste sistêmico | Qualify privacy redactor lookups | Teste(s): `pix_payments_api_test.rb`, `idempotency_test.rb`, `ops_console_request_test.rb`, `ops_console_test.rb` |
 
 ## 10. Checklist de boundaries para futuras features
 
@@ -642,19 +681,22 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
   Nenhum depois dos checks.
 
 - Achados não bloqueantes:
-  O review de release em `docs/architecture/public-release-remediation-spec.md` encontrou cinco gaps materialmente relevantes para o boundary externo.
+  O review de release em `docs/architecture/public-release-remediation-spec.md` encontrou seis gaps materialmente relevantes para o boundary externo.
   Eles foram corrigidos no próprio histórico recente:
   `9397a1a` para chaves legadas.
   `cffccbe` para auditoria sanitizada.
   `178c4e4` para sweep do outbox.
   `e5afdab` para contrato público de eventos.
   `2315d41` para buckets de saldo enganosos.
+  `b0fe05e` para drift de OpenAPI.
+  `539cf6a` para o bloqueante de masking encontrado só no gate final.
   `test/services/database_consistency_verifier_test.rb` concentrava várias garantias independentes num único teste, o que piorava a localização de regressão.
   `test/models/database_financial_invariants_test.rb` continua grande, mas os cenários são focados e o custo de dividir tudo nesta entrega seria maior do que o ganho imediato.
 
 - Ajuste feito:
   `81a86c2` dividiu a suíte do consistency verifier em testes por boundary.
   O objetivo não foi "aumentar cobertura", e sim reduzir blast radius de falha e melhorar o valor pedagógico da suíte.
+  `539cf6a` corrigiu o lookup de `Privacy::Redactor` no caminho real de serialização/view e atualizou o system test para validar masking em vez de texto cru.
 
 ### Revisão específica da stack Rails/Ruby
 
