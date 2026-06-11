@@ -59,6 +59,5 @@ Rails.application.routes.draw do
     end
     resources :ledger_entries, only: [ :index, :show ]
     resources :reconciliation_runs, only: [ :index, :show, :create ]
-    resources :outbox_events, only: [ :index ]
   end
 end

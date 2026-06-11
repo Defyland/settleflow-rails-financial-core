@@ -22,6 +22,13 @@ class OpenapiContractTest < ActiveSupport::TestCase
     end
   end
 
+  test "transactional outbox log is not exposed as a public v1 endpoint" do
+    assert_not_includes openapi.fetch("paths"), "/v1/outbox_events"
+    assert_raises(ActionController::RoutingError) do
+      Rails.application.routes.recognize_path("/v1/outbox_events", method: :get)
+    end
+  end
+
   private
 
   def openapi

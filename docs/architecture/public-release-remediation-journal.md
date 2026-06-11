@@ -296,3 +296,22 @@ Verification:
 - Result: 111 runs, 703 assertions, 0 failures, 0 errors, 0 skips.
 - `bin/rubocop app/services`
 - Result: 48 files inspected, no offenses.
+
+### Session 1: Public operational surface follow-up
+
+Implemented:
+
+- Removed `/v1/outbox_events` from public routes and OpenAPI.
+- Deleted the public outbox controller and serializer; outbox inspection remains an authenticated ops-console concern.
+- Added an OpenAPI/route regression test so the operational outbox log is not accidentally reintroduced as public API.
+
+Verification:
+
+- `bin/rails test test/services/openapi_contract_test.rb test/requests/ops_console_request_test.rb`
+- Result: 11 runs, 232 assertions, 0 failures, 0 errors, 0 skips.
+- `ruby -e "require 'yaml'; YAML.load_file('openapi.yaml'); puts 'openapi.yaml parsed'"`
+- Result: `openapi.yaml parsed`.
+- `bin/rubocop config/routes.rb test/services/openapi_contract_test.rb`
+- Result: 2 files inspected, no offenses.
+- `/Applications/Codex.app/Contents/Resources/rg -n "v1/outbox_events|OutboxEventSerializer|V1::OutboxEventsController|OutboxEventCollection" app config test openapi.yaml docs README.md`
+- Result: only the new regression test mentions the removed public route.

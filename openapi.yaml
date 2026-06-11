@@ -702,24 +702,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReconciliationRunResponse"
-  /v1/outbox_events:
-    get:
-      operationId: listOutboxEvents
-      summary: List transactional outbox events.
-      parameters:
-        - $ref: "#/components/parameters/Limit"
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum: [pending, published, dead_lettered]
-      responses:
-        "200":
-          description: Outbox events.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OutboxEventCollection"
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -1632,61 +1614,5 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ReconciliationRun"
-        meta:
-          $ref: "#/components/schemas/PageMeta"
-    OutboxEvent:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        aggregate_type:
-          type: string
-        aggregate_id:
-          type: integer
-        event_type:
-          type: string
-        status:
-          type: string
-          enum: [pending, published, dead_lettered]
-        correlation_id:
-          type: string
-        attempts:
-          type: integer
-        published_at:
-          type: string
-          format: date-time
-          nullable: true
-        next_attempt_at:
-          type: string
-          format: date-time
-          nullable: true
-        last_attempted_at:
-          type: string
-          format: date-time
-          nullable: true
-        dead_lettered_at:
-          type: string
-          format: date-time
-          nullable: true
-        error_class:
-          type: string
-          nullable: true
-        last_error:
-          type: string
-          nullable: true
-        payload:
-          type: object
-          additionalProperties: true
-        created_at:
-          type: string
-          format: date-time
-    OutboxEventCollection:
-      type: object
-      properties:
-        data:
-          type: array
-          items:
-            $ref: "#/components/schemas/OutboxEvent"
         meta:
           $ref: "#/components/schemas/PageMeta"
