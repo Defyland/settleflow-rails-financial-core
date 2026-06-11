@@ -1,9 +1,5 @@
 module Transfers
-  class Create
-    def self.call(...)
-      new(...).call
-    end
-
+  class Create < ApplicationService
     def initialize(organization:, source_wallet:, destination_wallet:, external_id:, amount_cents:, currency: "BRL", idempotency_key: nil, correlation_id: nil, memo: nil, metadata: {})
       @organization = organization
       @source_wallet = source_wallet

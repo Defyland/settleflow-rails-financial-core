@@ -1,9 +1,5 @@
 module OutboxEvents
-  class Emit
-    def self.call(...)
-      new(...).call
-    end
-
+  class Emit < ApplicationService
     def initialize(organization:, aggregate:, event_type:, payload:, correlation_id: nil, idempotency_key: nil)
       @organization = organization
       @aggregate = aggregate

@@ -1,9 +1,5 @@
 module Ledger
-  class JournalPoster
-    def self.call(...)
-      new(...).call
-    end
-
+  class JournalPoster < ApplicationService
     def initialize(organization:, event_type:, lines:, reference: nil, idempotency_key: nil, correlation_id: nil, metadata: {})
       @organization = organization
       @event_type = event_type

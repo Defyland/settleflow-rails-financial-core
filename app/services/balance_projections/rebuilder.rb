@@ -1,11 +1,6 @@
 module BalanceProjections
-  class Rebuilder
+  class Rebuilder < ApplicationService
     Result = Data.define(:wallet_id, :currency, :current_available_cents, :rebuilt_available_cents, :difference_cents)
-
-    def self.call(...)
-      new(...).call
-    end
-
     def initialize(organization:, wallet: nil, currency: "BRL", apply: false)
       @organization = organization
       @wallet = wallet

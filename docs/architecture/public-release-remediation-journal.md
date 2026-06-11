@@ -278,6 +278,7 @@ Implemented:
 - Removed the README link to that guide and replaced portfolio-reviewer framing with neutral backend-pattern language.
 - Updated README security wording so legacy organization API keys are described as disabled-by-default development/test compatibility, matching R2.
 - Moved `Database::*` operational engineering services from `app/services/database` to `lib/database`, preserving constants while separating product services from ops tooling.
+- Added `ApplicationService` as the shared callable base and converted the remaining exact `self.call(...); new(...).call` service-object duplicates to inherit from it.
 
 Verification:
 
@@ -289,3 +290,9 @@ Verification:
 - Result: 20 files inspected, no offenses.
 - `bin/rails zeitwerk:check`
 - Result: all application constants good; Rails emitted only the standard unchecked `test/mailers/previews` eager-load warning.
+- `ruby -e 'paths=Dir["app/services/**/*.rb"].sort.select { |path| path != "app/services/application_service.rb" && File.read(path).match?(/def self\.call\(\.\.\.\)\s*\n\s*new\(\.\.\.\)\.call/) }; puts paths.size; puts paths'`
+- Result: `0`.
+- `bin/rails test test/services`
+- Result: 111 runs, 703 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop app/services`
+- Result: 48 files inspected, no offenses.

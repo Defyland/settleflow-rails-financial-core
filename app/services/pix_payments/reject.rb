@@ -1,9 +1,5 @@
 module PixPayments
-  class Reject
-    def self.call(...)
-      new(...).call
-    end
-
+  class Reject < ApplicationService
     def initialize(organization:, pix_payment:, reason:, correlation_id: nil)
       @organization = organization
       @pix_payment = pix_payment

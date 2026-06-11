@@ -1,9 +1,5 @@
 module Wallets
-  class Creator
-    def self.call(...)
-      new(...).call
-    end
-
+  class Creator < ApplicationService
     def initialize(organization:, customer:, external_id:, currency: "BRL", metadata: {})
       @organization = organization
       @customer = customer

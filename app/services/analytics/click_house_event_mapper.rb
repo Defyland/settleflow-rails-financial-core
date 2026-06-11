@@ -1,11 +1,6 @@
 module Analytics
-  class ClickHouseEventMapper
+  class ClickHouseEventMapper < ApplicationService
     TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S.%6N".freeze
-
-    def self.call(...)
-      new(...).call
-    end
-
     def self.format_time(time)
       time.utc.strftime(TIMESTAMP_FORMAT)
     end

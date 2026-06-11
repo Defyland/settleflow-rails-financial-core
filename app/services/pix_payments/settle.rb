@@ -1,9 +1,5 @@
 module PixPayments
-  class Settle
-    def self.call(...)
-      new(...).call
-    end
-
+  class Settle < ApplicationService
     def initialize(organization:, pix_payment:, correlation_id: nil)
       @organization = organization
       @pix_payment = pix_payment

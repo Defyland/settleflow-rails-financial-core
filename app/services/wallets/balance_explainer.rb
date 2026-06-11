@@ -1,11 +1,6 @@
 module Wallets
-  class BalanceExplainer
+  class BalanceExplainer < ApplicationService
     RECENT_LINE_LIMIT = 100
-
-    def self.call(...)
-      new(...).call
-    end
-
     def initialize(wallet:)
       @wallet = wallet
     end

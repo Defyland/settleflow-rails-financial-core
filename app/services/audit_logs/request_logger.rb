@@ -1,9 +1,5 @@
 module AuditLogs
-  class RequestLogger
-    def self.call(...)
-      new(...).call
-    end
-
+  class RequestLogger < ApplicationService
     def initialize(organization:, actor_type:, action:, subject_type:, request_id:, correlation_id:, ip_address:, user_agent:, status:, params:, actor_id: nil, subject_id: nil, error_code: nil)
       @organization = organization
       @actor_type = actor_type

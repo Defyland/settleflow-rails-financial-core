@@ -1,9 +1,5 @@
 module Reconciliation
-  class Run
-    def self.call(...)
-      new(...).call
-    end
-
+  class Run < ApplicationService
     def initialize(organization:, provider:, statement_date:, provider_balance_cents:, currency: "BRL", correlation_id: nil, metadata: {}, statement_entries: [])
       @organization = organization
       @provider = provider

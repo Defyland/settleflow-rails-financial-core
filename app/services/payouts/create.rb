@@ -1,9 +1,5 @@
 module Payouts
-  class Create
-    def self.call(...)
-      new(...).call
-    end
-
+  class Create < ApplicationService
     def initialize(organization:, wallet:, external_id:, amount_cents:, destination_reference:, currency: "BRL", settlement_delay_days: 1, destination_kind: "bank_account", idempotency_key: nil, correlation_id: nil, metadata: {})
       @organization = organization
       @wallet = wallet

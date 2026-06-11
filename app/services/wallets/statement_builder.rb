@@ -1,13 +1,8 @@
 module Wallets
-  class StatementBuilder
+  class StatementBuilder < ApplicationService
     StatementLine = Data.define(:ledger_line, :delta_cents, :running_available_cents)
     DEFAULT_LIMIT = 50
     MAX_LIMIT = 100
-
-    def self.call(...)
-      new(...).call
-    end
-
     def initialize(wallet:, limit: DEFAULT_LIMIT)
       @wallet = wallet
       @limit = limit.to_i.clamp(1, MAX_LIMIT)

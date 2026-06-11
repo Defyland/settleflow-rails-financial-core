@@ -1,12 +1,7 @@
 module PixPayments
-  class Create
+  class Create < ApplicationService
     REVIEW_THRESHOLD = 70
     REJECT_THRESHOLD = 90
-
-    def self.call(...)
-      new(...).call
-    end
-
     def initialize(organization:, wallet:, external_id:, pix_key:, receiver_name:, amount_cents:, currency: "BRL", idempotency_key: nil, correlation_id: nil, metadata: {})
       @organization = organization
       @wallet = wallet

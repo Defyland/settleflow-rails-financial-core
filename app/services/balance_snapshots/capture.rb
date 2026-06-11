@@ -1,9 +1,5 @@
 module BalanceSnapshots
-  class Capture
-    def self.call(...)
-      new(...).call
-    end
-
+  class Capture < ApplicationService
     def initialize(organization:, captured_on: Date.current, source: "scheduled_capture", metadata: {})
       @organization = organization
       @captured_on = captured_on

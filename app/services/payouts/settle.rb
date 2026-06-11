@@ -1,9 +1,5 @@
 module Payouts
-  class Settle
-    def self.call(...)
-      new(...).call
-    end
-
+  class Settle < ApplicationService
     def initialize(organization:, payout:, correlation_id: nil, force: false, operator: nil, reason: nil)
       @organization = organization
       @payout = payout

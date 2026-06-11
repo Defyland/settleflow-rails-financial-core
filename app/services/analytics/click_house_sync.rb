@@ -1,11 +1,6 @@
 module Analytics
-  class ClickHouseSync
+  class ClickHouseSync < ApplicationService
     PROCESSOR = ProcessedEvent::PROCESSORS.fetch(:clickhouse_financial_events)
-
-    def self.call(...)
-      new(...).call
-    end
-
     def initialize(outbox_event:, client: nil)
       @outbox_event = outbox_event
       @client = client

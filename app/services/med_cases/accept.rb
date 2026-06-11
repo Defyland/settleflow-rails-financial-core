@@ -1,9 +1,5 @@
 module MedCases
-  class Accept
-    def self.call(...)
-      new(...).call
-    end
-
+  class Accept < ApplicationService
     def initialize(organization:, med_case:, operator:, reason: nil, correlation_id: nil)
       @organization = organization
       @med_case = med_case

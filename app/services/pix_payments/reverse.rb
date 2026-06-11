@@ -1,9 +1,5 @@
 module PixPayments
-  class Reverse
-    def self.call(...)
-      new(...).call
-    end
-
+  class Reverse < ApplicationService
     def initialize(organization:, pix_payment:, reason:, correlation_id: nil)
       @organization = organization
       @pix_payment = pix_payment

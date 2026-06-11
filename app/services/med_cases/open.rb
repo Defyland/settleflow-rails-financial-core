@@ -1,9 +1,5 @@
 module MedCases
-  class Open
-    def self.call(...)
-      new(...).call
-    end
-
+  class Open < ApplicationService
     def initialize(organization:, pix_payment:, external_id:, amount_cents:, reason:, currency: nil, idempotency_key: nil, correlation_id: nil, metadata: {})
       @organization = organization
       @pix_payment = pix_payment

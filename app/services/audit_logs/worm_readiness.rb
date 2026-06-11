@@ -1,7 +1,7 @@
 require "uri"
 
 module AuditLogs
-  class WormReadiness
+  class WormReadiness < ApplicationService
     Check = Data.define(:name, :ok, :details) do
       def to_h
         {
@@ -17,11 +17,6 @@ module AuditLogs
       127.0.0.1
       localhost
     ].freeze
-
-    def self.call(...)
-      new(...).call
-    end
-
     def initialize(env: ENV)
       @env = env
     end

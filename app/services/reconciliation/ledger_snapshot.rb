@@ -1,9 +1,5 @@
 module Reconciliation
-  class LedgerSnapshot
-    def self.call(...)
-      new(...).call
-    end
-
+  class LedgerSnapshot < ApplicationService
     def initialize(organization:, currency: "BRL")
       @organization = organization
       @currency = currency

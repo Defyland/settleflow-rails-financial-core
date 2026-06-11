@@ -1,9 +1,5 @@
 module MedCases
-  class Reject
-    def self.call(...)
-      new(...).call
-    end
-
+  class Reject < ApplicationService
     def initialize(organization:, med_case:, operator:, reason:, correlation_id: nil)
       @organization = organization
       @med_case = med_case

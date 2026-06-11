@@ -1,11 +1,6 @@
 module AuditLogs
-  class HashChainAnchor
+  class HashChainAnchor < ApplicationService
     ADVISORY_LOCK_KEY = 860029002
-
-    def self.call(...)
-      new(...).call
-    end
-
     def initialize(publisher: self.class.default_publisher)
       @publisher = publisher
     end

@@ -1,13 +1,8 @@
 module Reconciliation
-  class RowsBuilder
+  class RowsBuilder < ApplicationService
     StatementEntry = Data.define(:external_id, :amount_cents, :currency, :occurred_on, :metadata)
     LedgerMatch = Data.define(:external_id, :amount_cents, :journal_entry_id, :journal_entry_ids, :occurred_on)
     MISSING = Object.new.freeze
-
-    def self.call(...)
-      new(...).call
-    end
-
     def initialize(run:, snapshot:, statement_entries:, currency:)
       @run = run
       @organization = run.organization
