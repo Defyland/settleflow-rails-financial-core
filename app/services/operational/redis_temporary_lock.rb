@@ -1,7 +1,7 @@
 require "redis-client"
 
 module Operational
-  class RedisTemporaryLock
+  class RedisTemporaryLock < ApplicationService
     DEFAULT_TTL = Operational::TemporaryLock::DEFAULT_TTL
     FORBIDDEN_KEY_PARTS = Operational::TemporaryLock::FORBIDDEN_KEY_PARTS
     RELEASE_SCRIPT = <<~LUA.squish
@@ -13,10 +13,6 @@ module Operational
 
     def self.configured?
       ENV["REDIS_URL"].present?
-    end
-
-    def self.call(**kwargs, &block)
-      new(**kwargs).call(&block)
     end
 
     def initialize(key:, ttl: DEFAULT_TTL, redis_url: ENV["REDIS_URL"], client: nil)

@@ -1,5 +1,5 @@
 module AuditLogs
-  class ParameterSanitizer
+  class ParameterSanitizer < ApplicationService
     FILTERED = "[FILTERED]".freeze
     SENSITIVE_KEYS = %w[
       document_number
@@ -14,10 +14,6 @@ module AuditLogs
       api_key
       idempotency_key
     ].freeze
-
-    def self.call(value)
-      new(value).call
-    end
 
     def initialize(value)
       @value = value

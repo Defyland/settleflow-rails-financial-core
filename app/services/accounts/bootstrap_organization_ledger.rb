@@ -1,14 +1,10 @@
 module Accounts
-  class BootstrapOrganizationLedger
+  class BootstrapOrganizationLedger < ApplicationService
     SYSTEM_ACCOUNTS = {
       platform_cash: { code: "PLATFORM_CASH", name: "Platform settlement cash", account_type: "asset", normal_balance: "debit" },
       pix_clearing: { code: "PIX_CLEARING", name: "Pix clearing payable", account_type: "liability", normal_balance: "credit" },
       payout_clearing: { code: "PAYOUT_CLEARING", name: "Payout clearing payable", account_type: "liability", normal_balance: "credit" }
     }.freeze
-
-    def self.call(organization:, currency: "BRL")
-      new(organization:, currency:).call
-    end
 
     def initialize(organization:, currency:)
       @organization = organization

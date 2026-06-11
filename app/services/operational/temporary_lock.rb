@@ -1,5 +1,5 @@
 module Operational
-  class TemporaryLock
+  class TemporaryLock < ApplicationService
     DEFAULT_TTL = 30.seconds
     FORBIDDEN_KEY_PARTS = %w[
       balance
@@ -13,10 +13,6 @@ module Operational
       reconciliation
       audit
     ].freeze
-
-    def self.call(**kwargs, &block)
-      new(**kwargs).call(&block)
-    end
 
     def initialize(key:, ttl: DEFAULT_TTL, cache: Rails.cache)
       @key = key.to_s

@@ -1,10 +1,6 @@
 module Ops
-  class MakerChecker
+  class MakerChecker < ApplicationService
     Result = Data.define(:status, :approval, :subject)
-
-    def self.call(**kwargs, &block)
-      new(**kwargs).call(&block)
-    end
 
     def initialize(action:, subject:, operator:, reason: nil, correlation_id: nil, metadata: {})
       @action = action

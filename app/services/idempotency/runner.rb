@@ -1,10 +1,6 @@
 module Idempotency
-  class Runner
+  class Runner < ApplicationService
     PROCESSING_LOCK_TIMEOUT = 10.minutes
-
-    def self.call(**kwargs, &block)
-      new(**kwargs).call(&block)
-    end
 
     def initialize(organization:, key:, request_method:, request_path:, request_hash:)
       @organization = organization
