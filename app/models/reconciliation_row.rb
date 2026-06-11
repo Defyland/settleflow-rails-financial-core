@@ -23,9 +23,6 @@ class ReconciliationRow < ApplicationRecord
   validate :status_matches_amount_evidence
   validate :run_belongs_to_same_organization
   validate :journal_entry_belongs_to_same_organization
-  before_save :prevent_mutation_after_outbox
-  before_destroy :prevent_mutation_after_outbox
-
   private
 
   def difference_matches_amounts
@@ -77,17 +74,5 @@ class ReconciliationRow < ApplicationRecord
     return if journal_entry.blank? || journal_entry.organization_id == organization_id
 
     errors.add(:journal_entry, "must belong to the same organization")
-  end
-
-  def prevent_mutation_after_outbox
-    return if reconciliation_run.blank?
-    return unless OutboxEvent.exists?(
-      aggregate_type: "ReconciliationRun",
-      aggregate_id: reconciliation_run_id,
-      event_type: FinancialContracts::RECONCILIATION_EVENT_TYPES
-    )
-
-    errors.add(:base, "reconciliation rows with outbox evidence are immutable")
-    throw :abort
   end
 end
