@@ -38,6 +38,31 @@ class OutboxPublishJobTest < ActiveJob::TestCase
     Analytics::ClickHouseClient.define_singleton_method(:configured?) { original_configured.call } if original_configured
   end
 
+  test "does not mark published events as failed when analytics enqueue fails" do
+    Rails.application.config.x.outbox.publisher = RecordingOutboxPublisher.new
+    event = create_pending_funding_event
+    clear_enqueued_jobs
+
+    original_configured = Analytics::ClickHouseClient.method(:configured?)
+    original_perform_later = ClickHouseSyncJob.method(:perform_later)
+    Analytics::ClickHouseClient.define_singleton_method(:configured?) { true }
+    ClickHouseSyncJob.define_singleton_method(:perform_later) { |*args, **kwargs| raise "analytics queue unavailable" }
+
+    OutboxPublishJob.perform_now(event.id)
+
+    event.reload
+    assert event.published?
+    assert_equal 1, event.attempts
+    assert_nil event.last_error
+    assert_nil event.error_class
+    assert_empty enqueued_jobs.select { |job| job[:job] == OutboxPublishJob }
+  ensure
+    Analytics::ClickHouseClient.define_singleton_method(:configured?) { original_configured.call } if original_configured
+    ClickHouseSyncJob.define_singleton_method(:perform_later) do |*args, **kwargs, &block|
+      original_perform_later.call(*args, **kwargs, &block)
+    end
+  end
+
   test "keeps transient failures pending with a scheduled retry" do
     Rails.application.config.x.outbox.publisher = FailingOutboxPublisher.new
     event = create_pending_funding_event

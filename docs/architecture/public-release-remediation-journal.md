@@ -92,3 +92,25 @@ Verification:
 Decision notes:
 
 - Unhandled non-application exceptions are not force-audited in the around action. That avoids writing false `200` audit records before Rails has mapped the exception. Rescuable API errors are audited through `render_application_error`.
+
+### Session 1: R4 transactional outbox reliability
+
+Implemented:
+
+- Split `OutboxPublishJob` into a publish phase and a post-publish analytics enqueue phase.
+- Publish failures still mark the event pending/dead-lettered and schedule retry.
+- Analytics enqueue failures now log `outbox.analytics_enqueue_failed` but do not revert a published event to `pending`.
+- Added `OutboxSweepJob` to enqueue `OutboxEvent.publishable` records.
+- Added production recurring schedule for the sweep job.
+
+Verification:
+
+- `bin/rails test test/jobs/outbox_publish_job_test.rb test/jobs/outbox_sweep_job_test.rb`
+- Result: 9 runs, 39 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop app/jobs/outbox_publish_job.rb app/jobs/outbox_sweep_job.rb test/jobs/outbox_publish_job_test.rb test/jobs/outbox_sweep_job_test.rb`
+- Result: 4 files inspected, no offenses.
+
+Decision notes:
+
+- The sweep job intentionally re-enqueues publish jobs instead of publishing inline. Claiming and state transition remain centralized in `OutboxPublishJob`.
+- Tests isolate existing pending events by pushing their retry time into the future rather than falsifying published state, because database checks require real publication evidence for `published` events.
