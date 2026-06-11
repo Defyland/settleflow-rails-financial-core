@@ -138,3 +138,25 @@ Verification:
 Decision notes:
 
 - Chose to document the actual emitted envelope instead of introducing a mapping layer. A separate external taxonomy can be added later, but only with a publisher mapper and schema validation tests in the same change.
+
+### Session 1: R6 balance bucket contract
+
+Implemented:
+
+- Removed `pending_cents` and `blocked_cents` from the public balance serializer.
+- Removed `pending_cents` and `blocked_cents` from the OpenAPI `Balance` response schema.
+- Removed pending/blocked metrics from the ops wallet detail page.
+- Added a request assertion proving balance responses no longer expose those buckets.
+
+Verification:
+
+- `bin/rails test test/requests/financial_workflow_test.rb test/requests/ops_console_request_test.rb`
+- Result: 12 runs, 207 assertions, 0 failures, 0 errors, 0 skips.
+- `ruby -e "require 'yaml'; YAML.load_file('openapi.yaml'); puts 'openapi.yaml parsed'"`
+- Result: `openapi.yaml parsed`.
+- `bin/rubocop app/serializers/balance_projection_serializer.rb test/requests/financial_workflow_test.rb`
+- Result: 2 files inspected, no offenses.
+
+Decision notes:
+
+- Kept the database columns and snapshot fields as internal storage/invariant surface for now. The remediation removes the misleading API and operator promise until real pending/blocked transitions exist.

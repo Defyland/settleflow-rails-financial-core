@@ -12,14 +12,6 @@
     <strong><%= money_cents(@wallet.balance_projection.available_cents, @wallet.currency) %></strong>
   </div>
   <div class="metric">
-    <span>Pending</span>
-    <strong><%= money_cents(@wallet.balance_projection.pending_cents, @wallet.currency) %></strong>
-  </div>
-  <div class="metric">
-    <span>Blocked</span>
-    <strong><%= money_cents(@wallet.balance_projection.blocked_cents, @wallet.currency) %></strong>
-  </div>
-  <div class="metric">
     <span>Status</span>
     <strong><%= @wallet.status.humanize %></strong>
   </div>

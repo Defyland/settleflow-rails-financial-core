@@ -828,12 +828,6 @@ components:
         available_cents:
           type: integer
           format: int64
-        pending_cents:
-          type: integer
-          format: int64
-        blocked_cents:
-          type: integer
-          format: int64
         currency:
           type: string
         version:

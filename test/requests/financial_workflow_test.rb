@@ -34,6 +34,8 @@ class FinancialWorkflowTest < ActionDispatch::IntegrationTest
 
     get "/v1/wallets/#{source_wallet_id}/balance", headers: auth_headers(@api_key)
     assert_equal 7_500, json_body.dig("data", "available_cents")
+    assert_not_includes json_body.fetch("data"), "pending_cents"
+    assert_not_includes json_body.fetch("data"), "blocked_cents"
 
     get "/v1/wallets/#{source_wallet_id}/balance_explanation", headers: auth_headers(@api_key)
     assert_response :ok
