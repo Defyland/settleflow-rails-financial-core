@@ -1,5 +1,7 @@
 module Ops
   class PixPaymentsController < BaseController
+    rescue_from Errors::ApplicationError, with: :redirect_application_error
+
     before_action -> { require_capability!(:settle_pix_payment) }, only: :settle
     before_action -> { require_capability!(:reject_pix_payment) }, only: :reject
     before_action -> { require_capability!(:reverse_pix_payment) }, only: :reverse
@@ -30,8 +32,6 @@ module Ops
       operator_audit!(action: "ops.pix_payment.settle.#{result.status}", subject: pix_payment, metadata: { approval_id: result.approval.public_id, status: pix_payment.reload.status })
       notice = result.status == :approved ? "Pix payment settled." : "Pix settlement approval requested."
       redirect_to ops_pix_payment_path(pix_payment.public_id), notice:
-    rescue Errors::ApplicationError => e
-      redirect_to ops_pix_payment_path(params[:id]), alert: e.message
     end
 
     def reject
@@ -44,8 +44,6 @@ module Ops
       )
       operator_audit!(action: "ops.pix_payment.reject", subject: pix_payment, metadata: { reason: params[:reason] })
       redirect_to ops_pix_payment_path(pix_payment.public_id), notice: "Pix payment rejected."
-    rescue Errors::ApplicationError => e
-      redirect_to ops_pix_payment_path(params[:id]), alert: e.message
     end
 
     def reverse
@@ -67,8 +65,12 @@ module Ops
       operator_audit!(action: "ops.pix_payment.reverse.#{result.status}", subject: pix_payment, metadata: { approval_id: result.approval.public_id, reason: params[:reason] })
       notice = result.status == :approved ? "Pix payment reversed." : "Pix reversal approval requested."
       redirect_to ops_pix_payment_path(pix_payment.public_id), notice:
-    rescue Errors::ApplicationError => e
-      redirect_to ops_pix_payment_path(params[:id]), alert: e.message
+    end
+
+    private
+
+    def redirect_application_error(error)
+      redirect_to ops_pix_payment_path(params[:id]), alert: error.message
     end
   end
 end

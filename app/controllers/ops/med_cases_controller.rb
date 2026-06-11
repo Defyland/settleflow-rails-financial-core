@@ -1,5 +1,7 @@
 module Ops
   class MedCasesController < BaseController
+    rescue_from Errors::ApplicationError, with: :redirect_application_error
+
     before_action -> { require_capability!(:accept_med_case) }, only: :accept
     before_action -> { require_capability!(:reject_med_case) }, only: :reject
 
@@ -35,8 +37,6 @@ module Ops
       operator_audit!(action: "ops.med_case.accept.#{result.status}", subject: med_case, metadata: { approval_id: result.approval.public_id, status: med_case.reload.status })
       notice = result.status == :approved ? "MED case accepted and refunded." : "MED acceptance approval requested."
       redirect_to ops_med_case_path(med_case.public_id), notice:
-    rescue Errors::ApplicationError => e
-      redirect_to ops_med_case_path(params[:id]), alert: e.message
     end
 
     def reject
@@ -51,8 +51,12 @@ module Ops
       operator_audit!(action: "ops.med_case.reject.#{result.status}", subject: med_case, metadata: { approval_id: result.approval.public_id, reason: params[:reason], status: med_case.reload.status })
       notice = result.status == :approved ? "MED case rejected." : "MED rejection approval requested."
       redirect_to ops_med_case_path(med_case.public_id), notice:
-    rescue Errors::ApplicationError => e
-      redirect_to ops_med_case_path(params[:id]), alert: e.message
+    end
+
+    private
+
+    def redirect_application_error(error)
+      redirect_to ops_med_case_path(params[:id]), alert: error.message
     end
   end
 end
