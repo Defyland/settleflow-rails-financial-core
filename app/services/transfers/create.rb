@@ -22,7 +22,7 @@ module Transfers
       validate_wallets!
 
       ActiveRecord::Base.transaction do
-        source_wallet.balance_projection.lock!
+        Wallets::ProjectionLocker.lock!(source_wallet, destination_wallet)
         raise Errors::InsufficientFunds.new(details: { available_cents: source_wallet.balance_projection.available_cents, required_cents: amount_cents }) if source_wallet.balance_projection.available_cents < amount_cents
 
         transfer = organization.transfers.create!(

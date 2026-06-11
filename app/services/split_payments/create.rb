@@ -22,7 +22,7 @@ module SplitPayments
       validate_wallets!(normalized_entries)
 
       ActiveRecord::Base.transaction do
-        source_wallet.balance_projection.lock!
+        Wallets::ProjectionLocker.lock!(source_wallet, normalized_entries.map { |entry| entry.fetch(:destination_wallet) })
         raise Errors::InsufficientFunds.new(details: { available_cents: source_wallet.balance_projection.available_cents, required_cents: total_amount_cents(normalized_entries) }) if source_wallet.balance_projection.available_cents < total_amount_cents(normalized_entries)
 
         split_payment = organization.split_payments.create!(

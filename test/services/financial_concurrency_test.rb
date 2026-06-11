@@ -71,6 +71,30 @@ class FinancialConcurrencyTest < ActiveSupport::TestCase
     assert_equal 18_000, wallet.balance_projection.reload.available_cents
   end
 
+  test "posts inverse transfers concurrently without deadlocking" do
+    organization = create_organization
+    wallet_a = create_wallet(organization:, external_id: "inverse-transfer-a")
+    wallet_b = create_wallet(organization:, external_id: "inverse-transfer-b")
+    fund_wallet(organization:, wallet: wallet_a, external_id: "inverse-transfer-a-funding", amount_cents: 10_000)
+    fund_wallet(organization:, wallet: wallet_b, external_id: "inverse-transfer-b-funding", amount_cents: 10_000)
+
+    results = run_concurrently do |index|
+      source_wallet, destination_wallet = index.zero? ? [ wallet_a, wallet_b ] : [ wallet_b, wallet_a ]
+      Transfers::Create.call(
+        organization:,
+        source_wallet: Wallet.find(source_wallet.id),
+        destination_wallet: Wallet.find(destination_wallet.id),
+        external_id: "inverse-transfer-#{index}",
+        amount_cents: 1_000,
+        idempotency_key: "inverse-transfer-#{index}"
+      )
+    end
+
+    assert_equal 2, results.count { |result| result.first == :ok }, results.inspect
+    assert_equal 10_000, wallet_a.balance_projection.reload.available_cents
+    assert_equal 10_000, wallet_b.balance_projection.reload.available_cents
+  end
+
   test "accepts a MED case once under concurrent workers" do
     organization, wallet = funded_wallet("med-concurrency", amount_cents: 20_000)
     pix_payment = create_pix_payment(

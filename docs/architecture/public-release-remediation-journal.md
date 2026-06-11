@@ -240,3 +240,24 @@ Verification:
 - Result: 12 runs, 176 assertions, 0 failures, 0 errors, 0 skips.
 - `bin/rubocop app/controllers/health/readiness_controller.rb app/controllers/ops/base_controller.rb test/requests/operability_test.rb test/requests/ops_console_request_test.rb`
 - Result: 4 files inspected, no offenses.
+
+### Session 1: R11 performance and concurrency
+
+Implemented:
+
+- Added `Wallets::ProjectionLocker` to lock wallet balance projections in deterministic `wallet_id` order.
+- Updated transfers to lock both source and destination wallet projections before the funds check and ledger post.
+- Updated split payments to lock source and destination wallet projections before the funds check and ledger post.
+- Added a regression test that posts inverse transfers concurrently and proves both complete without deadlock or balance drift.
+
+Verification:
+
+- `bin/rails test test/services/financial_concurrency_test.rb test/services/transfer_create_test.rb test/services/split_payment_create_test.rb`
+- Result: 12 runs, 66 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop app/services/wallets/projection_locker.rb app/services/transfers/create.rb app/services/split_payments/create.rb test/services/financial_concurrency_test.rb`
+- Result: 4 files inspected, no offenses.
+
+Decision notes:
+
+- The helper locks projections instead of wallets because the contested invariant is the projected liability balance, and existing money paths already use projection locking for funds checks.
+- Sorting by wallet id removes opposite-order lock acquisition between inverse transfers and split destinations while keeping the change local to the current transaction-script services.
