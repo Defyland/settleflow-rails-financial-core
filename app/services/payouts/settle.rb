@@ -12,9 +12,9 @@ module Payouts
     def call
       raise Errors::ValidationError.new("Payout belongs to another organization") if payout.organization_id != organization.id
 
+      payout.reload
       if early_settlement?
-        raise Errors::ValidationError.new("Payout settlement date has not arrived", details: { settlement_due_on: payout.settlement_due_on.iso8601 }) unless force
-        raise Errors::AuthorizationError.new("Early payout settlement requires ops maker-checker approval") if operator.blank?
+        require_early_settlement_request!
 
         return Ops::MakerChecker.call(
           action: FinancialContracts::Actions::PAYOUT_SETTLE_EARLY,
@@ -35,17 +35,23 @@ module Payouts
     attr_reader :organization, :payout, :correlation_id, :force, :operator, :reason
 
     def early_settlement?
-      payout.reload
       payout.scheduled? && payout.settlement_due_on > Date.current
+    end
+
+    def require_early_settlement_request!
+      raise Errors::ValidationError.new("Payout settlement date has not arrived", details: { settlement_due_on: payout.settlement_due_on.iso8601 }) unless force
+      raise Errors::AuthorizationError.new("Early payout settlement requires ops maker-checker approval") if operator.blank?
+    end
+
+    def ensure_settlement_allowed!(operator_approval:)
+      raise Errors::ValidationError.new("Payout must be scheduled before settlement", details: { status: payout.status }) unless payout.scheduled?
+      raise Errors::AuthorizationError.new("Early payout settlement requires ops maker-checker approval") if early_settlement? && operator_approval.blank?
     end
 
     def settle!(operator_approval:)
       ActiveRecord::Base.transaction do
         payout.lock!
-        raise Errors::ValidationError.new("Payout must be scheduled before settlement", details: { status: payout.status }) unless payout.scheduled?
-        if payout.settlement_due_on > Date.current && operator_approval.blank?
-          raise Errors::AuthorizationError.new("Early payout settlement requires ops maker-checker approval")
-        end
+        ensure_settlement_allowed!(operator_approval:)
 
         Accounts::BootstrapOrganizationLedger.call(organization:, currency: payout.currency)
         settlement_key = FinancialContracts.payout_settlement_key(payout)
