@@ -103,24 +103,32 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
 - Em seguida veio o primeiro corte de domínio financeiro em `app/services/fundings/create.rb`, `app/services/transfers/create.rb`, `app/services/pix_payments/create.rb`, `app/services/reconciliation/run.rb`, com `Ledger::JournalPoster` como coração da escrita.
 - A primeira cobertura veio depois do core, não antes: `9035824` adicionou testes e mostrou que o começo do projeto foi mais "implementar e depois cercar" do que TDD estrito.
 - Ainda no mesmo dia o projeto registrou as decisões essenciais em ADRs e em `openapi.yaml`.
+- Base usada:
+  commits `79b48ec`, `8dd8782`, `70a8841`, `9035824`, `e19d834`; `README.md`, `app/services/ledger/journal_poster.rb`, `config/routes.rb`, `openapi.yaml`, testes centrais de request/service/job adicionados em `9035824`.
 
 ### Fase 2: o monólito deixa de ser só API (`05c2bcb`, 2026-05-30)
 
-- O commit `05c2bcb` foi a maior virada conceitual do histórico.
+- O commit `05c2bcb` foi uma das maiores viradas conceituais do histórico.
 - Ele introduziu autenticação humana (`app/models/user.rb`, `app/models/session.rb`, `app/controllers/sessions_controller.rb`), controllers `ops/*`, views `ops/*`, system tests e os ADRs que justificam o monólito híbrido.
 - O repositório deixou de ser "API com alguns modelos" e passou a demonstrar operação financeira real.
+- Base usada:
+  commit `05c2bcb`, `config/routes.rb`, `app/controllers/ops/*`, `app/views/ops/*`, `app/models/user.rb`, `app/models/session.rb`, `docs/adr/0004-hybrid-hotwire-monolith.md`, `test/system/ops_console_test.rb`.
 
 ### Fase 3: estabilização e hardening inicial (`56ec94c` a `34be4c7`, 2026-05-31)
 
 - Seis commits seguidos mexeram em `test/system/ops_console_test.rb`.
 - Esse trecho sugere um padrão importante: colocar UI operacional num monólito é barato para começar, mas cobra disciplina de testes de navegação.
 - Na mesma data entraram correções de concorrência e integridade: revalidação de Pix sob lock (`593ebd2`), claim do outbox antes de publicar (`9b17f12`) e append-only do ledger (`d692a31`).
+- Base usada:
+  commits `56ec94c` a `34be4c7`; `test/system/ops_console_test.rb`, `app/services/pix_payments/settle.rb`, `app/services/pix_payments/reverse.rb`, `app/jobs/outbox_publish_job.rb`, `app/services/outbox/publisher.rb`, `app/models/journal_entry.rb`.
 
 ### Fase 4: governança, extensões financeiras e trilha de auditoria (`205da77` a `8764018`, 2026-06-01)
 
 - O banco começou a ganhar guards explícitos.
 - Entraram maker-checker, hash chain de auditoria, payout, refund, split e MED.
 - O domínio deixou de ser só "movimentar dinheiro" e passou a incluir quem pode aprovar, reverter e auditar.
+- Base usada:
+  commits `205da77` a `8764018`; `app/services/ops/maker_checker.rb`, `app/models/audit_log.rb`, `app/services/payouts/*`, `app/services/refunds/create.rb`, `app/services/split_payments/create.rb`, `app/services/med_cases/*`, `test/requests/financial_extensions_api_test.rb`, `test/services/refund_and_med_lifecycle_test.rb`.
 
 ### Fase 5: banco como contrato executável (`132b5e8` a `d13051a`, 2026-06-02)
 
@@ -128,11 +136,15 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
 - O projeto adicionou snapshots, processed events, sync com ClickHouse, benchmarks, tarefas de engenharia de banco, backup/restore drill, partition planning e uma longa sequência de constraints/triggers.
 - A concentração de migrations, verificadores e testes de invariantes sugere a virada desta fase: validação só em Ruby já não bastava para o que o projeto queria garantir.
 - `test/models/database_financial_invariants_test.rb`, `test/services/database_consistency_verifier_test.rb` e `db/structure.sql` viraram tão importantes quanto os services.
+- Base usada:
+  commits `132b5e8` a `d13051a`; `db/structure.sql`, `app/services/balance_snapshots/capture.rb`, `app/services/analytics/click_house_sync.rb`, `lib/tasks/database_engineering.rake`, `lib/database/consistency_verifier.rb`, `test/models/database_financial_invariants_test.rb`, `test/services/database_consistency_verifier_test.rb`.
 
 ### Fase 6: consolidação de contratos (`577d2ad`, 2026-06-06)
 
 - `app/services/financial_contracts.rb` centralizou nomes de evento, chaves de idempotência e listas de triggers esperados.
 - Isso reduziu duplicação espalhada entre models, services, verificadores e testes.
+- Base usada:
+  commit `577d2ad`, `app/services/financial_contracts.rb`, usos em services financeiros, `lib/database/consistency_verifier.rb`, `test/services/financial_concurrency_test.rb`.
 
 ### Fase 7: revisão de release, remediações e ajuste de learnability (`df0b0ea` a `a8d1171`, 2026-06-11)
 
@@ -149,6 +161,8 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
 - `515b79c` corrigiu o caminho de consistência em que rebuild e snapshot podiam usar leitura velha antes do lock.
 - `539cf6a` corrigiu um bloqueante encontrado só na validação final: a camada de masking passou a usar `::Privacy::Redactor` explicitamente e o system test de ops foi alinhado ao comportamento mascarado.
 - `a8d1171` fechou a superfície de leitura global do ops para admins e tornou `/ready` menos verboso em caso de falha.
+- Base usada:
+  commits `df0b0ea` a `a8d1171`; `docs/architecture/public-release-remediation-spec.md`, `app/services/financial_lifecycle/status_guard.rb`, `app/services/audit_logs/request_logger.rb`, `app/jobs/outbox_sweep_job.rb`, `openapi.yaml`, `app/services/privacy/redactor.rb`, `test/requests/privacy_redaction_test.rb`, `test/requests/operability_test.rb`.
 
 ### Fase 8: aperto de concorrência, superfície pública e limpeza estrutural (`23879e6` a `9df9e43`, 2026-06-11)
 
@@ -158,6 +172,8 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
 - `d2355a6` e `76d9c2a` limpam a forma do código sem trocar comportamento: tooling operacional de banco sai de `app/services` para `lib/database`, e o padrão `.call` deixa de ser repetido em dezenas de classes.
 - `4584b85`, `8f72783`, `b4b14bf` e `d035016` são menos sobre feature e mais sobre honestidade documental: remover autoavaliação, alinhar docs de segurança, explicar reconciliação como snapshot operacional e ajustar regras de lint para a spec atual.
 - `9df9e43` transforma o achado de branch coverage dos caminhos de dinheiro em gate executável: cria testes de falha para branches financeiros e adiciona `bin/critical_money_branch_coverage` ao CI.
+- Base usada:
+  commits `63618c2`, `0f83617`, `97a34fd`, `d2355a6`, `76d9c2a`, `4584b85`, `8f72783`, `b4b14bf`, `d035016`, `9df9e43`; `app/services/wallets/projection_locker.rb`, `app/services/ledger/journal_poster.rb`, `config/routes.rb`, `lib/database/*`, `redocly.yaml`, `bin/critical_money_branch_coverage`, `test/services/financial_branch_coverage_test.rb`.
 
 ## 4. Decisão por decisão: o que foi feito, por que foi feito, alternativas rejeitadas
 
@@ -174,6 +190,19 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
 - Base usada:
   commit `05c2bcb`, `config/routes.rb`, `app/controllers/ops/base_controller.rb`, `app/views/ops/*`, `docs/adr/0004-hybrid-hotwire-monolith.md`, `test/system/ops_console_test.rb`.
 
+### Console ops prova a superfície humana por inspeção, não por E2E maximalista
+
+- O que foi feito:
+  os commits `56ec94c`, `1bd1df9`, `b69e3ba`, `6a40b98`, `65a8e80` e `37e3180` estabilizaram `test/system/ops_console_test.rb` e, ao final, reduziram seu escopo para inspeção do console em vez de tentar carregar toda a governança por browser.
+- Por que foi feito:
+  o histórico registra custo alto de flake em navegação, clique de detalhe e feedback assíncrono; manter ao menos uma prova de superfície humana continuava importante, mas colocar todas as transições críticas no system test estava caro demais.
+- Alternativas rejeitadas:
+  continuar empurrando aprovação/rejeição completas para o browser test.
+  abandonar system tests por completo.
+  A forma final deixa a UI coberta por inspeção e desloca a maior parte das decisões de estado para request/service tests.
+- Base usada:
+  commits `56ec94c`, `1bd1df9`, `b69e3ba`, `6a40b98`, `65a8e80`, `37e3180`; `test/system/ops_console_test.rb`, `test/requests/ops_console_request_test.rb`.
+
 ### Ledger de dupla entrada como verdade e projeções como leitura
 
 - O que foi feito:
@@ -183,7 +212,7 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
 - Alternativas rejeitadas:
   `wallet.balance` mutável.
   Event Sourcing puro.
-  As ADRs `docs/adr/0001-double-entry-ledger.md` e `docs/adr/0006-ledger-and-outbox-before-event-sourcing.md` deixam claro que a equipe quis um meio-termo mais simples.
+  As ADRs `docs/adr/0001-double-entry-ledger.md` e `docs/adr/0006-ledger-and-outbox-before-event-sourcing.md` indicam a busca por um meio-termo mais simples.
 - Base usada:
   `app/services/ledger/journal_poster.rb`, `app/models/journal_entry.rb`, `app/models/ledger_line.rb`, `app/models/balance_projection.rb`, ADRs `0001` e `0006`, `test/services/ledger_journal_poster_test.rb`.
 
@@ -213,6 +242,19 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
 - Base usada:
   `app/controllers/api_controller.rb`, `app/controllers/v1/base_controller.rb`, `app/models/api_credential.rb`, `app/models/idempotency_key.rb`, `app/services/idempotency/runner.rb`, `test/requests/idempotency_test.rb`, ADR `0003`.
 
+### Endurecer o boundary antes de expandir o domínio
+
+- O que foi feito:
+  `8a6117b`, `a9dbd6a`, `3fbc141` e `34be4c7` endureceram autenticação, idempotência, publisher HTTP, metadata do outbox, sessão humana, métricas/observabilidade e rate limiting local antes da próxima leva de features financeiras.
+- Por que foi feito:
+  o histórico registra um pequeno intervalo em que o projeto desacelera a expansão de domínio para reduzir frouxidão no boundary externo e no runtime local. `ApiCredential` entra no lugar do acoplamento maior a `Organization`, o publisher passa a devolver metadata mais estruturada e os testes de autenticação, idempotência e delivery ficam mais específicos.
+- Alternativas rejeitadas:
+  seguir adicionando fluxos de negócio antes de endurecer auth/outbox/runtime.
+  tratar publisher, métricas e rate limiting como detalhes de infraestrutura sem contrato de teste.
+  O repositório preferiu fechar essas bordas primeiro.
+- Base usada:
+  commits `8a6117b`, `a9dbd6a`, `3fbc141`, `34be4c7`; `app/models/api_credential.rb`, `app/controllers/v1/base_controller.rb`, `app/controllers/concerns/authentication.rb`, `app/controllers/observability/metrics_controller.rb`, `app/services/outbox/publisher.rb`, `app/services/outbox/publishers/http_publisher.rb`, `config/initializers/rack_attack.rb`, `test/requests/api_authentication_test.rb`, `test/requests/idempotency_test.rb`, `test/services/outbox_publish_job_test.rb`, `test/services/outbox_http_publisher_test.rb`, `test/requests/operability_test.rb`.
+
 ### Governança operacional coarse-grained
 
 - O que foi feito:
@@ -239,6 +281,31 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
 - Base usada:
   `app/models/audit_log.rb`, `app/models/audit_log_anchor.rb`, `app/services/audit_logs/hash_chain_anchor.rb`, `test/services/audit_log_hash_chain_test.rb`, `test/services/audit_log_hash_chain_anchor_test.rb`.
 
+### Domínio cresce por comandos explícitos, não por uma transação genérica
+
+- O que foi feito:
+  `387e90a` adicionou modelos, serializers, controllers e services dedicados para payout, refund, split payment e MED, em vez de encaixar tudo como variações implícitas de transferências já existentes.
+- Por que foi feito:
+  a própria forma do diff indica a escolha: cada fluxo ganhou lifecycle, payloads e testes próprios. Isso registra que payout, refund, split e MED foram tratados como fluxos diferentes o bastante para receber verbos e objetos explícitos.
+- Alternativas rejeitadas:
+  reaproveitar `Transfers::Create` com flags ou branches internas.
+  introduzir um model genérico de "financial_operation" e esconder diferenças no payload.
+  O git não traz um ADR formal descartando essas opções, mas a implementação materializada foi na direção oposta: classes e contratos dedicados por fluxo.
+- Base usada:
+  commit `387e90a`, `app/services/payouts/*`, `app/services/refunds/create.rb`, `app/services/split_payments/create.rb`, `app/services/med_cases/*`, `app/models/payout.rb`, `app/models/refund.rb`, `app/models/split_payment.rb`, `app/models/med_case.rb`, `test/requests/financial_extensions_api_test.rb`, `test/services/payout_lifecycle_test.rb`, `test/services/refund_and_med_lifecycle_test.rb`, `test/services/split_payment_create_test.rb`.
+
+### Reconciliação precisa explicar saldo, não só acusar divergência
+
+- O que foi feito:
+  `0eb1911` adicionou `Reconciliation::LedgerSnapshot`, `Wallets::BalanceExplainer` e `Wallets::StatementBuilder`; `dde2aab` acrescentou `ReconciliationRow`, `Reconciliation::RowsBuilder`, serializers, endpoints e tela ops com granularidade itemizada.
+- Por que foi feito:
+  os commits mostram a reconciliação saindo de um estado mais agregado para um estado explicável. Em vez de só dizer que há divergência, a aplicação passa a carregar linhas e explicações que ligam o saldo derivado aos fatos do ledger.
+- Alternativas rejeitadas:
+  manter reconciliação apenas como resumo agregado.
+  depender de consulta manual ao ledger sempre que fosse preciso explicar diferença.
+- Base usada:
+  commits `0eb1911`, `dde2aab`, `app/services/reconciliation/ledger_snapshot.rb`, `app/services/reconciliation/rows_builder.rb`, `app/services/wallets/balance_explainer.rb`, `app/models/reconciliation_row.rb`, `app/views/ops/reconciliation_runs/show.html.erb`, `docs/database/reconciliation-data-model.md`, `test/services/reconciliation_run_test.rb`, `test/models/reconciliation_row_test.rb`, `test/requests/financial_workflow_test.rb`.
+
 ### Banco como última linha de defesa
 
 - O que foi feito:
@@ -251,6 +318,18 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
   A solução intermediária foi deixar orquestração em Ruby e invariantes duráveis no banco.
 - Base usada:
   sequência de migrations `20260602170000` a `20260602224500`, `db/structure.sql`, `test/models/database_financial_invariants_test.rb`, `lib/database/consistency_verifier.rb`.
+
+### Snapshots e processed events são evidência auxiliar, não fonte de verdade
+
+- O que foi feito:
+  `132b5e8` criou `BalanceSnapshot`, `ProcessedEvent`, `BalanceProjections::Rebuilder` e `BalanceSnapshots::Capture` como tabelas e services derivados do ledger/outbox principal.
+- Por que foi feito:
+  o projeto precisava de checkpoints para rebuild, auditoria e sincronização downstream sem trocar a fonte de verdade principal. A presença simultânea de snapshot, processed events e testes de rebuild mostra uma preocupação com repetibilidade operacional, não com substituição do ledger.
+- Alternativas rejeitadas:
+  recalcular tudo do ledger toda vez, sem checkpoint algum.
+  promover snapshot ou processed event a verdade financeira primária.
+- Base usada:
+  commit `132b5e8`, `app/models/balance_snapshot.rb`, `app/models/processed_event.rb`, `app/services/balance_projections/rebuilder.rb`, `app/services/balance_snapshots/capture.rb`, `db/structure.sql`, `test/services/balance_snapshot_and_rebuild_test.rb`.
 
 ### Analytics assíncrono fora do caminho de dinheiro
 
@@ -268,14 +347,27 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
 ### Ferramental operacional executável
 
 - O que foi feito:
-  `lib/tasks/database_engineering.rake`, `lib/database/consistency_verifier.rb`, `lib/database/migration_safety_checker.rb`, `lib/database/pitr_readiness.rb`.
+  a série `ea7b5f9`, `6003930`, `d20ac86`, `ca69cb9`, `bc06ebf`, `2e2e964`, `cf74bdc`, `f982987` e `549451a` transformou expectativa operacional em código executável: benchmark runner, migration safety, partition planning/readiness/feasibility, backup/restore drill, PITR e WORM readiness, tudo exposto por `lib/tasks/database_engineering.rake` e serviços em `lib/database/*`.
 - Por que foi feito:
-  Documentação sem tarefa executável vira intenção.
+  depois que o banco passou a carregar parte relevante da confiança do sistema, runbook puro deixou de ser suficiente. O histórico mostra uma sequência deliberada de gates e tarefas verificáveis para checar se o ambiente de banco ainda respeita as suposições do repositório.
 - Alternativas rejeitadas:
   Só runbooks em Markdown.
   Só CI genérico sem checks de domínio.
+  Depender apenas de tooling externo de plataforma para validar suposições que já estavam explícitas neste código.
 - Base usada:
-  `lib/tasks/database_engineering.rake`, `lib/database/consistency_verifier.rb`, `test/services/database_consistency_verifier_test.rb`, `test/services/database_migration_safety_checker_test.rb`, `test/services/database_pitr_readiness_test.rb`.
+  commits `ea7b5f9`, `6003930`, `d20ac86`, `ca69cb9`, `bc06ebf`, `cb44df0`, `2e2e964`, `cf74bdc`, `f982987`, `549451a`; `lib/tasks/database_engineering.rake`, `lib/database/benchmark_runner.rb`, `lib/database/migration_safety_checker.rb`, `lib/database/partition_plan.rb`, `lib/database/partition_readiness.rb`, `lib/database/partition_feasibility.rb`, `lib/database/pitr_readiness.rb`, `docs/database/partitioning-plan.md`, `docs/database/backup-restore.md`, `test/services/database_benchmark_runner_test.rb`, `test/services/database_migration_safety_checker_test.rb`, `test/services/database_partition_plan_test.rb`, `test/services/database_partition_feasibility_test.rb`, `test/services/database_pitr_readiness_test.rb`, `test/services/audit_log_worm_readiness_test.rb`.
+
+### Coordenação operacional transitória merece boundary próprio
+
+- O que foi feito:
+  `20ea392` introduziu `Operational::TemporaryLock`; depois `ca69cb9` acrescentou `Operational::RedisTemporaryLock` e expandiu a cobertura desse boundary.
+- Por que foi feito:
+  nem toda coordenação entre processos é uma regra financeira durável. Os commits separam bem duas coisas: invariantes do dinheiro ficam no banco/ledger; travas transitórias de operação ficam em um boundary nomeado, sem espalhar chamadas cruas de Redis por services arbitrários.
+- Alternativas rejeitadas:
+  embutir uso de Redis diretamente nos callers.
+  reutilizar locks de banco para qualquer tipo de coordenação temporária.
+- Base usada:
+  commits `20ea392`, `ca69cb9`; `app/services/operational/temporary_lock.rb`, `app/services/operational/redis_temporary_lock.rb`, `docs/database/redis-usage.md`, `test/services/operational_temporary_lock_test.rb`, `test/services/operational_redis_temporary_lock_test.rb`.
 
 ### Contratos financeiros centralizados
 
@@ -288,6 +380,30 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
   Criar uma camada genérica de "event registry" mais pesada do que o necessário.
 - Base usada:
   commit `577d2ad`, `app/services/financial_contracts.rb`, usos em `app/services/pix_payments/settle.rb`, `lib/database/consistency_verifier.rb` e testes de invariantes/concorrência.
+
+### Guards SQL específicos por boundary, não uma trigger genérica opaca
+
+- O que foi feito:
+  da sequência `60a0f97` até `775fef5`, o projeto adicionou guards separados para evidência de outbox, estado financeiro, comandos de wallet, replay idempotente, processed events, balances, maker-checker, reconciliation, aggregate identity, journal taxonomy, MED, refund, payout, split e escrita de projeções.
+- Por que foi feito:
+  a série de commits aponta para uma preferência observável: cada boundary sensível falha por um motivo mais explícito, com testes e verificadores próprios, em vez de depender de uma única camada genérica de "integridade". Isso aumenta o volume de SQL, mas deixa visível qual decisão de negócio cada guard está protegendo.
+- Alternativas rejeitadas:
+  manter enforcement apenas nos services Ruby.
+  condensar tudo em triggers genéricas com menos vocabulário de domínio.
+- Base usada:
+  commits `60a0f97`, `68c0f56`, `4ab223a`, `f4f5b3e`, `8ecee8e`, `01a1d85`, `5a490bf`, `1f0a4f6`, `6df1387`, `62bd0e0`, `f850a78`, `76f5cbf`, `b693532`, `0d4ca54`, `64deac6`, `e5f4e93`, `48be481`, `929c4f9`, `e51d574`, `775fef5`; `db/structure.sql`, migrations `20260602170000` a `20260602223500`, `lib/database/consistency_verifier.rb`, `test/models/database_financial_invariants_test.rb`, `test/services/database_consistency_verifier_test.rb`.
+
+### Histórico publicado não é reescrito só para satisfazer regra nova
+
+- O que foi feito:
+  `d13051a` criou `OutboxLegacyCommandIdentityException` e um mecanismo explícito de exceção para envelopes legados de outbox cuja identidade de comando já estava publicada.
+- Por que foi feito:
+  o commit escolhe preservar a imutabilidade do histórico emitido e registrar exceções conhecidas, em vez de "corrigir" retrospectivamente eventos que já tinham sido publicados. Isso combina melhor com a própria narrativa do repositório sobre evidência e auditabilidade.
+- Alternativas rejeitadas:
+  reescrever o histórico publicado para caber na nova regra.
+  ignorar a divergência sem registrá-la em lugar nenhum.
+- Base usada:
+  commit `d13051a`, `app/models/outbox_legacy_command_identity_exception.rb`, migration `20260602230000_accept_immutable_legacy_outbox_command_identity.rb`, `lib/database/consistency_verifier.rb`, `docs/events/messaging.md`, `test/models/database_financial_invariants_test.rb`, `test/services/database_consistency_verifier_test.rb`.
 
 ### Lifecycle explícito de wallet/customer
 
@@ -493,15 +609,23 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
 | Decisão | Prós | Contras |
 | --- | --- | --- |
 | Monólito Rails híbrido | Um deploy, uma base de testes, ops e API compartilham o mesmo modelo | Cresce rápido; controllers, views e jobs disputam espaço conceitual |
+| System test do ops focado em inspeção | Mantém alguma prova real de UI sem deixar a suíte browser dominar o custo de manutenção | Parte relevante da governança fica protegida por request/service test, não pelo browser |
 | Ledger + projections | Explica dinheiro e ainda entrega leitura rápida | Escrever fica mais caro e exige disciplina transacional |
 | Outbox transacional | Evita perda silenciosa entre DB e integração | Introduz estado intermediário, retries e runbooks |
 | API key + idempotência | Boundary simples para integrações server-to-server | Ainda é credencial estática; rotação e escopo precisam vigilância |
+| Hardening antes de expandir domínio | Reduz risco de crescer em cima de auth/outbox/runtime frouxos | Consome tempo que não aparece como feature nova |
 | Maker-checker coarse | Demonstra governança sem explosão de política | Papéis são amplos demais para produção madura |
 | Hash chain de auditoria | Evidência forte e verificável | Complexidade operacional maior do que log convencional |
+| Comandos financeiros dedicados por fluxo | Regras de payout/refund/split/MED ficam legíveis e testáveis por verbo | Mais classes, serializers e controllers para manter |
+| Reconciliação explicável e itemizada | Facilita auditoria operacional e análise de divergência | Cria mais leitura derivada, telas e contratos para sustentar |
 | Invariantes no banco | Protege contra bypass acidental e cargas externas | Migrations e `db/structure.sql` ficam mais difíceis de ler e evoluir |
+| Snapshots e processed events derivados | Ajudam rebuild, auditoria e sync downstream sem trocar a fonte de verdade | Adicionam estado derivado extra que também precisa ser protegido |
 | ClickHouse só para analytics | Mantém Postgres como única verdade financeira | Pipeline é best-effort; não resolve integração pública nem exactly-once |
 | Ferramental executável de banco | Torna docs verificáveis | Pode virar showpiece se não acompanhar o código real |
+| Lock operacional transitório com boundary nomeado | Separa coordenação temporária de invariantes financeiros permanentes | Introduz mais um tipo de lock que o time precisa entender |
 | Contratos centralizados | Reduz drift entre services, testes e verificador | Ainda exige disciplina para atualizar docs/eventos públicos em paralelo |
+| Guards SQL por boundary explícito | Falhas ficam mais específicas e auditáveis | A superfície SQL cresce muito e custa onboarding |
+| Exceções explícitas para legado publicado | Preserva imutabilidade da evidência já emitida | Carrega um mecanismo permanente para acomodar dívida histórica |
 | Lock determinístico de projeções | Reduz risco de deadlock em comandos multi-wallet e torna a ordem de lock auditável no código | Introduz convenção adicional que todo novo command multi-wallet precisa respeitar |
 | Atualização em lote de projeções | Remove trabalho repetido no caminho quente sem trocar o modelo contábil | Exige cuidado para não esconder bugs de delta líquido em journals mais complexos |
 | Outbox fora da API pública | Reduz superfície externa e deixa claro que outbox é evidência operacional | Tira um endpoint que podia ser usado como ferramenta ad hoc de debug por clientes |
@@ -518,6 +642,10 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
   Evidência: `56ec94c`, `1bd1df9`, `b69e3ba`, `6a40b98`, `65a8e80`, `37e3180`.
   Aprendizado: backoffice também precisa de disciplina de UX testável; sem isso, system tests viram ruído.
 
+- A primeira tentativa de provar o console pelo browser queria carregar mais governança do que a suíte suportava bem.
+  Evidência: a sequência termina em `37e3180`, que restringe o system test a inspeção.
+  Aprendizado: mutações críticas do ops ficaram melhores em request/service tests do que em um E2E gigante.
+
 - A concorrência de Pix settlement/reversal estava frouxa.
   Evidência: `593ebd2` mexe em `app/services/pix_payments/reverse.rb` e `app/services/pix_payments/settle.rb`.
   Correção: revalidar estado sob lock, não antes dele.
@@ -528,6 +656,10 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
 
 - O ledger ainda permitia mutação por caminhos baixos demais.
   Evidência: `d692a31` e depois a suíte de invariantes em `test/models/database_financial_invariants_test.rb`.
+
+- A reconciliação inicialmente dizia menos do que a operação precisava para explicar um saldo.
+  Evidência: `0eb1911` e `dde2aab`.
+  Correção: introduzir explicadores, statement lines e rows itemizadas em vez de só um resumo agregado.
 
 - A identidade idempotente inicialmente ignorava query string.
   Evidência: `1db67f2`.
@@ -548,6 +680,10 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
 - O outbox tinha retry por evento, mas não tinha um sweep recorrente explícito.
   Evidência: `178c4e4`.
   Aprendizado: confiabilidade operacional não deve depender só de quem criou o evento lembrar de enfileirar tudo.
+
+- Parte da prontidão de banco começou como documentação e convenção antes de virar gate executável.
+  Evidência: `ea7b5f9`, `6003930`, `d20ac86`, `ca69cb9`, `cb44df0`, `2e2e964`, `cf74bdc`, `f982987`, `549451a`.
+  Correção: transformar benchmark, migration safety, partitioning, PITR e WORM em tarefas/verificadores rodáveis.
 
 - Os contratos em `docs/events/*.v1.json` descreviam uma taxonomia que o app não publicava.
   Evidência: `e5afdab`.
@@ -600,6 +736,10 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
 - O branch coverage dos caminhos críticos de dinheiro ainda era só uma leitura manual do SimpleCov.
   Evidência: `9df9e43`.
   Correção: adicionar testes de branches financeiros e um guard executável de 85% em `bin/critical_money_branch_coverage`.
+
+- A regra nova de identidade de comando no outbox chegou depois de já existir histórico publicado.
+  Evidência: `d13051a`.
+  Correção: registrar exceções explícitas de legado, em vez de reescrever a evidência já emitida.
 
 - O verificador de consistência tinha cobertura boa, mas falhava mal como material de aprendizado.
   Evidência: antes de `81a86c2`, `test/services/database_consistency_verifier_test.rb` concentrava várias garantias em um único teste.
@@ -692,6 +832,16 @@ Dito isso, o histórico posterior registra TDD e teste-dirigido por correção e
 - Boundary de autenticação e compatibilidade legada:
   `test/requests/api_authentication_test.rb`
 
+- Hardening de boundary, publisher e runtime local:
+  `test/requests/api_authentication_test.rb`
+  `test/requests/idempotency_test.rb`
+  `test/services/outbox_publish_job_test.rb`
+  `test/services/outbox_http_publisher_test.rb`
+  `test/controllers/passwords_controller_test.rb`
+  `test/controllers/sessions_controller_test.rb`
+  `test/models/user_test.rb`
+  `test/requests/operability_test.rb`
+
 - Auditoria sanitizada de API:
   `test/requests/api_audit_logging_test.rb`
 
@@ -711,6 +861,12 @@ Dito isso, o histórico posterior registra TDD e teste-dirigido por correção e
 
 - Contrato público do envelope de eventos:
   `test/services/outbox_event_contract_test.rb`
+
+- Comandos dedicados de payout/refund/split/MED:
+  `test/requests/financial_extensions_api_test.rb`
+  `test/services/payout_lifecycle_test.rb`
+  `test/services/refund_and_med_lifecycle_test.rb`
+  `test/services/split_payment_create_test.rb`
 
 - Contrato OpenAPI alinhado ao runtime:
   `test/services/openapi_contract_test.rb`
@@ -732,6 +888,11 @@ Dito isso, o histórico posterior registra TDD e teste-dirigido por correção e
   `test/models/reconciliation_row_test.rb`
   `test/requests/financial_workflow_test.rb`
 
+- Snapshots, rebuild e processed events:
+  `test/services/balance_snapshot_and_rebuild_test.rb`
+  `test/models/database_financial_invariants_test.rb`
+  `test/services/click_house_sync_test.rb`
+
 - Database-as-contract:
   `test/models/database_financial_invariants_test.rb`
   `test/services/database_consistency_verifier_test.rb`
@@ -750,13 +911,27 @@ Dito isso, o histórico posterior registra TDD e teste-dirigido por correção e
   `test/services/database_migration_safety_checker_test.rb`
   `test/services/database_partition_plan_test.rb`
   `test/services/database_partition_feasibility_test.rb`
+  `test/services/database_partition_readiness_test.rb`
   `test/services/database_pitr_readiness_test.rb`
   `test/services/database_benchmark_runner_test.rb`
+  `test/services/database_benchmark_thresholds_test.rb`
+
+- Locks operacionais transitórios:
+  `test/services/operational_temporary_lock_test.rb`
+  `test/services/operational_redis_temporary_lock_test.rb`
 
 - Audit trail e hash chain:
   `test/services/audit_log_hash_chain_test.rb`
   `test/services/audit_log_hash_chain_anchor_test.rb`
   `test/services/audit_log_worm_readiness_test.rb`
+
+- Guards SQL específicos por boundary:
+  `test/models/database_financial_invariants_test.rb`
+  `test/services/database_consistency_verifier_test.rb`
+
+- Exceções explícitas para legado publicado:
+  `test/models/database_financial_invariants_test.rb`
+  `test/services/database_consistency_verifier_test.rb`
 
 - Lifecycle de wallet/customer:
   `test/services/funding_create_test.rb`
@@ -764,6 +939,9 @@ Dito isso, o histórico posterior registra TDD e teste-dirigido por correção e
   `test/services/payout_lifecycle_test.rb`
   `test/services/split_payment_create_test.rb`
   `test/services/wallet_creator_test.rb`
+
+- Gate de branch coverage crítico:
+  `test/services/financial_branch_coverage_test.rb`
 
 ## 9. Timeline dos commits atômicos
 
@@ -892,11 +1070,23 @@ Dito isso, o histórico posterior registra TDD e teste-dirigido por correção e
 - A feature debita ou credita mais de uma wallet no mesmo comando?
   Se sim, tratar a ordem de lock explicitamente com `Wallets::ProjectionLocker.lock!`.
 
+- A feature precisa de coordenação transitória entre processos, mas isso não é uma regra contábil?
+  Se sim, prefira um boundary nomeado em `app/services/operational/*` em vez de espalhar chamadas cruas de Redis.
+
 - O banco precisa ser a última linha de defesa?
   Se a regra não pode ser violada por `update_columns`, ela precisa de constraint/trigger.
 
+- A feature mexe na explicação operacional de saldo ou reconciliação?
+  Decidir se precisa de `BalanceExplainer`, `StatementBuilder` ou `ReconciliationRow`, não só de um resumo agregado.
+
 - A feature cria leitura derivada?
   Ver se entra em `BalanceProjection`, `BalanceSnapshot` ou `ReconciliationRow`.
+
+- A feature introduz uma nova suposição operacional de banco?
+  Considerar um gate em `lib/database/*` e em `lib/tasks/database_engineering.rake`, não só texto em runbook.
+
+- A feature toca contrato ou evidência já publicada?
+  Preferir versionamento, append-only ou tabela explícita de exceção antes de reescrever histórico.
 
 - A feature altera contrato público?
   Atualizar `openapi.yaml`, serializers, `docs/events/*.v1.json` e exemplos.
@@ -915,27 +1105,39 @@ Dito isso, o histórico posterior registra TDD e teste-dirigido por correção e
 3. Defina o aggregate e a referência contábil.
    Toda escrita financeira deste projeto fica mais simples quando já se sabe quem é o aggregate dono e qual `reference` vai para o journal.
 
-4. Faça a orquestração dentro de transação.
+4. Se o comportamento é realmente um novo verbo financeiro, dê a ele classes próprias.
+   `387e90a` é a referência de quando payout, refund, split e MED deixaram de ser "variações escondidas" e ganharam services, models e serializers próprios.
+
+5. Faça a orquestração dentro de transação.
    O padrão dos serviços `Fundings::Create`, `Transfers::Create`, `PixPayments::Settle`, `Refunds::Create` e `Payouts::Settle` é a referência.
 
-5. Poste o ledger antes de pensar em read model bonito.
+6. Poste o ledger antes de pensar em read model bonito.
    Primeiro garanta `JournalEntry`/`LedgerLine`; depois atualize projeção e serialização.
 
-6. Emita outbox no mesmo commit.
+7. Emita outbox no mesmo commit.
    Não publique integração fora da transação do fato financeiro.
 
-7. Se o comando tocar múltiplas wallets, decida a ordem de lock antes de escrever.
+8. Se o comando tocar múltiplas wallets, decida a ordem de lock antes de escrever.
    Hoje o padrão explícito é `Wallets::ProjectionLocker.lock!` seguido das checagens de saldo.
 
-8. Cubra a decisão em três níveis quando necessário.
+9. Se a feature também precisar de explicação operacional, trate isso como parte da modelagem.
+   `0eb1911` e `dde2aab` mostram que reconciliação útil costuma pedir snapshot, statement ou row explicativa, não só um booleano de sucesso.
+
+10. Cubra a decisão em três níveis quando necessário.
    Service test para regra de domínio.
    Request test para contrato.
    Database invariant test quando a regra precisa sobreviver a bypass da app.
 
-9. Atualize docs só depois da forma estabilizar.
+11. Se a regra depender de topologia, performance ou retenção de banco, materialize um gate executável.
+   O padrão está em `lib/database/*` e em `lib/tasks/database_engineering.rake`.
+
+12. Nunca reescreva evidência já publicada só para acomodar regra nova.
+   Quando isso aconteceu com identidade de comando no outbox, `d13051a` preferiu registrar exceções explícitas.
+
+13. Atualize docs só depois da forma estabilizar.
    `openapi.yaml`, `docs/events`, `docs/runbooks` e `README.md` devem refletir a solução escolhida, não a intenção inicial.
 
-10. Se a feature for operacional, teste a UI com parcimônia.
+14. Se a feature for operacional, teste a UI com parcimônia.
    `test/system/ops_console_test.rb` evidenciou que a superfície ops custa caro quando tenta validar tudo de uma vez.
 
 ## 12. Limites de produção deixados fora de propósito
