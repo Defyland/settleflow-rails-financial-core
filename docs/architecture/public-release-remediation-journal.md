@@ -304,6 +304,7 @@ Implemented:
 - Removed `/v1/outbox_events` from public routes and OpenAPI.
 - Deleted the public outbox controller and serializer; outbox inspection remains an authenticated ops-console concern.
 - Added an OpenAPI/route regression test so the operational outbox log is not accidentally reintroduced as public API.
+- Updated security docs and the API-key ADR to match the disabled-by-default legacy-key policy and the absence of public outbox/audit-log endpoints.
 
 Verification:
 
@@ -315,3 +316,5 @@ Verification:
 - Result: 2 files inspected, no offenses.
 - `/Applications/Codex.app/Contents/Resources/rg -n "v1/outbox_events|OutboxEventSerializer|V1::OutboxEventsController|OutboxEventCollection" app config test openapi.yaml docs README.md`
 - Result: only the new regression test mentions the removed public route.
+- `/Applications/Codex.app/Contents/Resources/rg -n "Legacy organization.*seed/demo compatibility|Outbox events \| Same organization only|Audit logs \| Same organization only where applicable" README.md docs app test`
+- Result: no matches.

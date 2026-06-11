@@ -17,7 +17,7 @@ Primary risks:
 ## Controls
 
 - Every v1 query is scoped by authenticated organization.
-- API credentials are issued once, stored as HMAC-SHA256 digests, looked up by non-secret prefixes, and can be scoped, expired, or revoked. Legacy organization API key digests remain only for seed/demo compatibility.
+- API credentials are issued once, stored as HMAC-SHA256 digests, looked up by non-secret prefixes, and can be scoped, expired, or revoked. Legacy organization API key digests are disabled by default and only available through development/test compatibility configuration.
 - Operators authenticate through Rails sessions and `bcrypt` password hashes.
 - Browser forms use Rails CSRF protection.
 - Operator roles gate human workflows: viewers are read-only, operators can reject pending-review Pix and retry outbox events, and admins can settle or reverse Pix payments.
@@ -40,8 +40,8 @@ Primary risks:
 | Pix payments | Same organization only | Read, settle approved payments, reject pending-review payments, reverse settled payments |
 | Ledger entries | Same organization only | Read immutable entries and lines |
 | Reconciliation runs | Same organization only | Read run status and metadata |
-| Outbox events | Same organization only | Read and retry unpublished events |
-| Audit logs | Same organization only where applicable | Read API and operator actions |
+| Outbox events | Not exposed through v1 public API | Read and retry unpublished events |
+| Audit logs | Not exposed through v1 public API | Read API and operator actions |
 
 ## Secrets
 

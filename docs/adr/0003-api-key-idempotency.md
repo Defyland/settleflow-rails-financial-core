@@ -10,7 +10,7 @@ Financial APIs are commonly called by servers, retry after network failures, and
 
 ## Decision
 
-SettleFlow authenticates v1 endpoints with `X-Api-Key`. Current API credentials are issued once, returned only at creation, looked up by non-secret prefixes, and stored as HMAC-SHA256 digests using the Rails secret key base. Credentials support scopes, expiry, revocation, and last-used tracking. Legacy organization-level SHA-256 API key digests remain only for seed/demo compatibility.
+SettleFlow authenticates v1 endpoints with `X-Api-Key`. Current API credentials are issued once, returned only at creation, looked up by non-secret prefixes, and stored as HMAC-SHA256 digests using the Rails secret key base. Credentials support read/write scopes, expiry, revocation, and last-used tracking. Legacy organization-level SHA-256 API key digests are disabled by default and only available through development/test compatibility configuration.
 
 Write endpoints accept `Idempotency-Key`; the service stores method, full path including query string, request hash, status, response status, and response body.
 
