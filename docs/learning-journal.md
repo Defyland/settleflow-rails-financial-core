@@ -21,9 +21,9 @@ Este journal documenta a história do repositório até o commit `9df9e43`. O co
 
 ## 1. Objetivo do projeto
 
-O objetivo do projeto é mostrar, em um repositório Rails pequeno o bastante para ser estudado de ponta a ponta, como modelar um core financeiro sem esconder as partes difíceis atrás de um CRUD de carteira. A proposta real aparece em `README.md`, `app/services/ledger/journal_poster.rb`, `app/services/outbox_events/emit.rb` e `db/structure.sql`: dinheiro entra por comandos idempotentes, vira lançamento contábil imutável, atualiza projeções derivadas e publica evidência assíncrona sem perder rastreabilidade.
+O objetivo do projeto, pelo que `README.md`, `app/services/ledger/journal_poster.rb`, `app/services/outbox_events/emit.rb` e `db/structure.sql` deixam explícito, é ensinar em um repositório Rails pequeno o bastante para ser estudado de ponta a ponta como modelar um core financeiro sem esconder as partes difíceis atrás de um CRUD de carteira. O fluxo central é: dinheiro entra por comandos idempotentes, vira lançamento contábil imutável, atualiza projeções derivadas e publica evidência assíncrona sem perder rastreabilidade.
 
-Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla entrada, isolamento por tenant, outbox transacional, governança operacional e verificações de banco em um único monólito Rails. Ele não tenta provar que esta é "a" arquitetura definitiva; ele tenta provar que existe uma forma simples, explícita e auditável de construir a primeira versão séria desse problema.
+Em outras palavras: o material do repositório aponta para uma combinação de contabilidade de dupla entrada, isolamento por tenant, outbox transacional, governança operacional e verificações de banco em um único monólito Rails. README e ADRs não apresentam isso como arquitetura definitiva; apresentam como uma primeira versão deliberadamente simples, explícita e auditável para esse tipo de problema.
 
 ## 2. Como ler o repositório primeiro, em ordem de aprendizado
 
@@ -31,7 +31,7 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
    Ele define o contrato mental: ledger é a verdade, `BalanceProjection` é leitura derivada, `/v1` é API de máquina e `/ops` é superfície operacional humana.
 
 2. Leia `config/routes.rb`.
-   O arquivo mostra os dois eixos do produto: integrações externas em `v1/*` e operação humana em `ops/*`.
+   O arquivo expõe os dois eixos do produto: integrações externas em `v1/*` e operação humana em `ops/*`.
 
 3. Leia o boundary HTTP antes do domínio:
    `app/controllers/api_controller.rb`
@@ -47,7 +47,7 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
    `app/services/fundings/create.rb`
    `app/services/ledger/journal_poster.rb`
    `app/services/outbox_events/emit.rb`
-   Esse caminho mostra o padrão arquitetural que quase todo comando financeiro repete.
+   Esse caminho deixa visível o padrão arquitetural que quase todo comando financeiro repete.
 
 6. Leia os modelos que carregam invariantes, não todos de uma vez:
    `app/models/wallet.rb`
@@ -113,7 +113,7 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
 ### Fase 3: estabilização e hardening inicial (`56ec94c` a `34be4c7`, 2026-05-31)
 
 - Seis commits seguidos mexeram em `test/system/ops_console_test.rb`.
-- Isso mostra um padrão importante: colocar UI operacional num monólito é barato para começar, mas cobra disciplina de testes de navegação.
+- Esse trecho sugere um padrão importante: colocar UI operacional num monólito é barato para começar, mas cobra disciplina de testes de navegação.
 - Na mesma data entraram correções de concorrência e integridade: revalidação de Pix sob lock (`593ebd2`), claim do outbox antes de publicar (`9b17f12`) e append-only do ledger (`d692a31`).
 
 ### Fase 4: governança, extensões financeiras e trilha de auditoria (`205da77` a `8764018`, 2026-06-01)
@@ -126,7 +126,7 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
 
 - Este é o trecho mais denso da história.
 - O projeto adicionou snapshots, processed events, sync com ClickHouse, benchmarks, tarefas de engenharia de banco, backup/restore drill, partition planning e uma longa sequência de constraints/triggers.
-- A mensagem implícita dessa fase é clara: validação só em Ruby não bastava mais.
+- A concentração de migrations, verificadores e testes de invariantes sugere a virada desta fase: validação só em Ruby já não bastava para o que o projeto queria garantir.
 - `test/models/database_financial_invariants_test.rb`, `test/services/database_consistency_verifier_test.rb` e `db/structure.sql` viraram tão importantes quanto os services.
 
 ### Fase 6: consolidação de contratos (`577d2ad`, 2026-06-06)
@@ -166,7 +166,7 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
 - O que foi feito:
   `05c2bcb` adicionou controllers `ops/*`, views ERB, Turbo/Stimulus e autenticação humana no mesmo app já usado pela API.
 - Por que foi feito:
-  A operação humana era parte do problema. Sem isso o projeto mostrava integração, mas não mostrava governança.
+  A operação humana era parte do problema. Sem isso o projeto cobria integração, mas deixava de fora aprovação, revisão e governança explícita.
 - Alternativas rejeitadas:
   Um frontend separado consumindo JSON.
   Um segundo app só para backoffice.
@@ -218,7 +218,7 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
 - O que foi feito:
   `app/policies/ops/capability_policy.rb` define `viewer`, `operator` e `admin`, e `app/services/ops/maker_checker.rb` materializa dual control.
 - Por que foi feito:
-  O repositório precisava mostrar segregação de deveres sem criar um sistema inteiro de IAM.
+  O repositório quis registrar segregação de deveres sem criar um sistema inteiro de IAM.
 - Alternativas rejeitadas:
   Policy engine externo.
   Permissões finíssimas já no primeiro corte.
@@ -235,7 +235,7 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
 - Alternativas rejeitadas:
   Log JSON comum como única trilha.
   WORM/export completo já no MVP.
-  O histórico mostra que export/WORM virou gate posterior, não requisito inicial.
+  Pelo histórico, export/WORM entrou como gate posterior, não como requisito inicial do MVP.
 - Base usada:
   `app/models/audit_log.rb`, `app/models/audit_log_anchor.rb`, `app/services/audit_logs/hash_chain_anchor.rb`, `test/services/audit_log_hash_chain_test.rb`, `test/services/audit_log_hash_chain_anchor_test.rb`.
 
@@ -251,6 +251,19 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
   A solução intermediária foi deixar orquestração em Ruby e invariantes duráveis no banco.
 - Base usada:
   sequência de migrations `20260602170000` a `20260602224500`, `db/structure.sql`, `test/models/database_financial_invariants_test.rb`, `lib/database/consistency_verifier.rb`.
+
+### Analytics assíncrono fora do caminho de dinheiro
+
+- O que foi feito:
+  `81f760b` introduziu `app/services/analytics/click_house_sync.rb`, `app/services/analytics/click_house_client.rb`, `app/services/analytics/click_house_event_mapper.rb` e `app/jobs/click_house_sync_job.rb` para replicar eventos publicados do outbox para ClickHouse.
+- Por que foi feito:
+  O projeto precisava de uma trilha para analytics e consultas operacionais pesadas sem deslocar a verdade financeira para fora do Postgres.
+- Alternativas rejeitadas:
+  Consultar tudo no Postgres, inclusive workloads analíticos.
+  Colocar um broker/stream processor completo no primeiro corte.
+  A escolha foi replicação assíncrona best-effort depois da publicação do outbox.
+- Base usada:
+  commits `81f760b`, `b770d47`; `app/services/analytics/click_house_sync.rb`, `app/services/analytics/click_house_client.rb`, `app/services/analytics/click_house_event_mapper.rb`, `app/jobs/click_house_sync_job.rb`, `docs/database/clickhouse-analytics.md`, `test/services/click_house_sync_test.rb`, `test/services/click_house_client_test.rb`.
 
 ### Ferramental operacional executável
 
@@ -395,7 +408,7 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
 - O que foi feito:
   `63618c2` criou `app/services/wallets/projection_locker.rb` e passou a usá-lo em `Transfers::Create` e `SplitPayments::Create`.
 - Por que foi feito:
-  O histórico não prova um deadlock concreto anterior, mas prova que a equipe passou a tratar transferências inversas concorrentes como cenário de risco real.
+  O histórico não prova um deadlock concreto anterior, mas sustenta que a equipe passou a tratar transferências inversas concorrentes como cenário de risco real.
 - Alternativas rejeitadas:
   Confiar na ordem incidental em que cada command recebe wallets.
   Deixar o banco arbitrar sem convenção explícita na app.
@@ -594,9 +607,9 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
 
 ## 7. Como o TDD foi usado, incluindo ciclos red-green-refactor reais
 
-O repositório não é um exemplo puro de TDD linear do primeiro ao último commit. O começo mostra uma sequência "feature -> testes", não "teste vermelho -> implementação". Isso aparece com clareza entre `70a8841` e `9035824`.
+O repositório não é um exemplo puro de TDD linear do primeiro ao último commit. O começo registra uma sequência "feature -> testes", não "teste vermelho -> implementação"; isso aparece no intervalo entre `70a8841` e `9035824`.
 
-Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em ciclos reais:
+Dito isso, o histórico posterior registra TDD e teste-dirigido por correção em ciclos reais:
 
 1. Sistema ops
    Os commits `56ec94c` a `37e3180` são praticamente uma série de red-green em torno de `test/system/ops_console_test.rb`.
@@ -607,7 +620,7 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
    O ciclo foi: expor que a decisão antes do lock não bastava, falhar o teste, mover a revalidação para dentro do lock.
 
 3. Claim do outbox
-   `9b17f12` usa `test/jobs/outbox_publish_job_test.rb` para provar o comportamento.
+   `9b17f12` usa `test/jobs/outbox_publish_job_test.rb` para fixar o comportamento esperado.
    O ciclo foi: reconhecer janela de publicação duplicada, proteger com teste focado, só então alterar o job/model.
 
 4. Identidade idempotente incluindo query string
@@ -616,10 +629,10 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
 
 5. Lifecycle de wallet/customer
    `22cf3c1` adicionou/ajustou `test/services/funding_create_test.rb`, `test/services/transfer_create_test.rb`, `test/services/pix_payment_lifecycle_test.rb`, `test/services/payout_lifecycle_test.rb`, `test/services/split_payment_create_test.rb`, `test/services/refund_and_med_lifecycle_test.rb` e `test/services/wallet_creator_test.rb`.
-   O git não prova a ordem interna dentro do commit, mas prova um ciclo vermelho/verde empacotado atomicamente em torno do novo guard.
+   O git não prova a ordem interna dentro do commit, mas registra teste e implementação no mesmo pacote atômico em torno do novo guard.
 
 6. Chave legada e contrato de autenticação
-   `9397a1a` adicionou `test/requests/api_authentication_test.rb` para provar que a compatibilidade legada fica restrita.
+   `9397a1a` adicionou `test/requests/api_authentication_test.rb` para registrar que a compatibilidade legada fica restrita.
 
 7. Sanitização de auditoria
    `cffccbe` adicionou `test/requests/api_audit_logging_test.rb`.
@@ -643,7 +656,7 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
 
 12. Rebuild/snapshot sob lock real
    `515b79c` reforçou `test/services/balance_snapshot_and_rebuild_test.rb`.
-   O ciclo foi: provar que o dry-run antigo podia ficar velho e então mover o recálculo para dentro do lock.
+   O ciclo foi: explicitar em teste que o dry-run antigo podia ficar velho e então mover o recálculo para dentro do lock.
 
 13. Privacy masking validado no caminho real
    `539cf6a` nasceu de uma falha de integração real no `bin/ci`.
@@ -655,7 +668,7 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
 
 15. Comandos multi-wallet com ordem explícita de lock
    `63618c2` reforçou `test/services/financial_concurrency_test.rb`.
-   O histórico não prova um deadlock anterior, mas prova que a equipe escolheu materializar o risco em teste e em código antes de chamar a solução de pronta.
+   O histórico não prova um deadlock anterior, mas registra que a equipe materializou o risco em teste e em código antes de chamar a solução de pronta.
 
 16. Atualização de projeção guiada por delta líquido
    `0f83617` ampliou `test/services/ledger_journal_poster_test.rb`.
@@ -709,7 +722,7 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
   `test/services/pix_payment_lifecycle_test.rb`
   `test/services/financial_concurrency_test.rb`
 
-- Governaça maker-checker e MED:
+- Governança maker-checker e MED:
   `test/requests/ops_console_request_test.rb`
   `test/services/refund_and_med_lifecycle_test.rb`
   `test/requests/financial_extensions_api_test.rb`
@@ -923,7 +936,7 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
    `openapi.yaml`, `docs/events`, `docs/runbooks` e `README.md` devem refletir a solução escolhida, não a intenção inicial.
 
 10. Se a feature for operacional, teste a UI com parcimônia.
-   `test/system/ops_console_test.rb` mostrou que a superfície ops custa caro quando tenta provar tudo de uma vez.
+   `test/system/ops_console_test.rb` evidenciou que a superfície ops custa caro quando tenta validar tudo de uma vez.
 
 ## 12. Limites de produção deixados fora de propósito
 
@@ -956,7 +969,11 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
 ### Revisão estrutural rigorosa
 
 - Escopo:
-  arquitetura atual em HEAD, histórico de commits e confiabilidade da suíte que protege invariantes.
+  estado funcional revisado diretamente na leva final de remediação, histórico de commits até `9df9e43` e confiabilidade da suíte que protege invariantes.
+
+- Base desta seção:
+  os comandos abaixo foram executados na revisão final do estado funcional que antecede os últimos commits documentais/refactors leves deste mesmo dia.
+  Para `63618c2`, `0f83617`, `97a34fd` e `9df9e43`, o journal se apoia em `git show`, arquivos tocados e testes adicionados no próprio commit; ele não finge um rerun completo separado por commit quando isso não aconteceu.
 
 - Checks executados:
   `bin/rails db:test:prepare`
@@ -990,6 +1007,7 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
   `63618c2` para ordem determinística de lock em comandos multi-wallet.
   `0f83617` para reduzir trabalho repetido na atualização de projeções.
   `97a34fd` para remover o endpoint público de outbox.
+  `9df9e43` para transformar a discussão de branch coverage crítico em gate executável dentro do CI.
   `test/services/database_consistency_verifier_test.rb` concentrava várias garantias independentes num único teste, o que piorava a localização de regressão.
   `test/models/database_financial_invariants_test.rb` continua grande, mas os cenários são focados e o custo de dividir tudo nesta entrega seria maior do que o ganho imediato.
 
@@ -1001,7 +1019,7 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
 ### Revisão específica da stack Rails/Ruby
 
 - Escopo:
-  ownership de services, boundaries Rails, invariantes Active Record versus banco, clareza de testes e pontos de concorrência.
+  ownership de services, boundaries Rails, invariantes Active Record versus banco, clareza de testes e pontos de concorrência, usando a mesma base de execução direta e análise de histórico descrita acima.
 
 - Achados bloqueantes:
   Nenhum novo na revisão atual.
