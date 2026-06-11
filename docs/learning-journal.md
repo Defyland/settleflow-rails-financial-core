@@ -120,6 +120,8 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
 - `e5afdab` alinhou `docs/events` ao envelope real publicado pelo outbox, removendo o contrato público imaginário.
 - `2315d41` parou de expor `pending_cents` e `blocked_cents` como se o produto já sustentasse essas semânticas de forma completa.
 - `b0fe05e` finalmente alinhou `openapi.yaml` ao runtime real para idempotência, `403` públicos e o comportamento proibido de MED fora do fluxo ops.
+- `70eb0f3` introduziu redaction padrão de PII em serializers, responses idempotentes e telas ops.
+- `515b79c` corrigiu o caminho de consistência em que rebuild e snapshot podiam usar leitura velha antes do lock.
 - `539cf6a` corrigiu um bloqueante encontrado só na validação final: a camada de masking passou a usar `::Privacy::Redactor` explicitamente e o system test de ops foi alinhado ao comportamento mascarado.
 
 ## 4. Decisão por decisão: o que foi feito, por que foi feito, alternativas rejeitadas
@@ -285,6 +287,28 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
   Alterar o runtime só para bater com a spec antiga.
   A decisão correta foi fazer a spec seguir o software.
 
+### Redaction por padrão antes de inventar ACL fina
+
+- O que foi feito:
+  `70eb0f3` criou `app/services/privacy/redactor.rb` e passou a usá-lo em serializers, `Idempotency::Runner` e views ops.
+- Por que foi feito:
+  O projeto não tinha modelo de privilégio por campo; expor PII por default seria um risco desnecessário.
+- Alternativas rejeitadas:
+  Manter responses cruas enquanto um sistema de escopos não existisse.
+  Redigir só logs, mas não responses.
+  A escolha foi redigir por padrão e exigir endpoints privilegiados no futuro, se necessário.
+
+### Consistência deve recalcular depois do lock
+
+- O que foi feito:
+  `515b79c` mudou `app/services/balance_projections/rebuilder.rb` e `app/services/balance_snapshots/capture.rb`.
+- Por que foi feito:
+  Um dry-run anterior ao lock podia ficar velho antes da gravação real.
+- Alternativas rejeitadas:
+  Confiar que o rebuild offline nunca concorreria com ledger real.
+  Tratar drift só com auditoria posterior.
+  A solução escolhida foi reavaliar o valor dentro da fronteira transacional.
+
 ## 5. Prós e contras de cada decisão arquitetural importante
 
 | Decisão | Prós | Contras |
@@ -353,6 +377,14 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
   Evidência: `b0fe05e`.
   Correção: documentar `Idempotency-Key` obrigatório, `403` públicos e o comportamento real de MED.
 
+- O projeto ainda devolvia PII demais em responses e telas ops.
+  Evidência: `70eb0f3`.
+  Correção: redaction padrão em serializers, idempotency evidence e views.
+
+- O rebuild de projeções ainda podia gravar cálculo envelhecido.
+  Evidência: `515b79c`.
+  Correção: recalcular saldo e capturar snapshot dentro do lock transacional.
+
 - O rollout de masking introduziu um bug de lookup de constante e deixou um system test esperando PII crua.
   Evidência: `539cf6a`.
   Correção: qualificar `::Privacy::Redactor` nos pontos de uso e alinhar `test/system/ops_console_test.rb` ao comportamento mascarado.
@@ -406,11 +438,19 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
    `b0fe05e` adicionou `test/services/openapi_contract_test.rb`.
    O ciclo foi: transformar drift documental em teste de contrato, em vez de confiar em revisão visual do YAML.
 
-11. Privacy masking validado no caminho real
+11. Redação de PII e evidence sanitizada
+   `70eb0f3` adicionou `test/requests/privacy_redaction_test.rb`.
+   O ciclo foi: explicitar em teste que API pública, evidência idempotente e ops HTML não podiam mais devolver PII crua.
+
+12. Rebuild/snapshot sob lock real
+   `515b79c` reforçou `test/services/balance_snapshot_and_rebuild_test.rb`.
+   O ciclo foi: provar que o dry-run antigo podia ficar velho e então mover o recálculo para dentro do lock.
+
+13. Privacy masking validado no caminho real
    `539cf6a` nasceu de uma falha de integração real no `bin/ci`.
    O ciclo foi: o gate final quebrou por `NameError` em serializers/helpers e por uma expectativa antiga no system test; o conserto qualificou o namespace e passou a validar o texto mascarado.
 
-12. Refactor guiado por cobertura
+14. Refactor guiado por cobertura
    `81a86c2` não mudou regra de negócio; ele mudou a forma de falha da suíte.
    Isso é o "refactor" do ciclo: a lógica já estava verde, então a revisão tratou de melhorar a legibilidade e a localização do feedback sem mexer no comportamento.
 
@@ -430,6 +470,9 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
 
 - Auditoria sanitizada de API:
   `test/requests/api_audit_logging_test.rb`
+
+- Redaction de PII em API/ops/idempotência:
+  `test/requests/privacy_redaction_test.rb`
 
 - Privacy masking no fluxo humano e em serializers:
   `test/system/ops_console_test.rb`
@@ -465,6 +508,9 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
 - Database-as-contract:
   `test/models/database_financial_invariants_test.rb`
   `test/services/database_consistency_verifier_test.rb`
+
+- Rebuild e snapshot consistentes:
+  `test/services/balance_snapshot_and_rebuild_test.rb`
 
 - Ferramentas operacionais de banco:
   `test/services/database_migration_safety_checker_test.rb`
@@ -566,6 +612,8 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
 | 2026-06-11 | `e5afdab` | Os schemas públicos de eventos ainda não batiam com o envelope emitido | Align contracts with outbox envelope | Teste(s): `outbox_event_contract_test.rb` |
 | 2026-06-11 | `2315d41` | A API e o ops ainda expunham buckets de saldo não implementados por completo | Hide unimplemented balance buckets | Teste(s): `financial_workflow_test.rb` |
 | 2026-06-11 | `b0fe05e` | O OpenAPI ainda descrevia idempotência e MED de forma divergente do runtime | Document idempotency and MED auth behavior | Teste(s): `openapi_contract_test.rb` |
+| 2026-06-11 | `70eb0f3` | Responses públicos e telas ops ainda expunham PII demais | Redact public financial responses | Teste(s): `privacy_redaction_test.rb` |
+| 2026-06-11 | `515b79c` | Rebuild e snapshot ainda podiam persistir leitura velha | Recalculate projections under lock | Teste(s): `balance_snapshot_and_rebuild_test.rb` |
 | 2026-06-11 | `539cf6a` | O rollout de privacidade ainda quebrava lookup de constante e teste sistêmico | Qualify privacy redactor lookups | Teste(s): `pix_payments_api_test.rb`, `idempotency_test.rb`, `ops_console_request_test.rb`, `ops_console_test.rb` |
 
 ## 10. Checklist de boundaries para futuras features
@@ -681,7 +729,7 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
   Nenhum depois dos checks.
 
 - Achados não bloqueantes:
-  O review de release em `docs/architecture/public-release-remediation-spec.md` encontrou seis gaps materialmente relevantes para o boundary externo.
+  O review de release em `docs/architecture/public-release-remediation-spec.md` encontrou uma sequência de gaps materialmente relevantes para o boundary externo e para as ferramentas de consistência.
   Eles foram corrigidos no próprio histórico recente:
   `9397a1a` para chaves legadas.
   `cffccbe` para auditoria sanitizada.
@@ -689,6 +737,8 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
   `e5afdab` para contrato público de eventos.
   `2315d41` para buckets de saldo enganosos.
   `b0fe05e` para drift de OpenAPI.
+  `70eb0f3` para redaction padrão de PII.
+  `515b79c` para rebuild/snapshot sob lock real.
   `539cf6a` para o bloqueante de masking encontrado só no gate final.
   `test/services/database_consistency_verifier_test.rb` concentrava várias garantias independentes num único teste, o que piorava a localização de regressão.
   `test/models/database_financial_invariants_test.rb` continua grande, mas os cenários são focados e o custo de dividir tudo nesta entrega seria maior do que o ganho imediato.
