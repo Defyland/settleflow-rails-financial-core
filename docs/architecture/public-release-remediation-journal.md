@@ -71,3 +71,24 @@ Verification:
 - Result: passed.
 - `bin/rubocop app/controllers/v1/base_controller.rb config/application.rb config/environments/development.rb config/environments/test.rb db/seeds.rb test/requests/api_authentication_test.rb`
 - Result: 6 files inspected, no offenses.
+
+### Session 1: R3 audit accuracy and sanitization
+
+Implemented:
+
+- Added `AuditLogs::ParameterSanitizer` for audit-specific recursive redaction.
+- Added `AuditLogs::RequestLogger` to centralize API audit writes and swallow audit-store failures after logging them.
+- Changed V1 request auditing so normal audit writes are skipped when the action raises; the existing `rescue_from` path writes one error audit with the final status and error code.
+- Changed success and error audit metadata to use sanitized params.
+- Extended Rails parameter filtering for financial PII keys.
+
+Verification:
+
+- `bin/rails test test/requests/api_audit_logging_test.rb test/requests/api_authentication_test.rb test/requests/financial_workflow_test.rb`
+- Result: 14 runs, 77 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop app/services/audit_logs/parameter_sanitizer.rb app/services/audit_logs/request_logger.rb app/controllers/v1/base_controller.rb app/controllers/api_controller.rb config/initializers/filter_parameter_logging.rb test/requests/api_audit_logging_test.rb`
+- Result: 6 files inspected, no offenses.
+
+Decision notes:
+
+- Unhandled non-application exceptions are not force-audited in the around action. That avoids writing false `200` audit records before Rails has mapped the exception. Rescuable API errors are audited through `render_application_error`.

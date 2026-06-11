@@ -86,7 +86,8 @@ class ApiController < ActionController::API
   def write_error_audit_log(error)
     return if Current.organization.blank?
 
-    Current.organization.audit_logs.create!(
+    AuditLogs::RequestLogger.call(
+      organization: Current.organization,
       actor_type: "api_key",
       action: "#{request.request_method} #{request.path}",
       subject_type: params[:controller] || "unknown",
@@ -94,11 +95,9 @@ class ApiController < ActionController::API
       correlation_id: Current.correlation_id,
       ip_address: request.remote_ip,
       user_agent: request.user_agent,
-      metadata: {
-        status: Rack::Utils.status_code(error.http_status),
-        error_code: error.code,
-        params: request.filtered_parameters.except("controller", "action")
-      }
+      status: Rack::Utils.status_code(error.http_status),
+      error_code: error.code,
+      params: request.filtered_parameters.except("controller", "action")
     )
   end
 end
