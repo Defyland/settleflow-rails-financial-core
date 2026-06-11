@@ -76,6 +76,8 @@ module Transfers
       raise Errors::ValidationError.new("Destination wallet belongs to another organization") if destination_wallet.organization_id != organization.id
       raise Errors::ValidationError.new("Source and destination wallets must be different") if source_wallet.id == destination_wallet.id
       raise Errors::ValidationError.new("Currency mismatch") if source_wallet.currency != currency || destination_wallet.currency != currency
+      FinancialLifecycle::StatusGuard.ensure_wallet_active!(source_wallet, role: :source)
+      FinancialLifecycle::StatusGuard.ensure_wallet_active!(destination_wallet, role: :destination)
     end
   end
 end

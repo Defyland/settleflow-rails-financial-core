@@ -14,6 +14,7 @@ module Wallets
 
     def call
       raise Errors::ValidationError.new("Customer belongs to another organization") if customer.organization_id != organization.id
+      FinancialLifecycle::StatusGuard.ensure_customer_active!(customer, role: :wallet_owner)
 
       ActiveRecord::Base.transaction do
         wallet = organization.wallets.create!(

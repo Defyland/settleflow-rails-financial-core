@@ -56,6 +56,24 @@ class RefundAndMedLifecycleTest < ActiveSupport::TestCase
     assert_empty @organization.refunds.where(external_id: "refund-missing-idem")
   end
 
+  test "rejects wallet-crediting refund and reversal when the wallet is inactive" do
+    @wallet.update!(status: "blocked")
+
+    refund_error = assert_raises(Errors::ValidationError) do
+      create_refund(external_id: "refund-blocked-wallet", amount_cents: 1_000)
+    end
+    assert_equal "blocked", refund_error.details.fetch(:wallet_status)
+
+    reversal_error = assert_raises(Errors::ValidationError) do
+      PixPayments::Reverse.call(organization: @organization, pix_payment: @pix_payment, reason: "operator_reversal")
+    end
+    assert_equal "blocked", reversal_error.details.fetch(:wallet_status)
+
+    assert_empty @organization.refunds.where(external_id: "refund-blocked-wallet")
+    assert_nil @pix_payment.reload.reversal_journal_entry
+    assert_equal 15_000, @wallet.balance_projection.reload.available_cents
+  end
+
   test "opens and accepts a MED case with exactly one linked refund" do
     med_case = open_med_case(external_id: "med-001", amount_cents: 3_000)
     stale_med_case = MedCase.find(med_case.id)

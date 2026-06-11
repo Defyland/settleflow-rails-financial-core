@@ -20,6 +20,7 @@ module Refunds
       raise Errors::IdempotencyKeyRequired if idempotency_key.blank?
       raise Errors::ValidationError.new("Pix payment belongs to another organization") if pix_payment.organization_id != organization.id
       raise Errors::ValidationError.new("Currency mismatch") if pix_payment.currency != currency
+      FinancialLifecycle::StatusGuard.ensure_wallet_active!(pix_payment.wallet, role: :refund)
 
       ActiveRecord::Base.transaction do
         pix_payment.lock!

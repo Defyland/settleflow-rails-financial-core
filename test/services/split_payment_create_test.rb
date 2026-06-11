@@ -73,6 +73,33 @@ class SplitPaymentCreateTest < ActiveSupport::TestCase
     assert_empty @organization.split_payments.where(external_id: [ "split-missing-idem", "split-duplicate-destination", "split-self", "split-too-large" ])
   end
 
+  test "rejects split payments with inactive source or destination wallets" do
+    @source_wallet.update!(status: "blocked")
+
+    source_error = assert_raises(Errors::ValidationError) do
+      create_split(
+        external_id: "split-blocked-source",
+        entries: [ { destination_wallet: @destination_one, amount_cents: 1_000 } ]
+      )
+    end
+    assert_equal "blocked", source_error.details.fetch(:wallet_status)
+
+    @source_wallet.update!(status: "active")
+    @destination_one.update!(status: "closed")
+
+    destination_error = assert_raises(Errors::ValidationError) do
+      create_split(
+        external_id: "split-closed-destination",
+        entries: [ { destination_wallet: @destination_one, amount_cents: 1_000 } ]
+      )
+    end
+    assert_equal "closed", destination_error.details.fetch(:wallet_status)
+
+    assert_empty @organization.split_payments.where(external_id: [ "split-blocked-source", "split-closed-destination" ])
+    assert_equal 10_000, @source_wallet.balance_projection.reload.available_cents
+    assert_equal 0, @destination_one.balance_projection.reload.available_cents
+  end
+
   private
 
   def create_split(external_id:, entries:)

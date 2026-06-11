@@ -24,6 +24,7 @@ module PixPayments
       raise Errors::IdempotencyKeyRequired if idempotency_key.blank?
       raise Errors::ValidationError.new("Wallet belongs to another organization") if wallet.organization_id != organization.id
       raise Errors::ValidationError.new("Currency mismatch") if wallet.currency != currency
+      FinancialLifecycle::StatusGuard.ensure_wallet_active!(wallet, role: :pix_payment)
 
       ActiveRecord::Base.transaction do
         wallet.balance_projection.lock!

@@ -35,4 +35,22 @@ class FundingCreateTest < ActiveSupport::TestCase
     assert_empty Funding.where(external_id: "funding-currency-mismatch")
     assert_equal 0, @wallet.balance_projection.reload.available_cents
   end
+
+  test "rejects funding into an inactive wallet" do
+    @wallet.update!(status: "blocked")
+
+    error = assert_raises(Errors::ValidationError) do
+      Fundings::Create.call(
+        organization: @organization,
+        wallet: @wallet,
+        external_id: "funding-blocked-wallet",
+        amount_cents: 1_000,
+        idempotency_key: "funding-blocked-wallet"
+      )
+    end
+
+    assert_equal "blocked", error.details.fetch(:wallet_status)
+    assert_empty Funding.where(external_id: "funding-blocked-wallet")
+    assert_equal 0, @wallet.balance_projection.reload.available_cents
+  end
 end

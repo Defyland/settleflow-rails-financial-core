@@ -13,6 +13,7 @@ module PixPayments
 
     def call
       raise Errors::ValidationError.new("Pix payment belongs to another organization") if pix_payment.organization_id != organization.id
+      FinancialLifecycle::StatusGuard.ensure_wallet_active!(pix_payment.wallet, role: :pix_reversal)
 
       ActiveRecord::Base.transaction do
         pix_payment.lock!

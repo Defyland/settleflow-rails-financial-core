@@ -102,6 +102,18 @@ class PayoutLifecycleTest < ActiveSupport::TestCase
     assert_empty @organization.payouts.where(external_id: [ "payout-missing-idem", "payout-too-large" ])
   end
 
+  test "rejects payout creation from an inactive wallet" do
+    @wallet.update!(status: "blocked")
+
+    error = assert_raises(Errors::ValidationError) do
+      create_payout(external_id: "payout-blocked-wallet", amount_cents: 1_000)
+    end
+
+    assert_equal "blocked", error.details.fetch(:wallet_status)
+    assert_empty @organization.payouts.where(external_id: "payout-blocked-wallet")
+    assert_equal 10_000, @wallet.balance_projection.reload.available_cents
+  end
+
   private
 
   def create_payout(external_id: "payout-#{SecureRandom.hex(4)}", amount_cents:, settlement_delay_days: 1)

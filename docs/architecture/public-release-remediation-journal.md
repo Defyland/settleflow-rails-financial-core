@@ -28,3 +28,25 @@ Commit plan:
 
 - Commit spec/journal first.
 - Then implement one remediation unit per commit, each with focused tests before broader verification.
+
+### Session 1: R1 domain-state enforcement
+
+Implemented:
+
+- Added `FinancialLifecycle::StatusGuard` as the single service-level guard for lifecycle state.
+- Funding now rejects blocked/closed wallets before ledger mutation.
+- Transfer now rejects inactive source and destination wallets.
+- Pix payment creation now rejects inactive wallets before creating Pix state.
+- Payout creation now rejects inactive wallets.
+- Split payments now reject inactive source and destination wallets.
+- Refund creation and direct Pix reversal now reject inactive wallet-crediting paths.
+- Wallet creation now rejects blocked/closed customers.
+
+Verification:
+
+- `bin/rails test test/services/funding_create_test.rb test/services/transfer_create_test.rb test/services/pix_payment_lifecycle_test.rb test/services/payout_lifecycle_test.rb test/services/split_payment_create_test.rb test/services/refund_and_med_lifecycle_test.rb test/services/wallet_creator_test.rb`
+- Result: 35 runs, 183 assertions, 0 failures, 0 errors, 0 skips.
+
+Decision notes:
+
+- Existing settlement jobs (`PixPayments::Settle`, `Payouts::Settle`) were not blocked by later wallet status changes because the wallet balance was already debited before settlement. Blocking settlement would strand clearing balances rather than protect customer funds.

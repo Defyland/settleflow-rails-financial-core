@@ -97,6 +97,7 @@ module SplitPayments
     def validate_wallets!(normalized_entries)
       raise Errors::ValidationError.new("Source wallet belongs to another organization") if source_wallet.organization_id != organization.id
       raise Errors::ValidationError.new("Currency mismatch") if source_wallet.currency != currency
+      FinancialLifecycle::StatusGuard.ensure_wallet_active!(source_wallet, role: :source)
       raise Errors::ValidationError.new("Split amount must be positive") if total_amount_cents(normalized_entries) <= 0
 
       destination_ids = normalized_entries.map { |entry| entry.fetch(:destination_wallet)&.id }
@@ -108,6 +109,7 @@ module SplitPayments
         destination_wallet = entry.fetch(:destination_wallet)
         raise Errors::ValidationError.new("Destination wallet belongs to another organization") if destination_wallet.organization_id != organization.id
         raise Errors::ValidationError.new("Currency mismatch") if destination_wallet.currency != currency
+        FinancialLifecycle::StatusGuard.ensure_wallet_active!(destination_wallet, role: :destination)
         raise Errors::ValidationError.new("Split entry amount must be positive") if entry.fetch(:amount_cents) <= 0
       end
     end

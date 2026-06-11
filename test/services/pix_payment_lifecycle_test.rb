@@ -41,6 +41,24 @@ class PixPaymentLifecycleTest < ActiveSupport::TestCase
     assert_empty PixPayment.where(external_id: "pix-missing-idempotency")
   end
 
+  test "rejects Pix creation from an inactive wallet" do
+    @wallet.update!(status: "closed")
+
+    error = assert_raises(Errors::ValidationError) do
+      create_pix_payment(
+        organization: @organization,
+        wallet: @wallet,
+        external_id: "pix-closed-wallet",
+        pix_key: "closed-wallet@example.com",
+        amount_cents: 1_000
+      )
+    end
+
+    assert_equal "closed", error.details.fetch(:wallet_status)
+    assert_empty @organization.pix_payments.where(external_id: "pix-closed-wallet")
+    assert_equal 20_000, @wallet.balance_projection.reload.available_cents
+  end
+
   test "settles approved payments through the Pix clearing account" do
     pix_payment = create_pix_payment(
       organization: @organization,
