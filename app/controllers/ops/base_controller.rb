@@ -3,6 +3,8 @@ module Ops
     DEFAULT_PER_PAGE = 25
     MAX_PER_PAGE = 100
 
+    before_action :require_admin_global_read!
+
     helper_method :can?, :pagination
 
     private
@@ -20,6 +22,18 @@ module Ops
         metadata: { capability: }
       )
       redirect_back fallback_location: ops_root_path, alert: "You are not allowed to perform this action."
+    end
+
+    def require_admin_global_read!
+      return unless %w[index show].include?(action_name)
+      return if Current.user&.admin?
+
+      operator_audit!(
+        action: "ops.global_read.denied",
+        subject: Current.user,
+        metadata: { controller: controller_name, action: action_name }
+      ) if Current.user.present?
+      render plain: "Forbidden", status: :forbidden
     end
 
     def find_public!(scope, id)

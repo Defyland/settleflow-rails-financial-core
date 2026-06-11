@@ -189,6 +189,17 @@ class OpsConsoleRequestTest < ActionDispatch::IntegrationTest
     assert AuditLog.exists?(actor_type: "user", actor_id: @operator.id, action: "ops.authorization.denied")
   end
 
+  test "blocks non-admin users from global ops read surfaces" do
+    @operator.update!(role: "operator")
+    sign_in
+
+    get ops_root_path
+
+    assert_response :forbidden
+    assert_includes response.body, "Forbidden"
+    assert AuditLog.exists?(actor_type: "user", actor_id: @operator.id, action: "ops.global_read.denied")
+  end
+
   test "allows operators to reject Pix reviews and retry outbox but blocks admin-only actions" do
     @operator.update!(role: "operator")
     settled_pix_payment = create_pix_payment(

@@ -224,3 +224,19 @@ Verification:
 Decision notes:
 
 - Reconciliation snapshot isolation remains a larger semantic decision. This pass fixed the concrete stale-write path and the daily balance snapshot read boundary without changing reconciliation output semantics.
+
+### Session 1: R10 operational surfaces
+
+Implemented:
+
+- Changed `/ready` failure responses to return a generic `database: failed` value while logging the internal exception server-side.
+- Added admin-only protection for global ops read surfaces (`index`/`show`) through `Ops::BaseController`.
+- Preserved non-read operational actions under existing capability checks.
+- Added tests for readiness error redaction and non-admin global ops read denial.
+
+Verification:
+
+- `bin/rails test test/requests/operability_test.rb test/requests/ops_console_request_test.rb`
+- Result: 12 runs, 176 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop app/controllers/health/readiness_controller.rb app/controllers/ops/base_controller.rb test/requests/operability_test.rb test/requests/ops_console_request_test.rb`
+- Result: 4 files inspected, no offenses.
