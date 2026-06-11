@@ -1,6 +1,6 @@
 # SettleFlow Learning Journal
 
-Este journal documenta a história do repositório até o commit `81a86c2`. O commit que grava este próprio arquivo é entrega documental, não uma decisão nova de domínio, então a timeline abaixo para antes dele de propósito.
+Este journal documenta a história do repositório até o commit `2315d41`. O commit que atualiza este próprio arquivo é entrega documental, não uma decisão nova de domínio, então a timeline abaixo para antes dele de propósito.
 
 ## 1. Objetivo do projeto
 
@@ -109,11 +109,16 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
 - `app/services/financial_contracts.rb` centralizou nomes de evento, chaves de idempotência e listas de triggers esperados.
 - Isso reduziu duplicação espalhada entre models, services, verificadores e testes.
 
-### Fase 7: revisão de release e correção de lifecycle (`df0b0ea`, `22cf3c1`, `81a86c2`, 2026-06-11)
+### Fase 7: revisão de release, remediações e ajuste de learnability (`df0b0ea` a `2315d41`, 2026-06-11)
 
 - `df0b0ea` abriu uma trilha explícita de remediação em `docs/architecture/public-release-remediation-spec.md` e `docs/architecture/public-release-remediation-journal.md`.
 - `22cf3c1` corrigiu uma lacuna real: carteiras e clientes tinham estados (`active`, `blocked`, `closed`), mas vários fluxos ainda não respeitavam isso. O conserto entrou em `app/services/financial_lifecycle/status_guard.rb` e nos serviços que criam/movem dinheiro.
-- `81a86c2` foi resultado da revisão estrutural desta entrega: `test/services/database_consistency_verifier_test.rb` foi reorganizado para localizar melhor qual garantia falha quando a consistência quebra.
+- `9397a1a` fechou o bypass de chaves legadas de organização fora de `development`/`test`, sem quebrar o seed local.
+- `cffccbe` parou de registrar parâmetros sensíveis crus e centralizou o logging de request em `AuditLogs::RequestLogger`.
+- `81a86c2` foi o ajuste de learnability desta revisão: `test/services/database_consistency_verifier_test.rb` foi reorganizado para localizar melhor qual garantia falha quando a consistência quebra.
+- `178c4e4` adicionou um sweep recorrente para `OutboxEvent.publishable`, em vez de depender só de jobs disparados pontualmente.
+- `e5afdab` alinhou `docs/events` ao envelope real publicado pelo outbox, removendo o contrato público imaginário.
+- `2315d41` parou de expor `pending_cents` e `blocked_cents` como se o produto já sustentasse essas semânticas de forma completa.
 
 ## 4. Decisão por decisão: o que foi feito, por que foi feito, alternativas rejeitadas
 
@@ -225,6 +230,48 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
   Resolver apenas com validações de model.
   O histórico escolheu proteger os pontos de entrada de domínio.
 
+### Chaves legadas só como compatibilidade local
+
+- O que foi feito:
+  `9397a1a` passou a condicionar `Organization.authenticate_api_key` a `config.x.api.allow_legacy_organization_api_keys` e moveu o seed para `ApiCredential`.
+- Por que foi feito:
+  Sem isso, o contrato de `ApiCredential` podia ser contornado por um caminho legado mais fraco.
+- Alternativas rejeitadas:
+  Remover o caminho legado sem compatibilidade nenhuma.
+  Deixar o bypass ativo em produção.
+  A escolha foi manter compatibilidade apenas em `development` e `test`.
+
+### Auditoria sanitizada em vez de logging cru
+
+- O que foi feito:
+  `cffccbe` criou `app/services/audit_logs/parameter_sanitizer.rb` e `app/services/audit_logs/request_logger.rb`.
+- Por que foi feito:
+  O audit log estava perto demais do request bruto e podia duplicar ou vazar informação sensível.
+- Alternativas rejeitadas:
+  Confiar apenas em `filter_parameter_logging`.
+  Auditar tudo cru e tratar masking depois.
+  O histórico preferiu um boundary explícito de auditoria.
+
+### Contrato público deve seguir o envelope emitido
+
+- O que foi feito:
+  `e5afdab` removeu vários schemas antigos e deixou `docs/events/outbox_event.v1.json` como fonte pública coerente com `Outbox::Publisher.envelope_for`.
+- Por que foi feito:
+  Documentação divergente cria uma falsa impressão de robustez.
+- Alternativas rejeitadas:
+  Manter docs "aspiracionais".
+  Criar uma camada de mapeamento pública sem necessidade real.
+
+### Melhor esconder bucket não implementado do que mentir por contrato
+
+- O que foi feito:
+  `2315d41` removeu `pending_cents` e `blocked_cents` de `app/serializers/balance_projection_serializer.rb`, `openapi.yaml` e `app/views/ops/wallets/show.html.erb`.
+- Por que foi feito:
+  O repositório expunha buckets cujo comportamento ainda não era sustentado ponta a ponta.
+- Alternativas rejeitadas:
+  Implementar toda a semântica de hold/bloqueio só para preservar shape de resposta.
+  Continuar expondo campos enganadores.
+
 ## 5. Prós e contras de cada decisão arquitetural importante
 
 | Decisão | Prós | Contras |
@@ -269,6 +316,26 @@ Em outras palavras: o projeto quer ensinar como juntar contabilidade de dupla en
   Evidência: `22cf3c1`.
   Isso é um erro clássico: o modelo parecia mais forte do que a aplicação real.
 
+- O boundary de autenticação ainda aceitava atalho legado forte demais.
+  Evidência: `9397a1a`.
+  Correção: compatibilidade restrita a ambiente local/teste.
+
+- O audit log de API misturava preocupação de logging com request cru.
+  Evidência: `cffccbe`.
+  Correção: sanitização dedicada e escrita centralizada.
+
+- O outbox tinha retry por evento, mas não tinha um sweep recorrente explícito.
+  Evidência: `178c4e4`.
+  Aprendizado: confiabilidade operacional não deve depender só de quem criou o evento lembrar de enfileirar tudo.
+
+- Os contratos em `docs/events/*.v1.json` descreviam uma taxonomia que o app não publicava.
+  Evidência: `e5afdab`.
+  Correção: alinhar documentação ao envelope real.
+
+- O contrato público de saldo prometia buckets ainda não sustentados.
+  Evidência: `2315d41`.
+  Correção: esconder campos antes de afirmar uma semântica que o domínio ainda não entrega.
+
 - O verificador de consistência tinha cobertura boa, mas falhava mal como material de aprendizado.
   Evidência: antes de `81a86c2`, `test/services/database_consistency_verifier_test.rb` concentrava várias garantias em um único teste.
   Correção: separar asserções por boundary para localizar regressão mais rápido.
@@ -299,7 +366,22 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
    `22cf3c1` adicionou/ajustou `test/services/funding_create_test.rb`, `test/services/transfer_create_test.rb`, `test/services/pix_payment_lifecycle_test.rb`, `test/services/payout_lifecycle_test.rb`, `test/services/split_payment_create_test.rb`, `test/services/refund_and_med_lifecycle_test.rb` e `test/services/wallet_creator_test.rb`.
    O git não prova a ordem interna dentro do commit, mas prova um ciclo vermelho/verde empacotado atomicamente em torno do novo guard.
 
-6. Refactor guiado por cobertura
+6. Chave legada e contrato de autenticação
+   `9397a1a` adicionou `test/requests/api_authentication_test.rb` para provar que a compatibilidade legada fica restrita.
+
+7. Sanitização de auditoria
+   `cffccbe` adicionou `test/requests/api_audit_logging_test.rb`.
+   O ciclo foi: explicitar em teste que a auditoria precisa registrar status final e params sanitizados, depois mover essa responsabilidade para um boundary dedicado.
+
+8. Sweep do outbox
+   `178c4e4` adicionou `test/jobs/outbox_sweep_job_test.rb`.
+   O ciclo foi: transformar um requisito operacional difuso em comportamento repetível e verificável.
+
+9. Contrato público de eventos
+   `e5afdab` adicionou `test/services/outbox_event_contract_test.rb`.
+   O teste materializa um princípio importante: docs de evento têm de nascer do envelope real ou são dívida, não contrato.
+
+10. Refactor guiado por cobertura
    `81a86c2` não mudou regra de negócio; ele mudou a forma de falha da suíte.
    Isso é o "refactor" do ciclo: a lógica já estava verde, então a revisão tratou de melhorar a legibilidade e a localização do feedback sem mexer no comportamento.
 
@@ -314,10 +396,20 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
   `test/services/funding_create_test.rb`
   `test/services/transfer_create_test.rb`
 
+- Boundary de autenticação e compatibilidade legada:
+  `test/requests/api_authentication_test.rb`
+
+- Auditoria sanitizada de API:
+  `test/requests/api_audit_logging_test.rb`
+
 - Outbox transacional e retry:
   `test/jobs/outbox_publish_job_test.rb`
+  `test/jobs/outbox_sweep_job_test.rb`
   `test/services/click_house_sync_test.rb`
   `test/services/outbox_http_publisher_test.rb`
+
+- Contrato público do envelope de eventos:
+  `test/services/outbox_event_contract_test.rb`
 
 - Pix lifecycle, settlement e reversal:
   `test/services/pix_payment_lifecycle_test.rb`
@@ -430,7 +522,12 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
 | 2026-06-06 | `577d2ad` | Era preciso consolidar contratos financeiros espalhados | Centralize financial contract definitions | Teste(s): `database_financial_invariants_test.rb`, `database_consistency_verifier_test.rb`, `financial_concurrency_test.rb` +1 |
 | 2026-06-11 | `df0b0ea` | Faltava trilha explícita de revisão para release pública | Add public release remediation spec | Docs/contratos atualizados |
 | 2026-06-11 | `22cf3c1` | O domínio ainda ignorava o lifecycle de wallet/customer | Enforce wallet lifecycle state | Teste(s): `funding_create_test.rb`, `payout_lifecycle_test.rb`, `pix_payment_lifecycle_test.rb` +4 |
+| 2026-06-11 | `9397a1a` | O boundary de autenticação ainda aceitava bypass por chave legada | Gate legacy organization API keys | Teste(s): `api_authentication_test.rb` |
+| 2026-06-11 | `cffccbe` | A auditoria de API ainda podia duplicar eventos e vazar params sensíveis | Sanitize API request logs | Teste(s): `api_audit_logging_test.rb` |
 | 2026-06-11 | `81a86c2` | A revisão estrutural mostrou que várias garantias caíam no mesmo teste de consistência | Localize database consistency verifier assertions | Teste(s): `database_consistency_verifier_test.rb` |
+| 2026-06-11 | `178c4e4` | O outbox ainda dependia de disparos pontuais, sem sweep recorrente | Add publishable event sweep | Teste(s): `outbox_publish_job_test.rb`, `outbox_sweep_job_test.rb` |
+| 2026-06-11 | `e5afdab` | Os schemas públicos de eventos ainda não batiam com o envelope emitido | Align contracts with outbox envelope | Teste(s): `outbox_event_contract_test.rb` |
+| 2026-06-11 | `2315d41` | A API e o ops ainda expunham buckets de saldo não implementados por completo | Hide unimplemented balance buckets | Teste(s): `financial_workflow_test.rb` |
 
 ## 10. Checklist de boundaries para futuras features
 
@@ -504,7 +601,7 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
   Funciona como demonstração de governança, mas não substitui grupos, escopos finos, MFA e SSO.
 
 - `Organization.authenticate_api_key` ainda existe por compatibilidade/demo.
-  O próprio `docs/architecture/public-release-remediation-spec.md` trata isso como item de remediação.
+  Depois de `9397a1a`, o risco ficou contido a `development` e `test`, mas o caminho legado continua existindo no código.
 
 - ClickHouse é analytics-only.
   `app/services/analytics/click_house_sync.rb` não transforma a arquitetura em stream processing robusto nem em exactly-once.
@@ -516,7 +613,7 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
   Em produção, isso pediria disciplina maior de migration review e rollout.
 
 - O saldo `available/pending/blocked` existe como contrato, mas o uso de `pending` e `blocked` é mais conservador do que o naming sugere.
-  Isso é um ponto a revisar antes de prometer semântica de funds-hold mais rica.
+  Depois de `2315d41`, esses buckets deixaram de aparecer na API pública e no ops detail, mas continuam presentes na superfície interna de banco/snapshots.
 
 - O backoffice é global ao app.
   Isso é ótimo para mostrar o problema inteiro em um repo só, mas pediria revisão de escopo e masking de PII numa instalação pública real.
@@ -545,6 +642,13 @@ Dito isso, o histórico posterior mostra TDD e teste-dirigido por correção em 
   Nenhum depois dos checks.
 
 - Achados não bloqueantes:
+  O review de release em `docs/architecture/public-release-remediation-spec.md` encontrou cinco gaps materialmente relevantes para o boundary externo.
+  Eles foram corrigidos no próprio histórico recente:
+  `9397a1a` para chaves legadas.
+  `cffccbe` para auditoria sanitizada.
+  `178c4e4` para sweep do outbox.
+  `e5afdab` para contrato público de eventos.
+  `2315d41` para buckets de saldo enganosos.
   `test/services/database_consistency_verifier_test.rb` concentrava várias garantias independentes num único teste, o que piorava a localização de regressão.
   `test/models/database_financial_invariants_test.rb` continua grande, mas os cenários são focados e o custo de dividir tudo nesta entrega seria maior do que o ganho imediato.
 
