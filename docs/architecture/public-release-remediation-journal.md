@@ -223,7 +223,7 @@ Verification:
 
 Decision notes:
 
-- Reconciliation snapshot isolation remains a larger semantic decision. This pass fixed the concrete stale-write path and the daily balance snapshot read boundary without changing reconciliation output semantics.
+- Reconciliation runs remain operational point-in-time snapshots rather than accounting-period closes. The snapshot stores `captured_at`, and `docs/database/reconciliation-data-model.md` now documents the asynchronous consistency boundary and the production path for explicit cutoff/period-close semantics.
 
 ### Session 1: R10 operational surfaces
 

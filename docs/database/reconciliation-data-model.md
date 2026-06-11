@@ -26,6 +26,14 @@ Reconciliation compares provider cash statements with PostgreSQL ledger state an
 
 Any provider cash discrepancy or projection-vs-ledger difference marks the run as `discrepant`.
 
+## Consistency Boundary
+
+Reconciliation runs are operational snapshots, not accounting-period closes. `Reconciliation::LedgerSnapshot` records `captured_at` in run metadata, and the run compares the provider balance and optional provider statement entries against the ledger state observed during that snapshot.
+
+Because public reconciliation creation is idempotent and already executes inside the request's idempotency transaction, the service does not try to open a stricter nested database isolation level. Operators should interpret a reconciliation run as evidence for the captured instant. If ledger writes are still in flight for the provider date, create a new run after the write window closes and preserve both runs as incident evidence.
+
+A production period-close workflow should use an explicit cutoff, reject late writes or post them into an adjustment period, and run reconciliation after that cutoff is enforced.
+
 ## Itemized Rows
 
 `Reconciliation::Run` always creates rows for provider cash balance and projection-vs-ledger balance. When provider statement entries are supplied, it also matches each provider entry against PostgreSQL ledger entries using the journal `metadata.external_id` and the platform cash ledger account for the statement date.
