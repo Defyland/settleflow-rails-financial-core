@@ -1,15 +1,15 @@
 require "test_helper"
 
 class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
-  test "passes for balanced ledger and rebuilt projections" do
-    organization = create_organization
-    wallet = create_wallet(organization:)
-    fund_wallet(organization:, wallet:, external_id: "consistency-funding", amount_cents: 5_000)
-
-    checks = Database::ConsistencyVerifier.call(organizations: Organization.where(id: organization.id))
+  test "passes every seeded check for a balanced organization" do
+    checks = seeded_checks
 
     assert checks.all?(&:ok), checks.map { |check| [ check.name, check.details ] }.inspect
-    outbox_guard_check = checks.find { |check| check.name == :outbox_evidence_guards }
+  end
+
+  test "reports outbox evidence guards with the expected catalog contract" do
+    outbox_guard_check = check_named(seeded_checks, :outbox_evidence_guards)
+
     assert outbox_guard_check.details.fetch(:aggregate_function_present)
     assert outbox_guard_check.details.fetch(:med_payload_function_present)
     assert outbox_guard_check.details.fetch(:command_identity_function_present)
@@ -25,7 +25,13 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     assert_equal 0, outbox_guard_check.details.fetch(:legacy_exception_evidence_mismatches)
     assert_equal FinancialContracts::OUTBOX_EVIDENCE_CONSTRAINTS.sort, outbox_guard_check.details.fetch(:present_constraints)
     assert_equal FinancialContracts::OUTBOX_EVIDENCE_TRIGGERS.sort, outbox_guard_check.details.fetch(:present_triggers)
-    idempotency_guard_check = checks.find { |check| check.name == :idempotency_evidence_guards }
+  end
+
+  test "reports idempotency and processed event evidence guards separately" do
+    checks = seeded_checks
+    idempotency_guard_check = check_named(checks, :idempotency_evidence_guards)
+    processed_event_guard_check = check_named(checks, :processed_event_evidence_guards)
+
     assert idempotency_guard_check.details.fetch(:mutation_trigger_present)
     assert_empty idempotency_guard_check.details.fetch(:missing_constraints)
     assert_empty idempotency_guard_check.details.fetch(:missing_command_constraints)
@@ -37,7 +43,7 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     ], idempotency_guard_check.details.fetch(:present_constraints)
     assert_equal FinancialContracts::IDEMPOTENCY_REQUIRED_COMMAND_CONSTRAINTS.values.sort,
       idempotency_guard_check.details.fetch(:present_command_constraints)
-    processed_event_guard_check = checks.find { |check| check.name == :processed_event_evidence_guards }
+
     assert processed_event_guard_check.details.fetch(:mutation_trigger_present)
     assert_empty processed_event_guard_check.details.fetch(:missing_constraints)
     assert_equal 0, processed_event_guard_check.details.fetch(:outbox_evidence_mismatches)
@@ -46,7 +52,14 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
       processed_events_state_evidence_check
       processed_events_status_check
     ], processed_event_guard_check.details.fetch(:present_constraints)
-    balance_guard_check = checks.find { |check| check.name == :balance_evidence_guards }
+  end
+
+  test "reports balance, approval, and reconciliation evidence guards separately" do
+    checks = seeded_checks
+    balance_guard_check = check_named(checks, :balance_evidence_guards)
+    operator_approval_guard_check = check_named(checks, :operator_approval_evidence_guards)
+    reconciliation_guard_check = check_named(checks, :reconciliation_evidence_guards)
+
     assert balance_guard_check.details.fetch(:write_gate_function_present)
     assert_empty balance_guard_check.details.fetch(:missing_constraints)
     assert_empty balance_guard_check.details.fetch(:missing_triggers)
@@ -57,12 +70,12 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
       balance_projections_wallet_evidence_before_write
       balance_snapshots_prevent_evidence_mutation
     ], balance_guard_check.details.fetch(:present_triggers)
-    operator_approval_guard_check = checks.find { |check| check.name == :operator_approval_evidence_guards }
+
     assert_empty operator_approval_guard_check.details.fetch(:missing_constraints)
     assert_empty operator_approval_guard_check.details.fetch(:missing_triggers)
     assert_equal 0, operator_approval_guard_check.details.fetch(:evidence_mismatches)
     assert_equal [ "operator_approvals_prevent_evidence_mutation" ], operator_approval_guard_check.details.fetch(:present_triggers)
-    reconciliation_guard_check = checks.find { |check| check.name == :reconciliation_evidence_guards }
+
     assert_empty reconciliation_guard_check.details.fetch(:missing_constraints)
     assert_empty reconciliation_guard_check.details.fetch(:missing_triggers)
     assert_equal 0, reconciliation_guard_check.details.fetch(:evidence_mismatches)
@@ -72,7 +85,14 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
       reconciliation_runs_evidence_after_write
       reconciliation_runs_prevent_evidence_mutation
     ], reconciliation_guard_check.details.fetch(:present_triggers)
-    state_guard_check = checks.find { |check| check.name == :financial_state_evidence_guards }
+  end
+
+  test "reports financial state and journal evidence guards separately" do
+    checks = seeded_checks
+    state_guard_check = check_named(checks, :financial_state_evidence_guards)
+    journal_guard_check = check_named(checks, :financial_journal_evidence_guards)
+    journal_taxonomy_check = check_named(checks, :journal_event_taxonomy)
+
     assert state_guard_check.details.fetch(:aggregate_function_present)
     assert state_guard_check.details.fetch(:med_resolution_functions_present)
     assert state_guard_check.details.fetch(:refund_limit_function_present)
@@ -84,13 +104,13 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     assert_empty state_guard_check.details.fetch(:missing_triggers)
     assert_equal FinancialContracts::FINANCIAL_STATE_EVIDENCE_TRIGGERS.sort,
       state_guard_check.details.fetch(:present_triggers)
-    journal_guard_check = checks.find { |check| check.name == :financial_journal_evidence_guards }
+
     assert journal_guard_check.details.fetch(:evidence_functions_present)
     assert_empty journal_guard_check.details.fetch(:missing_triggers)
     assert_equal 0, journal_guard_check.details.fetch(:evidence_mismatches)
     assert_equal FinancialContracts::FINANCIAL_JOURNAL_EVIDENCE_TRIGGERS.sort,
       journal_guard_check.details.fetch(:present_triggers)
-    journal_taxonomy_check = checks.find { |check| check.name == :journal_event_taxonomy }
+
     assert journal_taxonomy_check.details.fetch(:constraint_validated)
     assert_equal JournalEntry::SUPPORTED_EVENT_TYPES, journal_taxonomy_check.details.fetch(:supported_event_types)
     assert_empty journal_taxonomy_check.details.fetch(:unknown_event_types)
@@ -108,5 +128,19 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     assert_not projection_check.ok
     assert_equal 1, projection_check.details.fetch(:mismatched_wallets)
     assert_equal(-500, projection_check.details.fetch(:difference_cents_sum))
+  end
+
+  private
+
+  def seeded_checks
+    organization = create_organization
+    wallet = create_wallet(organization:)
+    fund_wallet(organization:, wallet:, external_id: "consistency-funding", amount_cents: 5_000)
+
+    Database::ConsistencyVerifier.call(organizations: Organization.where(id: organization.id))
+  end
+
+  def check_named(checks, name)
+    checks.find { |check| check.name == name } || flunk("missing consistency check: #{name}")
   end
 end
