@@ -277,8 +277,15 @@ Implemented:
 - Removed the self-validating `docs/architecture/senior-tech-lead-validation.md` guide.
 - Removed the README link to that guide and replaced portfolio-reviewer framing with neutral backend-pattern language.
 - Updated README security wording so legacy organization API keys are described as disabled-by-default development/test compatibility, matching R2.
+- Moved `Database::*` operational engineering services from `app/services/database` to `lib/database`, preserving constants while separating product services from ops tooling.
 
 Verification:
 
 - `/Applications/Codex.app/Contents/Resources/rg -n "senior-tech-lead-validation|Senior and Tech Lead Validation|senior-level backend evidence|Legacy organization API key digests remain supported" README.md docs`
 - Result: no remaining references outside the remediation spec requirement itself.
+- `bin/rails test test/services/database_benchmark_runner_test.rb test/services/database_benchmark_thresholds_test.rb test/services/database_consistency_verifier_test.rb test/services/database_critical_query_explainer_test.rb test/services/database_migration_safety_checker_test.rb test/services/database_partition_feasibility_test.rb test/services/database_partition_plan_test.rb test/services/database_partition_readiness_test.rb test/services/database_pitr_readiness_test.rb`
+- Result: 22 runs, 174 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop lib/database test/services/database_benchmark_runner_test.rb test/services/database_benchmark_thresholds_test.rb test/services/database_consistency_verifier_test.rb test/services/database_critical_query_explainer_test.rb test/services/database_migration_safety_checker_test.rb test/services/database_partition_feasibility_test.rb test/services/database_partition_plan_test.rb test/services/database_partition_readiness_test.rb test/services/database_pitr_readiness_test.rb`
+- Result: 20 files inspected, no offenses.
+- `bin/rails zeitwerk:check`
+- Result: all application constants good; Rails emitted only the standard unchecked `test/mailers/previews` eager-load warning.
