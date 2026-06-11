@@ -1,6 +1,6 @@
 # SettleFlow Learning Journal
 
-Este journal documenta a história do repositório até o commit `9df9e43`. A timeline para ali de propósito porque os commits posteriores nesta branch são refinamentos documentais do próprio journal, não decisões novas de produto ou de domínio.
+Este journal documenta a história do repositório até o commit `325d4f2`, que é o `HEAD` gravado no momento desta edição. Esta versão em working tree foi expandida justamente para eliminar o corte anterior em `9df9e43` e cobrir todo o `git log` atual.
 
 ## Como este journal usa evidências
 
@@ -17,7 +17,7 @@ Este journal documenta a história do repositório até o commit `9df9e43`. A ti
   o journal aponta arquivos concretos, por exemplo `app/services/ledger/journal_poster.rb` ou `lib/database/consistency_verifier.rb`.
 
 - Escopo:
-  commits já gravados até `9df9e43`. Alterações ainda não commitadas na árvore de trabalho não entram como fato histórico.
+  commits já gravados até `325d4f2`. Como esta ampliação ainda está em working tree, não existe neste instante um commit novo fora do escopo; se outro commit for criado depois desta edição, o journal precisa ser avançado junto.
 
 ## O que o histórico não prova
 
@@ -193,6 +193,14 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
 - Base usada:
   commits `63618c2`, `0f83617`, `97a34fd`, `d2355a6`, `76d9c2a`, `4584b85`, `8f72783`, `b4b14bf`, `d035016`, `9df9e43`; `app/services/wallets/projection_locker.rb`, `app/services/ledger/journal_poster.rb`, `config/routes.rb`, `lib/database/*`, `redocly.yaml`, `bin/critical_money_branch_coverage`, `test/services/financial_branch_coverage_test.rb`.
 
+### Fase 9: o journal vira artefato versionado de engenharia (`ef36175` a `325d4f2`, 2026-06-11)
+
+- Depois que o core funcional e os gates principais ficaram fechados, o histórico continuou com uma sequência explicitamente documental.
+- `ef36175` reapresenta o journal após a remediação; `2bc5f07` endurece a disciplina de evidência; `ad23cb2` aprofunda a cobertura de decisões; `c3eab77` quebra agrupamentos grandes em detalhe por commit ou família curta; `325d4f2` adiciona a seção sobre o que o histórico não prova, trata features inteiras como unidades e registra a revisão adversarial do próprio texto.
+- Esta fase não cria feature de domínio nova, mas muda o valor pedagógico do repositório: o journal deixa de ser resumo narrativo e passa a operar como artefato técnico auditável contra `git log`.
+- Base usada:
+  commits `ef36175`, `2bc5f07`, `ad23cb2`, `c3eab77`, `325d4f2`; diffs sucessivos de `docs/learning-journal.md`, validação automática da timeline, releitura dos arquivos reais citados no journal e a seção 13 desta própria documentação.
+
 ## Features importantes como unidades completas
 
 ### Pipeline financeiro core: comando idempotente, ledger, projeção e outbox
@@ -330,6 +338,28 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
   `test/requests/api_authentication_test.rb`, `test/requests/api_audit_logging_test.rb`, `test/jobs/outbox_sweep_job_test.rb`, `test/services/outbox_event_contract_test.rb`, `test/services/openapi_contract_test.rb`, `test/requests/privacy_redaction_test.rb`, `test/services/financial_branch_coverage_test.rb`.
 - Limites em produção:
   ainda falta ACL fina por campo, rotação mais sofisticada de credenciais e política de versionamento público de eventos além do envelope atual.
+
+### O learning journal como artefato versionado de engenharia
+
+- Problema que resolve:
+  o histórico bruto em `git log` prova ordem e diffs, mas não ensina sozinho como reproduzir a arquitetura, nem diferencia com clareza fato histórico, inferência e lacuna de evidência.
+- Commits da feature:
+  `1794cfe`, `c5f6f0a`, `4dad992`, `23879e6`, `4f3c653`, `ef36175`, `2bc5f07`, `ad23cb2`, `c3eab77`, `325d4f2`.
+- Arquivos principais:
+  `docs/learning-journal.md`, `docs/architecture/public-release-remediation-spec.md`, `docs/architecture/public-release-remediation-journal.md`.
+- Por que a solução final tomou essa forma:
+  o primeiro corte do journal nasceu como documentação de apoio e, na sequência, recebeu endurecimento iterativo para virar material de aprendizado sério: timeline validada contra `git log`, decisões quebradas por evidência, features tratadas como unidades completas e revisão adversarial explícita.
+- Alternativa plausível:
+  deixar o aprendizado distribuído entre `README`, ADRs e `git log`, sem um journal consolidado.
+  O histórico mostra que o repositório preferiu pagar o custo de manutenção do journal para aumentar auditabilidade e repetibilidade pedagógica.
+- Prós e contras da forma escolhida:
+  a favor, o repositório fica muito mais estudável e obriga a documentação a enfrentar os limites do próprio histórico.
+  contra, nasce uma nova superfície sujeita a drift e a vários commits meta-documentais para permanecer honesta.
+- Testes ou verificações que protegem a feature:
+  não há uma suíte automatizada dedicada ao journal.
+  A proteção aqui vem de validação automática da timeline contra `git log`, de `git diff --check -- docs/learning-journal.md` e das revisões estrutural, Rails e adversarial registradas na seção 13.
+- Limites em produção:
+  o journal continua dependendo de manutenção manual disciplinada; se futuros commits deixarem de atualizar esse arquivo com o mesmo rigor, a utilidade pedagógica volta a cair rapidamente.
 
 ## 4. Decisão por decisão: o que foi feito, por que foi feito e quais alternativas aparecem no histórico ou como inferência comparativa
 
@@ -1241,6 +1271,11 @@ Dito isso, o histórico posterior registra TDD e teste-dirigido por correção e
 | 2026-06-11 | `b4b14bf` | A reconciliação ainda podia ser lida como fechamento, não snapshot | Document reconciliation snapshot boundary | Docs/contratos atualizados |
 | 2026-06-11 | `d035016` | O lint de OpenAPI ainda não estava alinhado à spec escolhida | Align openapi lint rules | Docs/contratos atualizados |
 | 2026-06-11 | `9df9e43` | Branch coverage dos caminhos críticos de dinheiro ainda não tinha gate explícito | Enforce critical money branch coverage | Teste(s): `financial_branch_coverage_test.rb`, `critical_money_branch_coverage` |
+| 2026-06-11 | `ef36175` | O journal ainda não consolidava a narrativa após a remediação mais recente | Refresh learning journal after remediation | Docs/contratos atualizados |
+| 2026-06-11 | `2bc5f07` | O journal ainda marcava evidência e inferência com rigor insuficiente | Deepen evidence-based learning journal | Verificação: revisão manual + timeline mantida consistente |
+| 2026-06-11 | `ad23cb2` | A cobertura de decisões técnicas ainda estava rasa em trechos importantes | Deepen decision coverage in learning journal | Verificação: revisão manual do journal |
+| 2026-06-11 | `c3eab77` | Ainda havia agrupamentos vagos de commits em decisões grandes demais | Detail grouped technical decisions | Verificação: revisão manual do journal |
+| 2026-06-11 | `325d4f2` | O journal ainda não cobria features inteiras, o que o histórico não prova e a revisão adversarial explícita | Strengthen learning journal evidence and feature coverage | Verificação: checks da seção 13 + timeline validada contra `git log` |
 
 ## 10. Checklist de boundaries para futuras features
 
@@ -1369,11 +1404,12 @@ Dito isso, o histórico posterior registra TDD e teste-dirigido por correção e
 ### Revisão estrutural rigorosa
 
 - Escopo:
-  estado funcional revisado diretamente na leva final de remediação, histórico de commits até `9df9e43` e confiabilidade da suíte que protege invariantes.
+  estado funcional revisado diretamente na leva final de remediação, histórico de commits até `325d4f2` e confiabilidade da suíte que protege invariantes.
 
 - Base desta seção:
   os comandos abaixo foram executados na revisão final do estado funcional que antecede os últimos commits documentais/refactors leves deste mesmo dia.
   Para `63618c2`, `0f83617`, `97a34fd` e `9df9e43`, o journal se apoia em `git show`, arquivos tocados e testes adicionados no próprio commit; ele não finge um rerun completo separado por commit quando isso não aconteceu.
+  Para os commits documentais `ef36175`, `2bc5f07`, `ad23cb2`, `c3eab77` e `325d4f2`, a base é `git show`, diff do próprio `docs/learning-journal.md`, releitura dos arquivos reais citados e validação automática da timeline contra o `git log` completo.
 
 - Checks executados na revisão funcional anterior:
   `bin/rails db:test:prepare`
@@ -1455,6 +1491,7 @@ Dito isso, o histórico posterior registra TDD e teste-dirigido por correção e
   As features principais estavam explicadas em decisões pontuais, mas não como unidades completas com problema, commits, arquivos, alternativas, testes e limites.
   A seção de revisão Rails ainda citava `lib/database/consistency_verifier.rb` como hotspot grande, mesmo depois da decomposição para `lib/database/consistency_checks/*`.
   A timeline já estava correta, mas faltava registrar a validação automática recente como evidência explícita.
+  O texto também ainda parava em `9df9e43`, deixando de fora a própria fase final de endurecimento documental já presente no `git log`.
 
 - O que foi corrigido e por quê:
   esta atualização adicionou a seção `O que o histórico não prova` para reduzir risco de causalidade inventada.
@@ -1462,6 +1499,7 @@ Dito isso, o histórico posterior registra TDD e teste-dirigido por correção e
   Ajustou a linguagem de seção 4 para deixar claro quando alternativa é histórica e quando é só inferência comparativa.
   Atualizou a revisão Rails para refletir o hotspot real atual e não um estado anterior do código.
   Registrou a rerodagem de `rubocop`, `brakeman`, `bundler-audit`, `zeitwerk`, `critical_money_branch_coverage`, `database:verify_consistency`, `database:migration_safety_check` e do conjunto de testes mais diretamente ligado às decisões documentadas.
+  Por fim, removeu o corte em `9df9e43` e estendeu a cronologia e a timeline até `325d4f2`, que é o `HEAD` gravado desta análise.
 
 - Risco residual que continua sendo inferência:
   a motivação exata dentro de commits grandes continua parcialmente inferida a partir do diff e dos testes.
