@@ -218,6 +218,52 @@ Verification:
 
 - `bin/rails test test/services/balance_snapshot_and_rebuild_test.rb test/services/database_consistency_verifier_test.rb`
 - Result: 9 runs, 89 assertions, 0 failures, 0 errors, 0 skips.
+
+### Session 2: audit residual cleanup
+
+Implemented:
+
+- Removed reconciliation immutability callbacks from `ReconciliationRun` and `ReconciliationRow`.
+- Kept reconciliation immutability as a PostgreSQL-owned invariant through the existing evidence triggers and consistency checks.
+- Split `Database::ConsistencyVerifier` into a small runner plus focused `Database::ConsistencyChecks::*` classes.
+- Preserved the public consistency-check contract: check names and detail keys remain stable for tests, runbooks, and `database:verify_consistency`.
+- Replaced split-payment hash fallback handling with a small internal `Entry` value object. The V1 controller remains responsible for translating request params into the service boundary.
+- Made payout early-settlement checking explicit: `call` reloads once before branching, `early_settlement?` is pure, and the transaction rechecks settlement authorization after `lock!`.
+- Centralized repeated Pix and MED ops `Errors::ApplicationError` redirects with `rescue_from`.
+- Collapsed the duplicate outbox publishability predicate and moved creation default checks into a named constant.
+- Extended `ApplicationService.call` to forward blocks and moved the remaining callable service helpers onto the shared base class.
+
+Decision notes:
+
+- Reconciliation evidence mutation belongs to PostgreSQL, not model callbacks. The database already owns the irreversible invariant and rejects direct SQL bypasses; duplicating it in ActiveRecord created a second source of truth and an avoidable cross-table query on every write.
+- The consistency verifier should be a registry/runner, not the owner of every SQL question. Individual check classes make each operational question independently reviewable while keeping the CLI and rake task API unchanged.
+- Split-payment services should not accept arbitrary external parameter shapes. Rails controllers may deal with string-keyed request params, but domain services should receive a normalized internal contract.
+- The payout early-settlement post-lock guard intentionally remains inside the transaction. It is not duplicate business logic; it is the race-safe authorization check after the row has been locked.
+- Ops error handling for workflow actions is controller-level response policy, so a single `rescue_from` per controller is clearer than repeating the same rescue branch in each action.
+- Callable service syntax should have one implementation. The base class now supports positional args, keyword args, and blocks, so block-driven services such as idempotency, maker-checker, and temporary locks do not need bespoke `self.call` wrappers.
+
+Verification:
+
+- `bin/rails test test/models/reconciliation_row_test.rb test/services/split_payment_create_test.rb test/services/payout_lifecycle_test.rb test/jobs/outbox_publish_job_test.rb test/jobs/outbox_sweep_job_test.rb test/requests/ops_console_request_test.rb`
+- Result: 28 runs, 267 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rails test test/services/database_consistency_verifier_test.rb`
+- Result: 6 runs, 73 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rails test test/requests/ops_console_request_test.rb`
+- Result after Pix/MED rescue consolidation: 8 runs, 164 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop app/controllers/ops/med_cases_controller.rb app/controllers/ops/pix_payments_controller.rb`
+- Result: 2 files inspected, no offenses.
+- `bin/rails test test/services/operational_temporary_lock_test.rb test/services/operational_redis_temporary_lock_test.rb test/requests/idempotency_test.rb test/services/payout_lifecycle_test.rb test/services/refund_and_med_lifecycle_test.rb test/services/pix_payment_lifecycle_test.rb test/requests/api_audit_logging_test.rb`
+- Result after callable base consolidation: 41 runs, 204 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/ci`
+- Result: passed. 219 unit/service/request tests, 1370 assertions, 0 failures; critical money branch coverage 85.47%; 2 system tests, 13 assertions, 0 failures; RuboCop no offenses; Brakeman 0 warnings; bundler-audit no vulnerabilities; OpenAPI and event schema parse checks passed.
+- `bin/rails zeitwerk:check`
+- Result: passed; only the standard unchecked `test/mailers/previews` eager-load warning.
+- `bin/rails database:verify_consistency`
+- Result: every consistency check reported `ok`.
+- `bin/rails database:migration_safety_check`
+- Result: no high-volume migration safety findings.
+- `npx --yes @redocly/cli lint openapi.yaml`
+- Result: valid OpenAPI description.
 - `bin/rubocop app/services/balance_projections/rebuilder.rb app/services/balance_snapshots/capture.rb test/services/balance_snapshot_and_rebuild_test.rb`
 - Result: 3 files inspected, no offenses.
 
