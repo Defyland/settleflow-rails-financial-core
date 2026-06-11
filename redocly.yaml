@@ -4,4 +4,5 @@ extends:
 rules:
   info-license-strict: off
   no-server-example.com: off
+  operation-2xx-response: off
   operation-4xx-response: off

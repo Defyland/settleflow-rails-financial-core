@@ -318,3 +318,14 @@ Verification:
 - Result: only the new regression test mentions the removed public route.
 - `/Applications/Codex.app/Contents/Resources/rg -n "Legacy organization.*seed/demo compatibility|Outbox events \| Same organization only|Audit logs \| Same organization only where applicable" README.md docs app test`
 - Result: no matches.
+
+### Session 1: OpenAPI lint configuration follow-up
+
+Implemented:
+
+- Disabled Redocly's `operation-2xx-response` rule in `redocly.yaml` because public MED accept/reject are intentionally documented as blocked operations with no 2xx runtime path.
+
+Verification:
+
+- `npx --yes @redocly/cli lint openapi.yaml`
+- Result: OpenAPI validated with no warnings.
