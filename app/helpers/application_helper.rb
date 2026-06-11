@@ -10,4 +10,12 @@ module ApplicationHelper
   def status_badge(status)
     tag.span(status.to_s.humanize, class: "status status--#{status}")
   end
+
+  def masked_name(value)
+    Privacy::Redactor.name(value)
+  end
+
+  def masked_contact(value)
+    Privacy::Redactor.contact(value)
+  end
 end

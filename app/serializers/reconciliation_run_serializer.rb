@@ -9,7 +9,7 @@ class ReconciliationRunSerializer
       discrepancy_cents: run.discrepancy_cents,
       status: run.status,
       rows_summary: run.metadata.fetch("row_status_counts") { run.reconciliation_rows.group(:status).count },
-      metadata: run.metadata,
+      metadata: Privacy::Redactor.metadata(run.metadata),
       created_at: run.created_at.iso8601
     }
 

@@ -1,7 +1,7 @@
 <header class="page-header">
   <div>
     <h1>Wallet <%= @wallet.external_id %></h1>
-    <p><%= @wallet.customer.legal_name %> · <%= @wallet.organization.slug %></p>
+    <p><%= masked_name(@wallet.customer.legal_name) %> · <%= @wallet.organization.slug %></p>
   </div>
   <button class="copy-button" data-controller="copy" data-copy-text-value="<%= @wallet.public_id %>" data-action="copy#copy">Copy ID</button>
 </header>

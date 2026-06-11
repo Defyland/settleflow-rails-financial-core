@@ -7,7 +7,7 @@ class WalletSerializer
       currency: wallet.currency,
       status: wallet.status,
       balance: BalanceProjectionSerializer.render(wallet.balance_projection),
-      metadata: wallet.metadata,
+      metadata: Privacy::Redactor.metadata(wallet.metadata),
       created_at: wallet.created_at.iso8601
     }
   end

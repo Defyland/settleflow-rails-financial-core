@@ -183,3 +183,25 @@ Verification:
 - Result: 1 file inspected, no offenses.
 - `ruby -ryaml -e 'doc=YAML.load_file("openapi.yaml"); doc["paths"].each { |path, ops| ops.each { |method, spec| next unless method == "post"; puts "#{path}: #{spec.fetch("responses").keys.join(",")}" } }'`
 - Result: every POST with `Idempotency-Key` documents `400` and `409`; MED accept/reject document `400,403,409` and no `200`.
+
+### Session 1: R8 PII redaction and idempotency evidence
+
+Implemented:
+
+- Added `Privacy::Redactor` for public response and ops-display redaction.
+- Redacted sensitive customer, Pix, payout, and metadata fields in public serializers.
+- Redacted serializer metadata broadly by returning a `{ redacted: true }` marker for non-empty metadata.
+- Stored sanitized idempotency response bodies instead of raw response bodies.
+- Masked default ops wallet and Pix PII displays.
+- Added request tests proving API responses, persisted idempotency evidence, and ops HTML do not expose raw PII.
+
+Verification:
+
+- `bin/rails test test/requests/privacy_redaction_test.rb test/requests/idempotency_test.rb test/requests/pix_payments_api_test.rb test/requests/financial_workflow_test.rb test/requests/ops_console_request_test.rb`
+- Result: 24 runs, 275 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop app/services/privacy/redactor.rb app/helpers/application_helper.rb app/services/idempotency/runner.rb app/serializers test/requests/privacy_redaction_test.rb`
+- Result: 21 files inspected, no offenses.
+
+Decision notes:
+
+- This change redacts by default because the API has no field-level privilege model. Full PII can be added later through explicit privileged endpoints/scopes rather than accidental default serializers.

@@ -12,7 +12,7 @@ class RefundSerializer
       reason: refund.reason,
       settled_at: refund.settled_at&.iso8601,
       failure_code: refund.failure_code,
-      metadata: refund.metadata,
+      metadata: Privacy::Redactor.metadata(refund.metadata),
       created_at: refund.created_at.iso8601
     }
   end

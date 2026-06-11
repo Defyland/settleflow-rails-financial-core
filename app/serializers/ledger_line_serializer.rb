@@ -9,7 +9,7 @@ class LedgerLineSerializer
       amount_cents: line.amount_cents,
       currency: line.currency,
       occurred_at: line.journal_entry.occurred_at.iso8601,
-      metadata: line.metadata
+      metadata: Privacy::Redactor.metadata(line.metadata)
     }
   end
 end

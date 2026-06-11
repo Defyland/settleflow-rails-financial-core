@@ -1,7 +1,7 @@
 <header class="page-header">
   <div>
     <h1>Pix <%= @pix_payment.external_id %></h1>
-    <p><%= @pix_payment.receiver_name %> · <%= @pix_payment.pix_key %></p>
+    <p><%= masked_name(@pix_payment.receiver_name) %> · <%= masked_contact(@pix_payment.pix_key) %></p>
   </div>
   <div class="actions">
     <% if @pix_payment.approved? && can?(:settle_pix_payment) %>
@@ -61,6 +61,6 @@
     <div class="panel__header">
       <h2>Metadata</h2>
     </div>
-    <pre><%= JSON.pretty_generate(@pix_payment.metadata) %></pre>
+    <pre><%= JSON.pretty_generate(Privacy::Redactor.metadata(@pix_payment.metadata)) %></pre>
   </div>
 </section>

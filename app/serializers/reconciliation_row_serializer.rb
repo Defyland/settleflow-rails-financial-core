@@ -11,7 +11,7 @@ class ReconciliationRowSerializer
       difference_cents: row.difference_cents,
       currency: row.currency,
       journal_entry_id: row.journal_entry&.public_id,
-      metadata: row.metadata,
+      metadata: Privacy::Redactor.metadata(row.metadata),
       created_at: row.created_at.iso8601
     }
   end

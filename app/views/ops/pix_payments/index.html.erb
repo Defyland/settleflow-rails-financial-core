@@ -32,7 +32,7 @@
           <td><%= status_badge(payment.status) %></td>
           <td><%= payment.risk_score %></td>
           <td><%= money_cents(payment.amount_cents, payment.currency) %></td>
-          <td><%= payment.receiver_name %></td>
+          <td><%= masked_name(payment.receiver_name) %></td>
         </tr>
       <% end %>
     </tbody>

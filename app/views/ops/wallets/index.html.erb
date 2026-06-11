@@ -26,7 +26,7 @@
         <tr>
           <td><%= link_to compact_id(wallet), ops_wallet_path(wallet.public_id) %></td>
           <td><%= wallet.external_id %></td>
-          <td><%= wallet.customer.legal_name %></td>
+          <td><%= masked_name(wallet.customer.legal_name) %></td>
           <td><%= status_badge(wallet.status) %></td>
           <td><%= money_cents(wallet.balance_projection.available_cents, wallet.currency) %></td>
           <td><%= wallet.currency %></td>

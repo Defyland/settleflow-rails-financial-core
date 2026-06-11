@@ -11,7 +11,7 @@ class TransferSerializer
       status: transfer.status,
       memo: transfer.memo,
       failure_code: transfer.failure_code,
-      metadata: transfer.metadata,
+      metadata: Privacy::Redactor.metadata(transfer.metadata),
       created_at: transfer.created_at.iso8601
     }
   end

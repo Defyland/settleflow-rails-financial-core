@@ -37,7 +37,7 @@ module Idempotency
         record.update!(status: "processing", locked_at: Time.current) unless created && record.processing?
         processing_owner = true
         response = block.call
-        record.update!(status: "succeeded", response_status: response.status, response_body: response.body)
+        record.update!(status: "succeeded", response_status: response.status, response_body: Privacy::Redactor.sanitize_response(response.body))
       end
 
       replay || Idempotency::Response.new(status: response.status, body: response.body, replayed: false)
