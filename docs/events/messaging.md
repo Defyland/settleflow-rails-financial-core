@@ -4,7 +4,7 @@ SettleFlow uses a transactional outbox and ActiveJob. Publisher delivery is adap
 
 PostgreSQL requires new financial outbox rows for funding, transfer, split, Pix, payout, refund, and MED aggregates to carry the command idempotency key that matches the aggregate lifecycle. Published legacy rows are immutable delivery evidence; if they predate this guard and lack command identity, they must have an immutable `outbox_legacy_command_identity_exceptions` row that records the original payload hash, expected command key, and acceptance reason instead of rewriting the published envelope hash.
 
-For public versioned financial event contracts, see [docs/events/README.md](README.md). Internal outbox event names may differ from the public contract taxonomy; publishers should map internal domain events to the versioned public schema before exposing them to external consumers.
+For public versioned financial event contracts, see [docs/events/README.md](README.md). The public contract is the actual outbox envelope emitted by the log and HTTP publishers.
 
 ## Event types
 

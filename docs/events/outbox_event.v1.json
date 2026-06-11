@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Defyland/settleflow-rails-financial-core/docs/events/outbox_event.v1.json",
+  "title": "outbox_event v1",
+  "type": "object",
+  "required": ["id", "event_type", "aggregate_type", "aggregate_id", "organization_id", "payload", "created_at"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "wallet.funded",
+        "wallet.transfer.posted",
+        "split.posted",
+        "pix.payment.approved",
+        "pix.payment.pending_review",
+        "pix.payment.rejected",
+        "pix.payment.settled",
+        "pix.payment.reversed",
+        "payout.scheduled",
+        "payout.settled",
+        "refund.settled",
+        "med.case.opened",
+        "med.case.rejected",
+        "med.case.refunded",
+        "reconciliation.matched",
+        "reconciliation.discrepant"
+      ]
+    },
+    "aggregate_type": {
+      "type": "string",
+      "enum": ["Funding", "Transfer", "SplitPayment", "PixPayment", "Payout", "Refund", "MedCase", "ReconciliationRun"]
+    },
+    "aggregate_id": { "type": "integer", "minimum": 1 },
+    "organization_id": { "type": "string", "format": "uuid" },
+    "payload": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": true
+    },
+    "correlation_id": { "type": ["string", "null"] },
+    "idempotency_key": { "type": ["string", "null"] },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

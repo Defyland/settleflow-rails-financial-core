@@ -114,3 +114,27 @@ Decision notes:
 
 - The sweep job intentionally re-enqueues publish jobs instead of publishing inline. Claiming and state transition remain centralized in `OutboxPublishJob`.
 - Tests isolate existing pending events by pushing their retry time into the future rather than falsifying published state, because database checks require real publication evidence for `published` events.
+
+### Session 1: R5 event contract alignment
+
+Implemented:
+
+- Removed stale per-event JSON schemas that described a snake_case external taxonomy the application did not publish.
+- Added `docs/events/outbox_event.v1.json`, matching the actual envelope emitted by `Outbox::Publisher.envelope_for`.
+- Rewrote `docs/events/README.md` around the real outbox envelope and current `FinancialContracts::Events` taxonomy.
+- Updated messaging docs to remove the claim that publishers map internal events to a separate public taxonomy.
+- Updated local and GitHub event-contract checks so they validate an event-type `const` or `enum` contract and a payload contract.
+- Added an outbox contract test that compares schema event types to `FinancialContracts::Events` and validates representative real envelopes.
+
+Verification:
+
+- `bin/rails test test/services/outbox_event_contract_test.rb`
+- Result: 4 runs, 49 assertions, 0 failures, 0 errors, 0 skips.
+- `ruby -rjson -e 'Dir["docs/events/*.v1.json"].sort.each { |path| schema = JSON.parse(File.read(path)); event_type = schema.dig("properties", "event_type"); abort("#{path}: event_type contract missing") unless event_type&.key?("const") || event_type&.key?("enum"); payload = schema.dig("properties", "payload"); abort("#{path}: payload contract missing") unless payload.is_a?(Hash); puts "#{path} parsed" }'`
+- Result: `docs/events/outbox_event.v1.json parsed`.
+- `bin/rubocop test/services/outbox_event_contract_test.rb`
+- Result: 1 file inspected, no offenses.
+
+Decision notes:
+
+- Chose to document the actual emitted envelope instead of introducing a mapping layer. A separate external taxonomy can be added later, but only with a publisher mapper and schema validation tests in the same change.
