@@ -614,3 +614,18 @@ Verification:
 - `bin/rails test test/config/filter_parameters_test.rb`
 - Result: 1 run, 5 assertions, 0 failures, 0 errors, 0 skips.
 - `bin/rubocop`: no offenses.
+
+#### R23 sync ops-authorization docs with admin-only ops
+
+Implemented:
+
+- Updated `docs/architecture/security.md`: the controls line and the authorization matrix now state that every ops-console read and mutation requires `admin`, and that `viewer`/`operator` hold no ops-console capability.
+- Appended a dated supersession note to `docs/adr/0005-operational-governance-and-reversals.md` recording that the operator reject/retry capabilities were removed, rather than rewriting the historical decision.
+
+Decision notes:
+
+- `security.md` is living documentation, so it was edited in place to the current state; the ADR is a historical record, so the original decision text stands and an "Update" section records the supersession. Both stale references came from R13 making all ops mutations admin-only.
+
+Verification:
+
+- Docs-only change. `rg` confirms no remaining doc claims that `operator` can reject Pix or retry outbox outside the ADR's historical/superseded text.

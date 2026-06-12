@@ -20,7 +20,7 @@ Primary risks:
 - API credentials are issued once, stored as HMAC-SHA256 digests, looked up by non-secret prefixes, and can be scoped, expired, or revoked. Legacy organization API key digests are disabled by default and only available through development/test compatibility configuration.
 - Operators authenticate through Rails sessions and `bcrypt` password hashes.
 - Browser forms use Rails CSRF protection.
-- Operator roles gate human workflows: viewers are read-only, operators can reject pending-review Pix and retry outbox events, and admins can settle or reverse Pix payments.
+- Operator roles gate human workflows: every ops-console read surface and every mutation (settle, reject, reverse, MED approval, outbox retry) requires the `admin` role. `viewer` and `operator` are global staff roles that currently hold no ops-console capability; they exist for a future organization-scoped model. See [decisions](../decisions.md).
 - Mutating endpoints support idempotency records keyed by organization. Financial command effects and idempotency response persistence share the same database transaction, and stale processing locks can be retried.
 - Wallet projections use optimistic locking and row locks for debit checks.
 - Database constraints enforce unique tenant references and positive amounts.
@@ -31,7 +31,9 @@ Primary risks:
 
 ## Authorization matrix
 
-| Resource | Tenant/API access | Operator access |
+Every row in the ops-console column below requires the `admin` role; non-admin `viewer`/`operator` users are denied both reads and mutations.
+
+| Resource | Tenant/API access | Ops console access (admin role) |
 | --- | --- | --- |
 | Customers | Same organization only | Read through related wallets and ledger evidence |
 | Wallets | Same organization only | Read statements and projections |
