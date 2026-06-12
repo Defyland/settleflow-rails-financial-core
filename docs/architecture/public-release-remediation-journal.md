@@ -467,3 +467,22 @@ Verification:
 - `bin/rails test test/requests/operability_test.rb test/services/outbox_http_publisher_test.rb`
 - Result: 8 runs, 31 assertions, 0 failures, 0 errors, 0 skips.
 - `bin/rubocop` on the six touched files: no offenses.
+
+#### R15 single canonical sensitive-key registry (closes the legal_name audit leak)
+
+Implemented:
+
+- Added `Privacy::SensitiveKeys` as the one registry of PII/secret keys plus a `match?` predicate.
+- Rewired `Privacy::Redactor` (response/ops masking) and `AuditLogs::ParameterSanitizer` (audit redaction) to consult it, deleting both local `SENSITIVE_KEYS` arrays and both copied `sensitive_key?` methods.
+- Added an audit-logging assertion that `legal_name` is now `[FILTERED]` in persisted audit params.
+
+Decision notes:
+
+- The two lists had drifted: `Redactor` listed `legal_name` and `ParameterSanitizer` did not, so a customer `legal_name` was masked in public API responses but written in clear to the audit log. One registry owns *what* is sensitive; each caller still owns *how* it masks. `password_confirmation` was dropped as a redundant entry — the substring match on `password` already covers it.
+- The Rails `config.filter_parameters` initializer is intentionally left separate: it is the framework log-filtering layer, not application redaction, and referencing an autoloaded constant from an initializer would couple boot order to app autoload.
+
+Verification:
+
+- `bin/rails test test/requests/api_audit_logging_test.rb test/requests/privacy_redaction_test.rb test/requests/financial_workflow_test.rb`
+- Result: 11 runs, 109 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop app/services/privacy app/services/audit_logs` and `bin/rails zeitwerk:check`: clean.

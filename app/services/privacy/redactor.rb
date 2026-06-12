@@ -2,20 +2,6 @@ module Privacy
   class Redactor
     FILTERED = "[FILTERED]".freeze
 
-    SENSITIVE_KEYS = %w[
-      document_number
-      legal_name
-      pix_key
-      receiver_name
-      destination_reference
-      metadata
-      password
-      token
-      secret
-      api_key
-      idempotency_key
-    ].freeze
-
     def self.name(value)
       value.present? ? FILTERED : value
     end
@@ -40,7 +26,7 @@ module Privacy
       case value
       when Hash
         value.each_with_object({}) do |(key, item), result|
-          result[key] = sensitive_key?(key) ? redacted_value(key, item) : sanitize_response(item)
+          result[key] = SensitiveKeys.match?(key) ? redacted_value(key, item) : sanitize_response(item)
         end
       when Array
         value.map { |item| sanitize_response(item) }
@@ -56,12 +42,6 @@ module Privacy
       "#{FILTERED}:#{tail}"
     end
     private_class_method :mask_tail
-
-    def self.sensitive_key?(key)
-      normalized = key.to_s.downcase
-      SENSITIVE_KEYS.any? { |sensitive| normalized.include?(sensitive) }
-    end
-    private_class_method :sensitive_key?
 
     def self.redacted_value(key, value)
       case key.to_s

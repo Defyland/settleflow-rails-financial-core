@@ -25,6 +25,7 @@ class ApiAuditLoggingTest < ActionDispatch::IntegrationTest
     assert_equal 201, audit_log.metadata.fetch("status")
     assert_nil audit_log.metadata["error_code"]
     assert_equal "audit-success-customer", params.fetch("external_id")
+    assert_equal "[FILTERED]", params.fetch("legal_name")
     assert_equal "[FILTERED]", params.fetch("document_number")
     assert_equal "[FILTERED]", params.fetch("metadata")
   end
