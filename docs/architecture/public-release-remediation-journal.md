@@ -629,3 +629,17 @@ Decision notes:
 Verification:
 
 - Docs-only change. `rg` confirms no remaining doc claims that `operator` can reject Pix or retry outbox outside the ADR's historical/superseded text.
+
+#### R24 fix redis-usage docs after the cache lock removal
+
+Implemented:
+
+- Updated `docs/database/redis-usage.md` to reference only `Operational::RedisTemporaryLock` (and the `redis:verify` rake task that exercises it), since R18 deleted the cache-backed `Operational::TemporaryLock`.
+
+Decision notes:
+
+- `redis-usage.md` is living guidance on allowed Redis use, so it was corrected. The `learning-journal.md` mention of the cache lock is left untouched: that journal is a historical record up to `de31647`, where the cache lock genuinely existed.
+
+Verification:
+
+- Docs-only change. `rg "Operational::TemporaryLock"` across `app lib config docs` returns no live reference outside the historical learning journal.

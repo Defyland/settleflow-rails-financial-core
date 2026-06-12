@@ -6,7 +6,7 @@ Allowed Redis use:
 
 - Rate-limit counters.
 - Short-lived cache entries.
-- Temporary non-financial locks through `Operational::TemporaryLock` or `Operational::RedisTemporaryLock`.
+- Temporary non-financial locks through `Operational::RedisTemporaryLock` (exercised by the `redis:verify` rake task).
 - Feature flags or operational throttles with PostgreSQL fallback.
 
 Forbidden Redis use:
