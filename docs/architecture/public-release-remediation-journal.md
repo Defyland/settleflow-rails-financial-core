@@ -578,3 +578,18 @@ Verification:
 - `bin/rails test test/services/wallets_statement_builder_test.rb test/requests/financial_workflow_test.rb test/requests/ops_console_request_test.rb test/services/financial_branch_coverage_test.rb`
 - Result: 27 runs, 344 assertions, 0 failures, 0 errors, 0 skips.
 - `bin/rubocop` on the touched files: no offenses.
+
+#### R21 decision journal and the immutability ownership ruling
+
+Implemented:
+
+- Created `docs/decisions.md`, the lightweight decision log this workspace expects alongside the formal ADRs, and recorded the Session 4 decisions in it.
+- Resolved the thermo "inconsistent immutability" finding as a documented decision rather than code churn: the five model-level immutability callbacks stay (they are query-free guards that return a clean error and are backed by the authoritative DB trigger), and the reconciliation guards stay removed (they performed their own cross-table query the trigger already does).
+
+Decision notes:
+
+- The maintainability finding was "five models duplicate the DB immutability trigger with a callback while reconciliation does not." Verified each retained guard is column-only (`OperatorApproval#prevent_terminal_mutation` reads `status_in_database`; the rest are unconditional `raise`/`throw`), so the distinction from the removed reconciliation guards is real (query cost), not arbitrary. Documented the rule so the next reader knows when to keep vs. drop an app-level immutability guard.
+
+Verification:
+
+- Docs-only change; no test impact. `docs/decisions.md` added; remediation journal cross-referenced.
