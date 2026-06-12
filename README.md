@@ -38,7 +38,7 @@ See [docs/architecture/overview.md](docs/architecture/overview.md).
 
 ## 6. Tech stack
 
-- Ruby `3.4.2`
+- Ruby `3.4.9`
 - Rails `8.1`
 - PostgreSQL with `pgcrypto` as the OLTP source of truth
 - ClickHouse HTTP ingestion for analytics-only financial events

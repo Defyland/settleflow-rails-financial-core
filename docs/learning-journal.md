@@ -1,6 +1,6 @@
 # SettleFlow Learning Journal
 
-Este journal documenta a história do repositório até o commit `325d4f2`, que é o `HEAD` gravado no momento desta edição. Esta versão em working tree foi expandida justamente para eliminar o corte anterior em `9df9e43` e cobrir todo o `git log` atual.
+Este journal documenta a história do repositório até o commit `de31647`, que era o `HEAD` imediatamente anterior a esta edição. Esta atualização amplia o valor pedagógico do texto e também avança a cronologia para cobrir o fechamento residual do audit e a última leva de refinamentos documentais.
 
 ## Como este journal usa evidências
 
@@ -14,10 +14,10 @@ Este journal documenta a história do repositório até o commit `325d4f2`, que 
   o journal diz isso explicitamente, em vez de fingir um ciclo exato.
 
 - Quando uma afirmação depende de leitura do código atual:
-  o journal aponta arquivos concretos, por exemplo `app/services/ledger/journal_poster.rb` ou `lib/database/consistency_verifier.rb`.
+  o journal aponta arquivos concretos, por exemplo `app/services/ledger/journal_poster.rb`, `lib/database/consistency_verifier.rb` ou `lib/database/consistency_checks/*`.
 
 - Escopo:
-  commits já gravados até `325d4f2`. Como esta ampliação ainda está em working tree, não existe neste instante um commit novo fora do escopo; se outro commit for criado depois desta edição, o journal precisa ser avançado junto.
+  commits já gravados até `de31647`. Esta edição ainda não cria um novo fato histórico; ela melhora a clareza do journal sobre o histórico já existente. Se outro commit for criado depois desta edição, o journal precisa ser avançado junto.
 
 ## O que o histórico não prova
 
@@ -42,6 +42,14 @@ Este journal documenta a história do repositório até o commit `325d4f2`, que 
 O objetivo do projeto, pelo que `README.md`, `app/services/ledger/journal_poster.rb`, `app/services/outbox_events/emit.rb` e `db/structure.sql` deixam explícito, é ensinar em um repositório Rails pequeno o bastante para ser estudado de ponta a ponta como modelar um core financeiro sem esconder as partes difíceis atrás de um CRUD de carteira. O fluxo central é: dinheiro entra por comandos idempotentes, vira lançamento contábil imutável, atualiza projeções derivadas e publica evidência assíncrona sem perder rastreabilidade.
 
 Em outras palavras: o material do repositório aponta para uma combinação de contabilidade de dupla entrada, isolamento por tenant, outbox transacional, governança operacional e verificações de banco em um único monólito Rails. README e ADRs não apresentam isso como arquitetura definitiva; apresentam como uma primeira versão deliberadamente simples, explícita e auditável para esse tipo de problema.
+
+Ao terminar este journal, o leitor deve ser capaz de:
+
+- explicar por que o ledger é a verdade e `BalanceProjection` é só leitura derivada;
+- seguir um comando financeiro real do HTTP até `JournalEntry` e `OutboxEvent`;
+- apontar quais invariantes vivem no Ruby e quais foram empurrados para o banco;
+- dizer quais testes provam concorrência, replay, redaction e contrato público;
+- descrever o que este repositório ensina bem e o que ele deliberadamente ainda não prova.
 
 ## 2. Como ler o repositório primeiro, em ordem de aprendizado
 
@@ -101,6 +109,7 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
 
 11. Feche com os verificadores e a documentação arquitetural:
    `lib/database/consistency_verifier.rb`
+   `lib/database/consistency_checks/*`
    `lib/tasks/database_engineering.rake`
    `docs/adr/*.md`
    `docs/database/*.md`
@@ -112,6 +121,20 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
    `test/services/financial_concurrency_test.rb`
    `test/models/database_financial_invariants_test.rb`
    `test/services/database_consistency_verifier_test.rb`
+
+### O que ignorar na primeira passada
+
+- Não comece por `db/structure.sql`.
+  Leia primeiro os services e os testes que dão nome aos invariantes; volte ao SQL só depois que os conceitos já estiverem claros.
+
+- Não trate `lib/database/*` como domínio principal logo de início.
+  Esse diretório é importante, mas ele ensina readiness e enforcement operacional, não o fluxo base do dinheiro.
+
+- Não tente estudar todos os fluxos financeiros em paralelo na primeira leitura.
+  Funding e transfer bastam para entender o esqueleto antes de entrar em Pix, payout, refund, split e MED.
+
+- Não use o system test como mapa completo da governança.
+  A UI existe para provar a superfície humana; a maior parte das decisões críticas ficou melhor localizada em request e service tests.
 
 ## 3. História cronológica da implementação
 
@@ -200,6 +223,15 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
 - Esta fase não cria feature de domínio nova, mas muda o valor pedagógico do repositório: o journal deixa de ser resumo narrativo e passa a operar como artefato técnico auditável contra `git log`.
 - Base usada:
   commits `ef36175`, `2bc5f07`, `ad23cb2`, `c3eab77`, `325d4f2`; diffs sucessivos de `docs/learning-journal.md`, validação automática da timeline, releitura dos arquivos reais citados no journal e a seção 13 desta própria documentação.
+
+### Fase 10: fechamento residual do audit e último aperto pedagógico (`9011170` a `de31647`, 2026-06-11)
+
+- Depois da remediação principal e do endurecimento documental anterior, o histórico registra um fechamento mais fino: apagar duplicações que sobraram do audit, deixar decisões técnicas explícitas e avançar o próprio journal até o `HEAD` então vigente.
+- `9011170` remove callbacks Rails redundantes de reconciliação e deixa o banco como fonte única da imutabilidade por evidência; `e837ffc` decompõe `Database::ConsistencyVerifier` em checks menores; `b44efa1`, `261b83c`, `e72a193`, `8a541fb` e `24ae406` limpam callable services, shape interno de split, guard de payout, predicados do outbox e tratamento repetido de erro em controllers ops.
+- `14498bb` registra essas decisões no journal de remediação, e `de31647` volta ao learning journal para estender a cronologia e alinhar o texto com o estado real da branch.
+- Esta fase não muda o produto visível; ela melhora legibilidade, ownership e valor de ensino do repositório, reduzindo exatamente os resíduos que um review estrutural ainda apontaria.
+- Base usada:
+  commits `9011170`, `e837ffc`, `b44efa1`, `261b83c`, `e72a193`, `8a541fb`, `24ae406`, `14498bb`, `de31647`; `app/models/reconciliation_run.rb`, `app/models/reconciliation_row.rb`, `lib/database/consistency_verifier.rb`, `lib/database/consistency_checks/*`, `app/services/application_service.rb`, `app/services/split_payments/create.rb`, `app/services/payouts/settle.rb`, `app/models/outbox_event.rb`, `app/controllers/ops/*`, `docs/architecture/public-release-remediation-journal.md`.
 
 ## Features importantes como unidades completas
 
@@ -344,7 +376,7 @@ Em outras palavras: o material do repositório aponta para uma combinação de c
 - Problema que resolve:
   o histórico bruto em `git log` prova ordem e diffs, mas não ensina sozinho como reproduzir a arquitetura, nem diferencia com clareza fato histórico, inferência e lacuna de evidência.
 - Commits da feature:
-  `1794cfe`, `c5f6f0a`, `4dad992`, `23879e6`, `4f3c653`, `ef36175`, `2bc5f07`, `ad23cb2`, `c3eab77`, `325d4f2`.
+  `1794cfe`, `c5f6f0a`, `4dad992`, `23879e6`, `4f3c653`, `ef36175`, `2bc5f07`, `ad23cb2`, `c3eab77`, `325d4f2`, `de31647`.
 - Arquivos principais:
   `docs/learning-journal.md`, `docs/architecture/public-release-remediation-spec.md`, `docs/architecture/public-release-remediation-journal.md`.
 - Por que a solução final tomou essa forma:
@@ -1276,6 +1308,40 @@ Dito isso, o histórico posterior registra TDD e teste-dirigido por correção e
 | 2026-06-11 | `ad23cb2` | A cobertura de decisões técnicas ainda estava rasa em trechos importantes | Deepen decision coverage in learning journal | Verificação: revisão manual do journal |
 | 2026-06-11 | `c3eab77` | Ainda havia agrupamentos vagos de commits em decisões grandes demais | Detail grouped technical decisions | Verificação: revisão manual do journal |
 | 2026-06-11 | `325d4f2` | O journal ainda não cobria features inteiras, o que o histórico não prova e a revisão adversarial explícita | Strengthen learning journal evidence and feature coverage | Verificação: checks da seção 13 + timeline validada contra `git log` |
+| 2026-06-11 | `9011170` | A reconciliação ainda duplicava no Rails um guard que o banco já executava melhor | Rely on database reconciliation guards | Sem teste novo explícito; comportamento preservado por invariantes e consistency checks já existentes |
+| 2026-06-11 | `e837ffc` | O consistency verifier ainda concentrava perguntas demais num arquivo único | Split database consistency checks | Teste(s): `database_consistency_verifier_test.rb` |
+| 2026-06-11 | `b44efa1` | O padrão `.call` ainda repetia wrappers idênticos inclusive em services com bloco | Centralize callable service base | Teste(s): `operational_temporary_lock_test.rb`, `operational_redis_temporary_lock_test.rb`, `idempotency_test.rb` +4 |
+| 2026-06-11 | `261b83c` | O split payment ainda aceitava shape frouxo demais dentro do service | Normalize split payment entries | Teste(s): `split_payment_create_test.rb`, `financial_branch_coverage_test.rb` |
+| 2026-06-11 | `e72a193` | O settlement de payout ainda escondia reload e regra de early settlement no mesmo predicado | Make payout settlement guard explicit | Teste(s): `payout_lifecycle_test.rb` |
+| 2026-06-11 | `8a541fb` | O outbox ainda carregava predicado duplicado e defaults de criação difíceis de ler | Simplify outbox publishability checks | Teste(s): `outbox_publish_job_test.rb`, `outbox_sweep_job_test.rb` |
+| 2026-06-11 | `24ae406` | Os controllers ops ainda repetiam o mesmo tratamento de erro de workflow | Consolidate ops workflow errors | Teste(s): `ops_console_request_test.rb` |
+| 2026-06-11 | `14498bb` | As decisões do cleanup residual ainda não estavam registradas na trilha de remediação | Record audit residual decisions | Docs/contratos atualizados |
+| 2026-06-11 | `de31647` | O learning journal ainda não estava avançado até o HEAD mais recente | Extend learning journal through current head | Docs/contratos atualizados |
+
+## 9A. Perguntas de recuperação e mini-exercícios
+
+Use esta seção depois da primeira leitura completa. A ideia aqui não é reler tudo; é tentar responder de memória e só então confirmar no código.
+
+- Explique em 5 passos o caminho de um funding desde o HTTP até o evento publicado.
+  Confirme em `app/controllers/v1/fundings_controller.rb`, `app/services/fundings/create.rb`, `app/services/ledger/journal_poster.rb` e `app/services/outbox_events/emit.rb`.
+
+- Qual teste prova que o projeto trata risco de deadlock em comandos multi-wallet?
+  Procure primeiro de memória. Depois confirme em `test/services/financial_concurrency_test.rb` e no boundary `app/services/wallets/projection_locker.rb`.
+
+- Qual arquivo é a fonte mais rápida para descobrir nomes de eventos financeiros, chaves de idempotência e triggers esperados?
+  Resposta esperada: `app/services/financial_contracts.rb`.
+
+- O que este repositório empurra para o banco e o que ele deixa no Ruby?
+  Valide sua resposta cruzando `db/structure.sql`, `lib/database/consistency_checks/*`, `app/services/*` e `test/models/database_financial_invariants_test.rb`.
+
+- Por que `d13051a` preferiu exceção explícita para legado em vez de reescrever o histórico do outbox?
+  Confirme em `app/models/outbox_legacy_command_identity_exception.rb`, `docs/events/messaging.md` e na timeline desta própria seção.
+
+- Se você tivesse de ler só três testes para entender o projeto, quais escolheria e por quê?
+  Um conjunto defensável é: `test/requests/idempotency_test.rb`, `test/services/ledger_journal_poster_test.rb` e `test/models/database_financial_invariants_test.rb`.
+
+- Exercício curto de design:
+  imagine um novo comando financeiro que debita duas wallets e publica um evento externo. Escreva, sem abrir o código, quais boundaries ele obrigatoriamente precisa tocar. Depois confira contra as seções 10 e 11.
 
 ## 10. Checklist de boundaries para futuras features
 
@@ -1404,12 +1470,12 @@ Dito isso, o histórico posterior registra TDD e teste-dirigido por correção e
 ### Revisão estrutural rigorosa
 
 - Escopo:
-  estado funcional revisado diretamente na leva final de remediação, histórico de commits até `325d4f2` e confiabilidade da suíte que protege invariantes.
+  estado funcional revisado diretamente na leva final de remediação, histórico de commits até `de31647` e confiabilidade da suíte que protege invariantes.
 
 - Base desta seção:
   os comandos abaixo foram executados na revisão final do estado funcional que antecede os últimos commits documentais/refactors leves deste mesmo dia.
   Para `63618c2`, `0f83617`, `97a34fd` e `9df9e43`, o journal se apoia em `git show`, arquivos tocados e testes adicionados no próprio commit; ele não finge um rerun completo separado por commit quando isso não aconteceu.
-  Para os commits documentais `ef36175`, `2bc5f07`, `ad23cb2`, `c3eab77` e `325d4f2`, a base é `git show`, diff do próprio `docs/learning-journal.md`, releitura dos arquivos reais citados e validação automática da timeline contra o `git log` completo.
+  Para os commits documentais `ef36175`, `2bc5f07`, `ad23cb2`, `c3eab77`, `325d4f2` e `de31647`, a base é `git show`, diff do próprio `docs/learning-journal.md`, releitura dos arquivos reais citados e validação automática da timeline contra o `git log` completo.
 
 - Checks executados na revisão funcional anterior:
   `bin/rails db:test:prepare`
@@ -1492,6 +1558,7 @@ Dito isso, o histórico posterior registra TDD e teste-dirigido por correção e
   A seção de revisão Rails ainda citava `lib/database/consistency_verifier.rb` como hotspot grande, mesmo depois da decomposição para `lib/database/consistency_checks/*`.
   A timeline já estava correta, mas faltava registrar a validação automática recente como evidência explícita.
   O texto também ainda parava em `9df9e43`, deixando de fora a própria fase final de endurecimento documental já presente no `git log`.
+  Mesmo depois de avançar para `325d4f2`, ainda faltava explicitar melhor o objetivo de aprendizagem, o que ignorar na primeira passada e um conjunto curto de perguntas de recuperação ancoradas em arquivos reais.
 
 - O que foi corrigido e por quê:
   esta atualização adicionou a seção `O que o histórico não prova` para reduzir risco de causalidade inventada.
@@ -1499,7 +1566,8 @@ Dito isso, o histórico posterior registra TDD e teste-dirigido por correção e
   Ajustou a linguagem de seção 4 para deixar claro quando alternativa é histórica e quando é só inferência comparativa.
   Atualizou a revisão Rails para refletir o hotspot real atual e não um estado anterior do código.
   Registrou a rerodagem de `rubocop`, `brakeman`, `bundler-audit`, `zeitwerk`, `critical_money_branch_coverage`, `database:verify_consistency`, `database:migration_safety_check` e do conjunto de testes mais diretamente ligado às decisões documentadas.
-  Por fim, removeu o corte em `9df9e43` e estendeu a cronologia e a timeline até `325d4f2`, que é o `HEAD` gravado desta análise.
+  Por fim, removeu o corte em `9df9e43` e estendeu a cronologia e a timeline primeiro até `325d4f2` e agora até `de31647`, que era o `HEAD` imediatamente anterior a esta edição.
+  Esta edição também acrescenta objetivo de aprendizagem explícito, orientação sobre o que ignorar no primeiro passe e uma seção curta de recuperação ativa amarrada a arquivos e testes reais.
 
 - Risco residual que continua sendo inferência:
   a motivação exata dentro de commits grandes continua parcialmente inferida a partir do diff e dos testes.

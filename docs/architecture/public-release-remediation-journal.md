@@ -394,3 +394,37 @@ Verification:
 - Result: 219 runs, 1370 assertions, 0 failures, 0 errors, 0 skips; line 91.79%, global branch 70.92%.
 - `bin/critical_money_branch_coverage`
 - Result: critical money branch coverage 85.78% (199/232).
+
+## 2026-06-12
+
+### Session 3: Ruby 3.4.9 revalidation and zero-finding re-audit
+
+Implemented:
+
+- Validated the working-tree Ruby pin update from `3.4.2` to `3.4.9` across `.ruby-version`, `.tool-versions`, `Dockerfile`, and `README.md`.
+- Re-ran the thermo-nuclear and Ruby/Rails review lenses against the current working tree after the residual cleanup and journal hardening changes.
+- Confirmed there were no new justified structural, Rails-boundary, or operability findings worth changing in code.
+- Added this verification entry so the repository records not only what was changed, but also why the next step was deliberately to stop changing behavior.
+
+Verification:
+
+- `asdf exec bundle install`
+- Result: bundle completed successfully under Ruby `3.4.9`.
+- `export PATH="$HOME/.asdf/shims:$PATH"; ruby -v && bundle -v && bin/rails runner 'puts RUBY_VERSION; puts Rails.version'`
+- Result: Ruby `3.4.9`, Bundler `4.0.10`, Rails `8.1.3`.
+- `export PATH="$HOME/.asdf/shims:$PATH"; bin/ci`
+- Result: 219 runs, 1370 assertions, 0 failures, 0 errors, 0 skips; line coverage 92.18%; global branch coverage 70.97%; critical money branch coverage 85.47%; 2 system tests, 13 assertions, 0 failures; RuboCop no offenses; Brakeman 0 warnings; bundler-audit no vulnerabilities; `openapi.yaml` and `docs/events/outbox_event.v1.json` parsed.
+- `export PATH="$HOME/.asdf/shims:$PATH"; bin/rails zeitwerk:check`
+- Result: passed; only the standard unchecked `test/mailers/previews` eager-load warning.
+- `export PATH="$HOME/.asdf/shims:$PATH"; bin/rails database:verify_consistency`
+- Result: every consistency check reported `ok`.
+- `export PATH="$HOME/.asdf/shims:$PATH"; bin/rails database:migration_safety_check`
+- Result: no high-volume migration safety findings.
+- `npx --yes @redocly/cli lint openapi.yaml`
+- Result: valid OpenAPI description.
+
+Decision notes:
+
+- This session hit an environment trap before any repo failure: the shell `PATH` still had a direct Ruby `3.4.4` install before the asdf shims. Validation was rerun with the shims explicitly prepended. That is an execution-environment concern, not a repository design flaw.
+- No code-path change followed the re-audit because the current repo state already clears the previous thermo/Rails findings and the verification suite is strong enough to justify stopping.
+- The right specialist signal here is restraint: once the repo is coherent, tested, and well-instrumented, adding more abstractions or cleanup without a fresh finding would lower quality rather than raise it.
