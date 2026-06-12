@@ -486,3 +486,20 @@ Verification:
 - `bin/rails test test/requests/api_audit_logging_test.rb test/requests/privacy_redaction_test.rb test/requests/financial_workflow_test.rb`
 - Result: 11 runs, 109 assertions, 0 failures, 0 errors, 0 skips.
 - `bin/rubocop app/services/privacy app/services/audit_logs` and `bin/rails zeitwerk:check`: clean.
+
+#### R16 JournalEntry#balanced? matches the per-currency invariant
+
+Implemented:
+
+- Changed `JournalEntry#balanced?` to group ledger lines by currency and require debits to equal credits within each currency, instead of comparing total debits against total credits across all currencies.
+
+Decision notes:
+
+- The old predicate would call a multi-currency journal balanced when each side summed equally across different currencies, even though no currency netted to zero. `Ledger::JournalPoster` and the database `assert_journal_entry_balanced` trigger both balance per currency, so the Ruby mirror now matches its authority.
+- No dedicated false-case test was added: the per-currency rejection is already exercised at the database level by `database_financial_invariants_test.rb` ("database rejects direct unbalanced journal inserts"), and `balanced?` is a test-convenience mirror with no production callers. The strengthened predicate is covered on the true path by the 38 service assertions below.
+
+Verification:
+
+- `bin/rails test test/services/ledger_journal_poster_test.rb test/services/transfer_create_test.rb test/services/split_payment_create_test.rb test/services/pix_payment_lifecycle_test.rb test/services/payout_lifecycle_test.rb test/services/refund_and_med_lifecycle_test.rb`
+- Result: 38 runs, 188 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop app/models/journal_entry.rb`: no offenses.

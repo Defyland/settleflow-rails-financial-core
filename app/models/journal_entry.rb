@@ -14,8 +14,15 @@ class JournalEntry < ApplicationRecord
   validates :event_type, inclusion: { in: SUPPORTED_EVENT_TYPES }
   validates :idempotency_key, uniqueness: { scope: :organization_id }
 
+  # Balanced means debits equal credits within every currency, matching
+  # Ledger::JournalPoster and the database balance trigger. A plain
+  # debit-vs-credit total across currencies would call a multi-currency
+  # journal balanced even when it is not.
   def balanced?
-    ledger_lines.debit.sum(:amount_cents) == ledger_lines.credit.sum(:amount_cents)
+    ledger_lines
+      .group(:currency)
+      .sum(Arel.sql("CASE WHEN direction = 'debit' THEN amount_cents ELSE -amount_cents END"))
+      .values.all?(&:zero?)
   end
 
   private
