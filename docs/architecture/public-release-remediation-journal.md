@@ -593,3 +593,24 @@ Decision notes:
 Verification:
 
 - Docs-only change; no test impact. `docs/decisions.md` added; remediation journal cross-referenced.
+
+### Session 5: follow-up audit (Codex post-remediation findings)
+
+A second Codex pass over the Session 4 branch found three residual issues, all consequences of the Session 4 changes: an incomplete log-filtering fix and two stale docs. Same loop: one atomic commit per fix.
+
+#### R22 filter legal_name in framework request logs
+
+Implemented:
+
+- Added `:legal_name` to `config.filter_parameters`.
+- Added `test/config/filter_parameters_test.rb` proving the framework filter masks `legal_name`, `document_number`, `pix_key`, and `password` while keeping non-sensitive keys.
+
+Decision notes:
+
+- R15 closed the `legal_name` leak in the application audit path via `Privacy::SensitiveKeys`, but the Rails `config.filter_parameters` layer (which redacts the framework's own request logs) still lacked `:legal_name`, so the name continued to appear in raw request logs. The two layers stay separate by design, but the initializer needed the literal symbol regardless — keeping the layer "separate" was never a reason to omit the key. The R15 note has been superseded on this point.
+
+Verification:
+
+- `bin/rails test test/config/filter_parameters_test.rb`
+- Result: 1 run, 5 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop`: no offenses.
