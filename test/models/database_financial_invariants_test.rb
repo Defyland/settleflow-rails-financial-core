@@ -307,6 +307,26 @@ class DatabaseFinancialInvariantsTest < ActiveSupport::TestCase
     end
   end
 
+  test "database rejects invalid lifecycle status values through check constraints" do
+    customer = create_customer(organization: @organization)
+    cases = {
+      "wallets" => @wallet.id,
+      "customers" => customer.id,
+      "ledger_accounts" => @wallet.liability_account.id,
+      "organizations" => @organization.id
+    }
+
+    cases.each do |table, id|
+      assert_raises(ActiveRecord::StatementInvalid, "#{table} accepted an invalid status") do
+        ActiveRecord::Base.transaction(requires_new: true) do
+          ActiveRecord::Base.connection.execute(
+            "UPDATE #{table} SET status = 'not_a_status' WHERE id = #{id}"
+          )
+        end
+      end
+    end
+  end
+
   test "database rejects direct unbalanced journal inserts" do
     destination_wallet = create_wallet(organization: @organization)
     assert_raises(ActiveRecord::StatementInvalid) do

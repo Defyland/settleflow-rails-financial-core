@@ -503,3 +503,23 @@ Verification:
 - `bin/rails test test/services/ledger_journal_poster_test.rb test/services/transfer_create_test.rb test/services/split_payment_create_test.rb test/services/pix_payment_lifecycle_test.rb test/services/payout_lifecycle_test.rb test/services/refund_and_med_lifecycle_test.rb`
 - Result: 38 runs, 188 assertions, 0 failures, 0 errors, 0 skips.
 - `bin/rubocop app/models/journal_entry.rb`: no offenses.
+
+#### R17 database CHECK constraints on the five lifecycle status columns
+
+Implemented:
+
+- Added `customers_status_check`, `journal_entries_status_check`, `ledger_accounts_status_check`, `organizations_status_check`, and `wallets_status_check` in migration `20260612120000`, matching each model enum's allowed values.
+- Added a `database_financial_invariants_test` case proving the database rejects an invalid status written by raw SQL (bypassing the Active Record enum) on the four mutable tables, each isolated in its own savepoint.
+
+Decision notes:
+
+- These five were the only status columns still guarded solely by the Rails enum while every other financial status column already had a DB `*_status_check`. For a system whose stated philosophy is "the database owns invariants," `journal_entries.status` especially should not depend on the application layer.
+- `journal_entries` is not exercised by the raw-UPDATE test because its append-only trigger rejects any update before the status check is reached; its constraint presence is verified in `db/structure.sql` and its append-only guarantee is already tested separately.
+- Migration follows the repo's `add_check_constraint validate: false` + `validate_check_constraint` idiom.
+
+Verification:
+
+- `bin/rails db:migrate` (development) then `db:test:prepare`; `db/structure.sql` now carries all five constraints.
+- `bin/rails test test/models/database_financial_invariants_test.rb`
+- Result: 26 runs, 118 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rails database:verify_consistency` all checks ok; `database:migration_safety_check` no findings; `bin/rubocop` clean.
