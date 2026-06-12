@@ -51,63 +51,6 @@ module FinancialContracts
     MedCase
   ].freeze
 
-  IDEMPOTENCY_REQUIRED_COMMAND_CONSTRAINTS = {
-    "fundings" => "fundings_idempotency_key_required_check",
-    "transfers" => "transfers_idempotency_key_required_check",
-    "split_payments" => "split_payments_idempotency_key_required_check",
-    "pix_payments" => "pix_payments_idempotency_key_required_check",
-    "payouts" => "payouts_idempotency_key_required_check",
-    "refunds" => "refunds_idempotency_key_required_check",
-    "med_cases" => "med_cases_idempotency_key_required_check"
-  }.freeze
-
-  OUTBOX_EVIDENCE_CONSTRAINTS = %w[
-    outbox_events_payload_sha256_hex_check
-    outbox_events_status_check
-    outbox_events_delivery_state_check
-  ].freeze
-
-  OUTBOX_EVIDENCE_TRIGGERS = %w[
-    outbox_legacy_command_identity_exceptions_prevent_mutation
-    outbox_events_prevent_evidence_mutation
-    outbox_events_aggregate_evidence_before_write
-    outbox_events_med_resolution_payload_before_write
-    outbox_events_command_identity_before_write
-  ].freeze
-
-  FINANCIAL_STATE_EVIDENCE_TRIGGERS = %w[
-    fundings_state_evidence_after_write
-    fundings_prevent_evidence_mutation
-    transfers_state_evidence_after_write
-    transfers_prevent_evidence_mutation
-    split_payments_state_evidence_after_write
-    split_payments_prevent_evidence_mutation
-    split_entries_state_evidence_after_write
-    split_entries_prevent_evidence_mutation
-    payouts_state_evidence_after_write
-    payouts_prevent_evidence_mutation
-    refunds_state_evidence_after_write
-    refunds_prevent_evidence_mutation
-    refunds_lock_pix_payment_before_write
-    refunds_pix_payment_evidence_after_write
-    pix_payments_refund_evidence_after_write
-    med_cases_state_evidence_after_write
-    med_cases_prevent_evidence_mutation
-    pix_payments_state_evidence_after_write
-    pix_payments_prevent_evidence_mutation
-  ].freeze
-
-  FINANCIAL_JOURNAL_EVIDENCE_TRIGGERS = %w[
-    journal_entries_financial_evidence_after_write
-    ledger_lines_financial_evidence_after_write
-    fundings_journal_evidence_after_write
-    transfers_journal_evidence_after_write
-    split_payments_journal_evidence_after_write
-    pix_payments_journal_evidence_after_write
-    payouts_journal_evidence_after_write
-    refunds_journal_evidence_after_write
-  ].freeze
-
   module_function
 
   def pix_payment_settlement_key(pix_payment)

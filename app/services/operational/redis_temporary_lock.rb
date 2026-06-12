@@ -2,8 +2,21 @@ require "redis-client"
 
 module Operational
   class RedisTemporaryLock < ApplicationService
-    DEFAULT_TTL = Operational::TemporaryLock::DEFAULT_TTL
-    FORBIDDEN_KEY_PARTS = Operational::TemporaryLock::FORBIDDEN_KEY_PARTS
+    DEFAULT_TTL = 30.seconds
+    # Operational locks must never guard financial source-of-truth state; those
+    # invariants live in PostgreSQL transactions, not in a best-effort cache.
+    FORBIDDEN_KEY_PARTS = %w[
+      balance
+      journal
+      ledger
+      idempotency
+      payout
+      refund
+      settlement
+      med
+      reconciliation
+      audit
+    ].freeze
     RELEASE_SCRIPT = <<~LUA.squish
       if redis.call("GET", KEYS[1]) == ARGV[1] then
         return redis.call("DEL", KEYS[1])

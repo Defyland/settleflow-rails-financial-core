@@ -428,3 +428,264 @@ Decision notes:
 - This session hit an environment trap before any repo failure: the shell `PATH` still had a direct Ruby `3.4.4` install before the asdf shims. Validation was rerun with the shims explicitly prepended. That is an execution-environment concern, not a repository design flaw.
 - No code-path change followed the re-audit because the current repo state already clears the previous thermo/Rails findings and the verification suite is strong enough to justify stopping.
 - The right specialist signal here is restraint: once the repo is coherent, tested, and well-instrumented, adding more abstractions or cleanup without a fresh finding would lower quality rather than raise it.
+
+### Session 4: post-audit remediation (Codex + thermo-nuclear findings)
+
+A second adversarial audit (Codex pass plus a thermo-nuclear / Ruby-Rails code-smell pass) produced a fresh finding list. This session works it one atomic commit per fix, each followed by re-running both review lenses.
+
+#### R13 ops authorization: every ops mutation is admin-only
+
+Implemented:
+
+- Changed `Ops::CapabilityPolicy` so `reject_pix_payment` and `retry_outbox_event` require `admin`, matching the already admin-only settle/reverse/MED capabilities.
+- Rewrote the ops console request test to assert a non-admin operator is denied every ops mutation (settle, reverse, MED accept, reject Pix, retry outbox) and that the denial leaves the records untouched and enqueues no publish job.
+
+Decision notes:
+
+- Users have no `organization_id`; operators are global staff. Ops boundaries resolve records globally by `public_id`, so any operator-writable action was a blind cross-tenant write (an operator could reject a Pix payment or retry an outbox event for any tenant by guessing the id). Reads were already admin-gated in `Ops::BaseController#require_admin_global_read!`; writes now match. The `operator` role keeps `can_operate?` for sign-in but currently holds no ops-console capability — making it org-scoped or granting it a real scoped power is a deliberate later choice, not part of this security fix.
+
+Verification:
+
+- `bin/rails test test/requests/ops_console_request_test.rb test/requests/privacy_redaction_test.rb`
+- Result: 11 runs, 206 assertions, 0 failures, 0 errors, 0 skips.
+
+#### R14 metrics endpoint fails closed in production
+
+Implemented:
+
+- Reworked `Observability::MetricsController#authenticate_metrics!` so a blank `METRICS_BEARER_TOKEN` returns `503 metrics_unavailable` in production instead of building an empty `"Bearer "` expectation and comparing against it. Development/test still serve metrics open when no token is set.
+- Replaced the double-negative `unless ... bytesize && secure_compare` guard with an explicit `return if match` followed by a single `401` render.
+- Added an operability test proving production with no token rejects both an empty `Authorization` header and a literal `Authorization: Bearer `.
+
+Decision notes:
+
+- The previous code accepted exactly `Authorization: Bearer ` when the env var was unset in production, a silent-misconfiguration auth bypass exposing the Prometheus registry. Production now fails closed and matches the boot-time hard-fail posture already used by `Outbox::Publishers::HttpPublisher#validate_endpoint!`.
+- While reviewing the change, the new test reintroduced a `with_rails_env` helper that already existed verbatim in `outbox_http_publisher_test.rb`. Hoisted it to `test/test_helpers/environment_test_helper.rb` and removed both local copies, so the env-stub has one owner.
+
+Verification:
+
+- `bin/rails test test/requests/operability_test.rb test/services/outbox_http_publisher_test.rb`
+- Result: 8 runs, 31 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop` on the six touched files: no offenses.
+
+#### R15 single canonical sensitive-key registry (closes the legal_name audit leak)
+
+Implemented:
+
+- Added `Privacy::SensitiveKeys` as the one registry of PII/secret keys plus a `match?` predicate.
+- Rewired `Privacy::Redactor` (response/ops masking) and `AuditLogs::ParameterSanitizer` (audit redaction) to consult it, deleting both local `SENSITIVE_KEYS` arrays and both copied `sensitive_key?` methods.
+- Added an audit-logging assertion that `legal_name` is now `[FILTERED]` in persisted audit params.
+
+Decision notes:
+
+- The two lists had drifted: `Redactor` listed `legal_name` and `ParameterSanitizer` did not, so a customer `legal_name` was masked in public API responses but written in clear to the audit log. One registry owns *what* is sensitive; each caller still owns *how* it masks. `password_confirmation` was dropped as a redundant entry — the substring match on `password` already covers it.
+- The Rails `config.filter_parameters` initializer is intentionally left separate: it is the framework log-filtering layer, not application redaction, and referencing an autoloaded constant from an initializer would couple boot order to app autoload.
+
+Verification:
+
+- `bin/rails test test/requests/api_audit_logging_test.rb test/requests/privacy_redaction_test.rb test/requests/financial_workflow_test.rb`
+- Result: 11 runs, 109 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop app/services/privacy app/services/audit_logs` and `bin/rails zeitwerk:check`: clean.
+
+#### R16 JournalEntry#balanced? matches the per-currency invariant
+
+Implemented:
+
+- Changed `JournalEntry#balanced?` to group ledger lines by currency and require debits to equal credits within each currency, instead of comparing total debits against total credits across all currencies.
+
+Decision notes:
+
+- The old predicate would call a multi-currency journal balanced when each side summed equally across different currencies, even though no currency netted to zero. `Ledger::JournalPoster` and the database `assert_journal_entry_balanced` trigger both balance per currency, so the Ruby mirror now matches its authority.
+- No dedicated false-case test was added: the per-currency rejection is already exercised at the database level by `database_financial_invariants_test.rb` ("database rejects direct unbalanced journal inserts"), and `balanced?` is a test-convenience mirror with no production callers. The strengthened predicate is covered on the true path by the 38 service assertions below.
+
+Verification:
+
+- `bin/rails test test/services/ledger_journal_poster_test.rb test/services/transfer_create_test.rb test/services/split_payment_create_test.rb test/services/pix_payment_lifecycle_test.rb test/services/payout_lifecycle_test.rb test/services/refund_and_med_lifecycle_test.rb`
+- Result: 38 runs, 188 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop app/models/journal_entry.rb`: no offenses.
+
+#### R17 database CHECK constraints on the five lifecycle status columns
+
+Implemented:
+
+- Added `customers_status_check`, `journal_entries_status_check`, `ledger_accounts_status_check`, `organizations_status_check`, and `wallets_status_check` in migration `20260612120000`, matching each model enum's allowed values.
+- Added a `database_financial_invariants_test` case proving the database rejects an invalid status written by raw SQL (bypassing the Active Record enum) on the four mutable tables, each isolated in its own savepoint.
+
+Decision notes:
+
+- These five were the only status columns still guarded solely by the Rails enum while every other financial status column already had a DB `*_status_check`. For a system whose stated philosophy is "the database owns invariants," `journal_entries.status` especially should not depend on the application layer.
+- `journal_entries` is not exercised by the raw-UPDATE test because its append-only trigger rejects any update before the status check is reached; its constraint presence is verified in `db/structure.sql` and its append-only guarantee is already tested separately.
+- Migration follows the repo's `add_check_constraint validate: false` + `validate_check_constraint` idiom.
+
+Verification:
+
+- `bin/rails db:migrate` (development) then `db:test:prepare`; `db/structure.sql` now carries all five constraints.
+- `bin/rails test test/models/database_financial_invariants_test.rb`
+- Result: 26 runs, 118 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rails database:verify_consistency` all checks ok; `database:migration_safety_check` no findings; `bin/rubocop` clean.
+
+#### R18 remove the dead cache temporary lock
+
+Implemented:
+
+- Deleted `Operational::TemporaryLock` (Rails.cache-backed) and its test. It had no caller anywhere; its only non-test role was hosting two constants imported by `Operational::RedisTemporaryLock`.
+- Inlined `DEFAULT_TTL` and `FORBIDDEN_KEY_PARTS` into `RedisTemporaryLock`, which is now self-contained and still used by the `redis:verify` rake smoke task.
+
+Decision notes:
+
+- The thermo pass flagged "two near-identical lock implementations, neither used in app code." On closer reading only the cache lock was truly dead; `RedisTemporaryLock` is referenced by `lib/tasks/database_engineering.rake` (`redis:verify`). The narrower fix removes the genuinely dead class and the cross-class constant import while preserving the Redis demo. The broader question of how much `lib/database` / operational tooling a portfolio app should carry is left as a deliberate product call, not folded into a security/maintainability commit.
+
+Verification:
+
+- `bin/rails test test/services/operational_redis_temporary_lock_test.rb`
+- Result: 3 runs, 14 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rails zeitwerk:check` and `bin/rubocop`: clean.
+
+#### R19 move database object-name mirrors out of FinancialContracts
+
+Implemented:
+
+- Moved the five lists of database trigger/constraint *names* (`OUTBOX_EVIDENCE_CONSTRAINTS`, `OUTBOX_EVIDENCE_TRIGGERS`, `FINANCIAL_STATE_EVIDENCE_TRIGGERS`, `FINANCIAL_JOURNAL_EVIDENCE_TRIGGERS`, `IDEMPOTENCY_REQUIRED_COMMAND_CONSTRAINTS`) from `FinancialContracts` into the single consistency-check class that consumes each, as `EXPECTED_TRIGGERS` / `EXPECTED_CONSTRAINTS` / `REQUIRED_COMMAND_CONSTRAINTS`.
+- Updated the verifier test to read the constants from their new owners.
+
+Decision notes:
+
+- `FinancialContracts` is the domain taxonomy: event types, actions, aggregate types, and lock-key builders. The names of migration-created triggers and constraints are an implementation detail of the schema, and the only code that needs them is the consistency checker that asserts they are present. Keeping them in the domain module coupled the taxonomy to migration internals and risked silent drift on a rename. This also follows the precedent already set by `IdempotencyEvidenceGuards::EXPECTED_CONSTRAINTS`.
+- Event-type taxonomies (`RECONCILIATION_EVENT_TYPES`, `JOURNAL_EVENT_TYPES`) and `FINANCIAL_COMMAND_AGGREGATE_TYPES` stayed: those are domain values, not schema object names.
+
+Verification:
+
+- `bin/rails test test/services/database_consistency_verifier_test.rb`
+- Result: 6 runs, 73 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rails database:verify_consistency` all checks ok; `bin/rails zeitwerk:check` and `bin/rubocop` (16 files): clean.
+
+#### R20 bound the wallet statement / balance-explanation ledger reads
+
+Implemented:
+
+- `Wallets::StatementBuilder` now loads only the most recent `limit` ledger lines (newest first) and derives each running balance backward from `LedgerAccount#balance_cents`, instead of materializing the wallet's entire history to slice one window.
+- `Wallets::BalanceExplainer#recent_lines` does the same, anchored on the ledger-derived available balance it already computes, returning the window oldest-first as before.
+- Added `wallets_statement_builder_test` proving the window is capped to `limit` and that running balances are correct for a partial window that excludes older lines (the case the existing request test never exercised).
+
+Decision notes:
+
+- `GET /v1/wallets/:id/statement` and `/balance_explanation` previously loaded every ledger line on every call to compute running balances from zero, then dropped all but the last 100/limit. On a high-volume wallet that is an unbounded request-path load. The running balance is recoverable from the current ledger total minus the deltas of the newer lines, so only the window plus two aggregate sums are needed.
+- The anchor is `LedgerAccount#balance_cents` (authoritative ledger sum), not `balance_projection.available_cents`. This preserves the original behavior of reading fresh ledger truth and avoids depending on the freshness of the caller's projection association — a regression an earlier draft introduced and the new partial-window test caught.
+- `Reconciliation::RowsBuilder#platform_cash_lines` was reviewed and left unchanged: it is already scoped to `statement_date.all_day` and iterated with `find_each`, so it is bounded by a single statement day, not the full history.
+
+Verification:
+
+- `bin/rails test test/services/wallets_statement_builder_test.rb test/requests/financial_workflow_test.rb test/requests/ops_console_request_test.rb test/services/financial_branch_coverage_test.rb`
+- Result: 27 runs, 344 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop` on the touched files: no offenses.
+
+#### R21 decision journal and the immutability ownership ruling
+
+Implemented:
+
+- Created `docs/decisions.md`, the lightweight decision log this workspace expects alongside the formal ADRs, and recorded the Session 4 decisions in it.
+- Resolved the thermo "inconsistent immutability" finding as a documented decision rather than code churn: the five model-level immutability callbacks stay (they are query-free guards that return a clean error and are backed by the authoritative DB trigger), and the reconciliation guards stay removed (they performed their own cross-table query the trigger already does).
+
+Decision notes:
+
+- The maintainability finding was "five models duplicate the DB immutability trigger with a callback while reconciliation does not." Verified each retained guard is column-only (`OperatorApproval#prevent_terminal_mutation` reads `status_in_database`; the rest are unconditional `raise`/`throw`), so the distinction from the removed reconciliation guards is real (query cost), not arbitrary. Documented the rule so the next reader knows when to keep vs. drop an app-level immutability guard.
+
+Verification:
+
+- Docs-only change; no test impact. `docs/decisions.md` added; remediation journal cross-referenced.
+
+### Session 5: follow-up audit (Codex post-remediation findings)
+
+A second Codex pass over the Session 4 branch found three residual issues, all consequences of the Session 4 changes: an incomplete log-filtering fix and two stale docs. Same loop: one atomic commit per fix.
+
+#### R22 filter legal_name in framework request logs
+
+Implemented:
+
+- Added `:legal_name` to `config.filter_parameters`.
+- Added `test/config/filter_parameters_test.rb` proving the framework filter masks `legal_name`, `document_number`, `pix_key`, and `password` while keeping non-sensitive keys.
+
+Decision notes:
+
+- R15 closed the `legal_name` leak in the application audit path via `Privacy::SensitiveKeys`, but the Rails `config.filter_parameters` layer (which redacts the framework's own request logs) still lacked `:legal_name`, so the name continued to appear in raw request logs. The two layers stay separate by design, but the initializer needed the literal symbol regardless — keeping the layer "separate" was never a reason to omit the key. The R15 note has been superseded on this point.
+
+Verification:
+
+- `bin/rails test test/config/filter_parameters_test.rb`
+- Result: 1 run, 5 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop`: no offenses.
+
+#### R23 sync ops-authorization docs with admin-only ops
+
+Implemented:
+
+- Updated `docs/architecture/security.md`: the controls line and the authorization matrix now state that every ops-console read and mutation requires `admin`, and that `viewer`/`operator` hold no ops-console capability.
+- Appended a dated supersession note to `docs/adr/0005-operational-governance-and-reversals.md` recording that the operator reject/retry capabilities were removed, rather than rewriting the historical decision.
+
+Decision notes:
+
+- `security.md` is living documentation, so it was edited in place to the current state; the ADR is a historical record, so the original decision text stands and an "Update" section records the supersession. Both stale references came from R13 making all ops mutations admin-only.
+
+Verification:
+
+- Docs-only change. `rg` confirms no remaining doc claims that `operator` can reject Pix or retry outbox outside the ADR's historical/superseded text.
+
+#### R24 fix redis-usage docs after the cache lock removal
+
+Implemented:
+
+- Updated `docs/database/redis-usage.md` to reference only `Operational::RedisTemporaryLock` (and the `redis:verify` rake task that exercises it), since R18 deleted the cache-backed `Operational::TemporaryLock`.
+
+Decision notes:
+
+- `redis-usage.md` is living guidance on allowed Redis use, so it was corrected. The `learning-journal.md` mention of the cache lock is left untouched: that journal is a historical record up to `de31647`, where the cache lock genuinely existed.
+
+Verification:
+
+- Docs-only change. (Correction: this verification was wrong. The check filtered `rg` output through `grep -v RedisTemporaryLock`, which masked the `## Temporary Locks` section of `redis-usage.md` because that line named both classes. A live reference to the removed `Operational::TemporaryLock` survived there and was found by a follow-up audit; removed in R26.)
+
+#### R25 bump Brakeman 8.0.4 -> 8.0.5 to unblock the CI gate
+
+Implemented:
+
+- `bundle update brakeman --conservative` (Gemfile.lock only, brakeman 8.0.4 -> 8.0.5, no transitive changes).
+
+Decision notes:
+
+- Running the full `bin/ci` end-to-end on the final branch surfaced a real CI blocker unrelated to this work: `bin/brakeman` prepends `--ensure-latest`, which makes Brakeman fail when it is not the newest release. Brakeman 8.0.5 was published while 8.0.4 was pinned, so `bin/brakeman` (and therefore `bin/ci` and the GitHub Actions security job) aborted with exit 5 before scanning. The scan result itself was already clean — `bundle exec brakeman` reported 27 controllers, 30 models, 0 errors, 0 security warnings. Bumping the gem is exactly what `--ensure-latest` asks for and is the correct fix; silencing the flag would be wrong.
+
+Verification:
+
+- `bundle exec brakeman`: 0 errors, 0 security warnings (before the bump, proving the scan was clean).
+- `RAILS_ENV=test bin/ci`: **exit 0**. 220 runs / 1357 assertions, 0 failures; line coverage 92.12%; critical money branch 85.47%; 2 system tests, 0 failures; RuboCop 290 files no offenses; Brakeman 0 warnings; bundler-audit clean; `openapi.yaml` and `outbox_event.v1.json` parsed.
+
+#### R26 remove the surviving cache-lock reference R24 missed
+
+Implemented:
+
+- Rewrote the `## Temporary Locks` section of `docs/database/redis-usage.md` to describe only `Operational::RedisTemporaryLock`; the cache-backed `Operational::TemporaryLock` sentence (deleted in R18) was still there.
+- Corrected the R24 verification note, which had falsely claimed no live reference survived.
+
+Decision notes:
+
+- A follow-up audit found a second reference to the removed class in `redis-usage.md` (the `## Temporary Locks` prose at line 25), not just the allowed-use bullet R24 fixed. R24's verification grep had piped through `grep -v RedisTemporaryLock`, and that line names both classes, so the filter hid the very line that needed fixing. Lesson: an exclusion filter on a verification grep can mask the residual it was meant to catch; the corrected check below greps without exclusion.
+
+Verification:
+
+- `grep -rn "Operational::TemporaryLock" docs app lib config test` (no exclusion) now returns only historical-record references: `learning-journal.md` (history up to `de31647`) and the remediation-journal entries that describe the deletion. No live doc/code reference remains.
+- `RAILS_ENV=test bin/ci`: exit 0 (re-confirmed after the doc edits; Brakeman 8.0.5 scans clean, 0 warnings).
+
+#### R27 make the Brakeman CI gate deterministic (--exit-on-warn, not --ensure-latest)
+
+Implemented:
+
+- Replaced `ARGV.unshift("--ensure-latest")` with `ARGV.unshift("--exit-on-warn")` in `bin/brakeman`.
+
+Decision notes:
+
+- R25 bumped Brakeman to unblock CI, but that treated the symptom. The root issue is design: `--ensure-latest` makes a green build depend on Brakeman *not* having a newer upstream release, so any publish reds the build with zero code change and blocks unrelated PRs. `.github/dependabot.yml` already schedules weekly `bundler` updates, so dependency freshness is handled out of band — `--ensure-latest` was redundant flakiness on top of it. Removing it alone would leave the security job inert (Brakeman exits 0 even with findings), so it is replaced by `--exit-on-warn`: the gate now fails on real security findings (deterministic, code-dependent) instead of on version staleness (non-deterministic, externally-dependent).
+
+Verification:
+
+- `bin/brakeman --no-pager`: exit 0, 0 errors, 0 security warnings, no `--ensure-latest`/"not the latest" output (version coupling gone).
+- `RAILS_ENV=test bin/ci`: exit 0. 221 runs / 1360 assertions, 0 failures; critical money branch 85.47%; 2 system tests, 0 failures; RuboCop 290 files no offenses; Brakeman 0 warnings; bundler-audit clean; OpenAPI and event contract parsed.

@@ -11,14 +11,23 @@ module Observability
 
     def authenticate_metrics!
       token = ENV["METRICS_BEARER_TOKEN"].presence
-      return if token.blank? && !Rails.env.production?
+
+      if token.blank?
+        return unless Rails.env.production?
+
+        # Production must configure a metrics credential. Failing closed here
+        # prevents serving metrics by comparing against an empty "Bearer " token.
+        render json: { error: { code: "metrics_unavailable", message: "Metrics authentication is not configured" } },
+          status: :service_unavailable
+        return
+      end
 
       expected = "Bearer #{token}"
       supplied = request.authorization.to_s
-      unless supplied.bytesize == expected.bytesize && ActiveSupport::SecurityUtils.secure_compare(supplied, expected)
-        render json: { error: { code: "authentication_failed", message: "Metrics authentication failed" } },
-          status: :unauthorized
-      end
+      return if supplied.bytesize == expected.bytesize && ActiveSupport::SecurityUtils.secure_compare(supplied, expected)
+
+      render json: { error: { code: "authentication_failed", message: "Metrics authentication failed" } },
+        status: :unauthorized
     end
   end
 end

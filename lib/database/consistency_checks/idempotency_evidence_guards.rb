@@ -8,8 +8,18 @@ module Database
         idempotency_keys_response_state_check
       ].freeze
 
+      REQUIRED_COMMAND_CONSTRAINTS = {
+        "fundings" => "fundings_idempotency_key_required_check",
+        "transfers" => "transfers_idempotency_key_required_check",
+        "split_payments" => "split_payments_idempotency_key_required_check",
+        "pix_payments" => "pix_payments_idempotency_key_required_check",
+        "payouts" => "payouts_idempotency_key_required_check",
+        "refunds" => "refunds_idempotency_key_required_check",
+        "med_cases" => "med_cases_idempotency_key_required_check"
+      }.freeze
+
       def call
-        expected_command_constraints = FinancialContracts::IDEMPOTENCY_REQUIRED_COMMAND_CONSTRAINTS
+        expected_command_constraints = REQUIRED_COMMAND_CONSTRAINTS
         enabled_constraints = connection.select_values(<<~SQL.squish)
           SELECT conname
           FROM pg_constraint

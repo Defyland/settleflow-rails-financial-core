@@ -1,8 +1,19 @@
 module Database
   module ConsistencyChecks
     class FinancialJournalEvidenceGuards < Base
+      EXPECTED_TRIGGERS = %w[
+        journal_entries_financial_evidence_after_write
+        ledger_lines_financial_evidence_after_write
+        fundings_journal_evidence_after_write
+        transfers_journal_evidence_after_write
+        split_payments_journal_evidence_after_write
+        pix_payments_journal_evidence_after_write
+        payouts_journal_evidence_after_write
+        refunds_journal_evidence_after_write
+      ].freeze
+
       def call
-        expected_triggers = FinancialContracts::FINANCIAL_JOURNAL_EVIDENCE_TRIGGERS
+        expected_triggers = EXPECTED_TRIGGERS
         enabled_triggers = connection.select_values(<<~SQL.squish)
           SELECT tgname
           FROM pg_trigger

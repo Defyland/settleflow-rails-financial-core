@@ -1,9 +1,23 @@
 module Database
   module ConsistencyChecks
     class OutboxEvidenceGuards < Base
+      EXPECTED_CONSTRAINTS = %w[
+        outbox_events_payload_sha256_hex_check
+        outbox_events_status_check
+        outbox_events_delivery_state_check
+      ].freeze
+
+      EXPECTED_TRIGGERS = %w[
+        outbox_legacy_command_identity_exceptions_prevent_mutation
+        outbox_events_prevent_evidence_mutation
+        outbox_events_aggregate_evidence_before_write
+        outbox_events_med_resolution_payload_before_write
+        outbox_events_command_identity_before_write
+      ].freeze
+
       def call
-        expected_constraints = FinancialContracts::OUTBOX_EVIDENCE_CONSTRAINTS
-        expected_triggers = FinancialContracts::OUTBOX_EVIDENCE_TRIGGERS
+        expected_constraints = EXPECTED_CONSTRAINTS
+        expected_triggers = EXPECTED_TRIGGERS
         enabled_constraints = connection.select_values(<<~SQL.squish)
           SELECT conname
           FROM pg_constraint

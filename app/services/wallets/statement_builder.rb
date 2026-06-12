@@ -9,20 +9,30 @@ module Wallets
     end
 
     def call
-      running_balance_cents = 0
-      ordered_lines = account.ledger_lines.includes(:journal_entry, :ledger_account).order(:created_at, :id)
-      statement_lines = ordered_lines.map do |line|
+      # Walk only the most recent `limit` lines, newest first, deriving each
+      # running balance backward from the account's ledger balance. This avoids
+      # loading the wallet's entire history to return one small window, and
+      # reads the authoritative ledger total rather than a possibly-stale
+      # projection association on the caller's wallet.
+      balance_cents = account.balance_cents
+      recent_lines.map do |line|
         delta_cents = delta_for(line)
-        running_balance_cents += delta_cents
-        StatementLine.new(ledger_line: line, delta_cents:, running_available_cents: running_balance_cents)
+        statement_line = StatementLine.new(ledger_line: line, delta_cents:, running_available_cents: balance_cents)
+        balance_cents -= delta_cents
+        statement_line
       end
-
-      statement_lines.last(limit).reverse
     end
 
     private
 
     attr_reader :wallet, :limit
+
+    def recent_lines
+      account.ledger_lines
+        .includes(:journal_entry, :ledger_account)
+        .order(created_at: :desc, id: :desc)
+        .limit(limit)
+    end
 
     def account
       @account ||= wallet.liability_account

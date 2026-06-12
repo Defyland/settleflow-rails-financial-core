@@ -3296,7 +3296,8 @@ CREATE TABLE public.customers (
     status character varying DEFAULT 'active'::character varying NOT NULL,
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT customers_status_check CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'blocked'::character varying, 'closed'::character varying])::text[])))
 );
 
 
@@ -3427,7 +3428,8 @@ CREATE TABLE public.journal_entries (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     CONSTRAINT journal_entries_event_type_supported_check CHECK (public.financial_journal_event_type_requires_evidence((event_type)::text)),
-    CONSTRAINT journal_entries_reference_required_check CHECK (((reference_type IS NOT NULL) AND (reference_id IS NOT NULL)))
+    CONSTRAINT journal_entries_reference_required_check CHECK (((reference_type IS NOT NULL) AND (reference_id IS NOT NULL))),
+    CONSTRAINT journal_entries_status_check CHECK (((status)::text = ANY ((ARRAY['posted'::character varying, 'reversed'::character varying])::text[])))
 );
 
 
@@ -3468,7 +3470,8 @@ CREATE TABLE public.ledger_accounts (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     CONSTRAINT ledger_accounts_account_type_check CHECK (((account_type)::text = ANY ((ARRAY['asset'::character varying, 'liability'::character varying, 'revenue'::character varying, 'expense'::character varying, 'equity'::character varying])::text[]))),
-    CONSTRAINT ledger_accounts_normal_balance_check CHECK (((normal_balance)::text = ANY ((ARRAY['debit'::character varying, 'credit'::character varying])::text[])))
+    CONSTRAINT ledger_accounts_normal_balance_check CHECK (((normal_balance)::text = ANY ((ARRAY['debit'::character varying, 'credit'::character varying])::text[]))),
+    CONSTRAINT ledger_accounts_status_check CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'archived'::character varying])::text[])))
 );
 
 
@@ -3638,7 +3641,8 @@ CREATE TABLE public.organizations (
     api_key_digest character varying NOT NULL,
     rate_limit_per_minute integer DEFAULT 120 NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT organizations_status_check CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'suspended'::character varying])::text[])))
 );
 
 
@@ -4185,7 +4189,8 @@ CREATE TABLE public.wallets (
     lock_version integer DEFAULT 0 NOT NULL,
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT wallets_status_check CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'blocked'::character varying, 'closed'::character varying])::text[])))
 );
 
 
@@ -6622,6 +6627,7 @@ ALTER TABLE ONLY public.refunds
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260612120000'),
 ('20260602224500'),
 ('20260602223500'),
 ('20260602222500'),

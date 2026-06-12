@@ -2,6 +2,10 @@
 require "rubygems"
 require "bundler/setup"
 
-ARGV.unshift("--ensure-latest")
+# Fail CI on real security findings, not on the Brakeman gem being behind the
+# newest release. --ensure-latest coupled green builds to upstream publishing
+# (a new release reds the build with no code change); dependency freshness is
+# already handled by weekly Dependabot bundler updates (.github/dependabot.yml).
+ARGV.unshift("--exit-on-warn")
 
 load Gem.bin_path("brakeman", "brakeman")

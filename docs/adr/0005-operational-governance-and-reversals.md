@@ -26,3 +26,7 @@ Outbox publication failures retain retry state on the outbox row: attempts, erro
 - Audit logs now capture denied capabilities as well as successful operator actions.
 - Reversals are explicit financial events and can be reconciled independently.
 - The roles are coarse by design. SSO, MFA, and finer-grained policy objects remain future work.
+
+## Update — 2026-06-12
+
+The `operator` capabilities described above (reject pending-review Pix, retry unpublished outbox events) were later removed: every ops-console mutation now requires `admin`. Users have no `organization_id`, so ops boundaries resolve records globally by `public_id`; an operator-writable action was therefore a blind cross-tenant write. Combined with the earlier admin-only global read gate, the ops console is now entirely admin-only. `viewer` and `operator` remain as roles but hold no ops-console capability pending an organization-scoped model. See [docs/decisions.md](../decisions.md) and `Ops::CapabilityPolicy`.

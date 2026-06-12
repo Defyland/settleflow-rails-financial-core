@@ -481,7 +481,7 @@ Ao terminar este journal, o leitor deve ser capaz de:
   `3fbc141` endurece segurança de sessão e superfície operacional: `Authentication`, `MetricsController`, `ApplicationJob`, `Session`, `User` e testes de controllers/operability mudam juntos. A leitura segura aqui é que a stack humana e observável estava sendo apertada antes de crescer novamente.
   `34be4c7` não cria regra nova de runtime; ele alinha README, ADRs e docs de segurança/deployment ao boundary endurecido que os três commits anteriores já tinham materializado.
 - Base usada:
-  commits `8a6117b`, `a9dbd6a`, `3fbc141`, `34be4c7`; `app/models/api_credential.rb`, `app/controllers/v1/base_controller.rb`, `app/controllers/concerns/authentication.rb`, `app/controllers/observability/metrics_controller.rb`, `app/services/outbox/publisher.rb`, `app/services/outbox/publishers/http_publisher.rb`, `config/initializers/rack_attack.rb`, `test/requests/api_authentication_test.rb`, `test/requests/idempotency_test.rb`, `test/services/outbox_publish_job_test.rb`, `test/services/outbox_http_publisher_test.rb`, `test/requests/operability_test.rb`.
+  commits `8a6117b`, `a9dbd6a`, `3fbc141`, `34be4c7`; `app/models/api_credential.rb`, `app/controllers/v1/base_controller.rb`, `app/controllers/concerns/authentication.rb`, `app/controllers/observability/metrics_controller.rb`, `app/services/outbox/publisher.rb`, `app/services/outbox/publishers/http_publisher.rb`, `config/initializers/rack_attack.rb`, `test/requests/api_authentication_test.rb`, `test/requests/idempotency_test.rb`, `test/jobs/outbox_publish_job_test.rb`, `test/services/outbox_http_publisher_test.rb`, `test/requests/operability_test.rb`.
 
 ### Governança operacional coarse-grained
 
@@ -663,7 +663,7 @@ Ao terminar este journal, o leitor deve ser capaz de:
   reescrever o histórico publicado para caber na nova regra.
   ignorar a divergência sem registrá-la em lugar nenhum.
 - Base usada:
-  commit `d13051a`, `app/models/outbox_legacy_command_identity_exception.rb`, migration `20260602230000_accept_immutable_legacy_outbox_command_identity.rb`, `lib/database/consistency_verifier.rb`, `docs/events/messaging.md`, `test/models/database_financial_invariants_test.rb`, `test/services/database_consistency_verifier_test.rb`.
+  commit `d13051a`, `app/models/outbox_legacy_command_identity_exception.rb`, migration `20260602224500_accept_immutable_legacy_outbox_command_identity.rb`, `lib/database/consistency_verifier.rb`, `docs/events/messaging.md`, `test/models/database_financial_invariants_test.rb`, `test/services/database_consistency_verifier_test.rb`.
 
 ### Lifecycle explícito de wallet/customer
 
@@ -1095,7 +1095,7 @@ Dito isso, o histórico posterior registra TDD e teste-dirigido por correção e
 - Hardening de boundary, publisher e runtime local:
   `test/requests/api_authentication_test.rb`
   `test/requests/idempotency_test.rb`
-  `test/services/outbox_publish_job_test.rb`
+  `test/jobs/outbox_publish_job_test.rb`
   `test/services/outbox_http_publisher_test.rb`
   `test/controllers/passwords_controller_test.rb`
   `test/controllers/sessions_controller_test.rb`

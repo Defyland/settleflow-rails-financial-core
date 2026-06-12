@@ -200,7 +200,7 @@ class OpsConsoleRequestTest < ActionDispatch::IntegrationTest
     assert AuditLog.exists?(actor_type: "user", actor_id: @operator.id, action: "ops.global_read.denied")
   end
 
-  test "allows operators to reject Pix reviews and retry outbox but blocks admin-only actions" do
+  test "blocks non-admin operators from every ops mutation" do
     @operator.update!(role: "operator")
     settled_pix_payment = create_pix_payment(
       organization: @organization,
@@ -245,12 +245,25 @@ class OpsConsoleRequestTest < ActionDispatch::IntegrationTest
     )
 
     post reject_ops_pix_payment_path(@pending_pix_payment.public_id), params: { reason: "operator_rejected" }
-    assert_redirected_to ops_pix_payment_path(@pending_pix_payment.public_id)
-    assert @pending_pix_payment.reload.rejected?
+    assert_redirected_to ops_root_path
+    assert @pending_pix_payment.reload.pending_review?
+    assert AuditLog.exists?(
+      actor_type: "user",
+      actor_id: @operator.id,
+      action: "ops.authorization.denied",
+      metadata: { capability: "reject_pix_payment" }
+    )
 
+    clear_enqueued_jobs
     post retry_ops_outbox_event_path(event.public_id)
-    assert_redirected_to ops_outbox_events_path(status: "pending")
-    assert_includes enqueued_jobs.map { |job| job[:job] }, OutboxPublishJob
+    assert_redirected_to ops_root_path
+    assert_empty enqueued_jobs.select { |job| job[:job] == OutboxPublishJob }
+    assert AuditLog.exists?(
+      actor_type: "user",
+      actor_id: @operator.id,
+      action: "ops.authorization.denied",
+      metadata: { capability: "retry_outbox_event" }
+    )
   end
 
   test "does not retry already published outbox events" do
