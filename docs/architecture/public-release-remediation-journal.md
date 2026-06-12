@@ -642,7 +642,7 @@ Decision notes:
 
 Verification:
 
-- Docs-only change. `rg "Operational::TemporaryLock"` across `app lib config docs` returns no live reference outside the historical learning journal.
+- Docs-only change. (Correction: this verification was wrong. The check filtered `rg` output through `grep -v RedisTemporaryLock`, which masked the `## Temporary Locks` section of `redis-usage.md` because that line named both classes. A live reference to the removed `Operational::TemporaryLock` survived there and was found by a follow-up audit; removed in R26.)
 
 #### R25 bump Brakeman 8.0.4 -> 8.0.5 to unblock the CI gate
 
@@ -658,3 +658,19 @@ Verification:
 
 - `bundle exec brakeman`: 0 errors, 0 security warnings (before the bump, proving the scan was clean).
 - `RAILS_ENV=test bin/ci`: **exit 0**. 220 runs / 1357 assertions, 0 failures; line coverage 92.12%; critical money branch 85.47%; 2 system tests, 0 failures; RuboCop 290 files no offenses; Brakeman 0 warnings; bundler-audit clean; `openapi.yaml` and `outbox_event.v1.json` parsed.
+
+#### R26 remove the surviving cache-lock reference R24 missed
+
+Implemented:
+
+- Rewrote the `## Temporary Locks` section of `docs/database/redis-usage.md` to describe only `Operational::RedisTemporaryLock`; the cache-backed `Operational::TemporaryLock` sentence (deleted in R18) was still there.
+- Corrected the R24 verification note, which had falsely claimed no live reference survived.
+
+Decision notes:
+
+- A follow-up audit found a second reference to the removed class in `redis-usage.md` (the `## Temporary Locks` prose at line 25), not just the allowed-use bullet R24 fixed. R24's verification grep had piped through `grep -v RedisTemporaryLock`, and that line names both classes, so the filter hid the very line that needed fixing. Lesson: an exclusion filter on a verification grep can mask the residual it was meant to catch; the corrected check below greps without exclusion.
+
+Verification:
+
+- `grep -rn "Operational::TemporaryLock" docs app lib config test` (no exclusion) now returns only historical-record references: `learning-journal.md` (history up to `de31647`) and the remediation-journal entries that describe the deletion. No live doc/code reference remains.
+- `RAILS_ENV=test bin/ci`: exit 0 (re-confirmed after the doc edits; Brakeman 8.0.5 scans clean, 0 warnings).
