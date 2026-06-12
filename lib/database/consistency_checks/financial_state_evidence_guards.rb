@@ -1,8 +1,30 @@
 module Database
   module ConsistencyChecks
     class FinancialStateEvidenceGuards < Base
+      EXPECTED_TRIGGERS = %w[
+        fundings_state_evidence_after_write
+        fundings_prevent_evidence_mutation
+        transfers_state_evidence_after_write
+        transfers_prevent_evidence_mutation
+        split_payments_state_evidence_after_write
+        split_payments_prevent_evidence_mutation
+        split_entries_state_evidence_after_write
+        split_entries_prevent_evidence_mutation
+        payouts_state_evidence_after_write
+        payouts_prevent_evidence_mutation
+        refunds_state_evidence_after_write
+        refunds_prevent_evidence_mutation
+        refunds_lock_pix_payment_before_write
+        refunds_pix_payment_evidence_after_write
+        pix_payments_refund_evidence_after_write
+        med_cases_state_evidence_after_write
+        med_cases_prevent_evidence_mutation
+        pix_payments_state_evidence_after_write
+        pix_payments_prevent_evidence_mutation
+      ].freeze
+
       def call
-        expected_triggers = FinancialContracts::FINANCIAL_STATE_EVIDENCE_TRIGGERS
+        expected_triggers = EXPECTED_TRIGGERS
         enabled_triggers = connection.select_values(<<~SQL.squish)
           SELECT tgname
           FROM pg_trigger

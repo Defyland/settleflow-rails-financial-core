@@ -540,3 +540,21 @@ Verification:
 - `bin/rails test test/services/operational_redis_temporary_lock_test.rb`
 - Result: 3 runs, 14 assertions, 0 failures, 0 errors, 0 skips.
 - `bin/rails zeitwerk:check` and `bin/rubocop`: clean.
+
+#### R19 move database object-name mirrors out of FinancialContracts
+
+Implemented:
+
+- Moved the five lists of database trigger/constraint *names* (`OUTBOX_EVIDENCE_CONSTRAINTS`, `OUTBOX_EVIDENCE_TRIGGERS`, `FINANCIAL_STATE_EVIDENCE_TRIGGERS`, `FINANCIAL_JOURNAL_EVIDENCE_TRIGGERS`, `IDEMPOTENCY_REQUIRED_COMMAND_CONSTRAINTS`) from `FinancialContracts` into the single consistency-check class that consumes each, as `EXPECTED_TRIGGERS` / `EXPECTED_CONSTRAINTS` / `REQUIRED_COMMAND_CONSTRAINTS`.
+- Updated the verifier test to read the constants from their new owners.
+
+Decision notes:
+
+- `FinancialContracts` is the domain taxonomy: event types, actions, aggregate types, and lock-key builders. The names of migration-created triggers and constraints are an implementation detail of the schema, and the only code that needs them is the consistency checker that asserts they are present. Keeping them in the domain module coupled the taxonomy to migration internals and risked silent drift on a rename. This also follows the precedent already set by `IdempotencyEvidenceGuards::EXPECTED_CONSTRAINTS`.
+- Event-type taxonomies (`RECONCILIATION_EVENT_TYPES`, `JOURNAL_EVENT_TYPES`) and `FINANCIAL_COMMAND_AGGREGATE_TYPES` stayed: those are domain values, not schema object names.
+
+Verification:
+
+- `bin/rails test test/services/database_consistency_verifier_test.rb`
+- Result: 6 runs, 73 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rails database:verify_consistency` all checks ok; `bin/rails zeitwerk:check` and `bin/rubocop` (16 files): clean.

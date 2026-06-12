@@ -23,8 +23,8 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     assert_equal 0, outbox_guard_check.details.fetch(:accepted_published_legacy_command_identity_mismatches)
     assert_equal 0, outbox_guard_check.details.fetch(:unaccepted_published_legacy_command_identity_mismatches)
     assert_equal 0, outbox_guard_check.details.fetch(:legacy_exception_evidence_mismatches)
-    assert_equal FinancialContracts::OUTBOX_EVIDENCE_CONSTRAINTS.sort, outbox_guard_check.details.fetch(:present_constraints)
-    assert_equal FinancialContracts::OUTBOX_EVIDENCE_TRIGGERS.sort, outbox_guard_check.details.fetch(:present_triggers)
+    assert_equal Database::ConsistencyChecks::OutboxEvidenceGuards::EXPECTED_CONSTRAINTS.sort, outbox_guard_check.details.fetch(:present_constraints)
+    assert_equal Database::ConsistencyChecks::OutboxEvidenceGuards::EXPECTED_TRIGGERS.sort, outbox_guard_check.details.fetch(:present_triggers)
   end
 
   test "reports idempotency and processed event evidence guards separately" do
@@ -41,7 +41,7 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
       idempotency_keys_response_state_check
       idempotency_keys_status_check
     ], idempotency_guard_check.details.fetch(:present_constraints)
-    assert_equal FinancialContracts::IDEMPOTENCY_REQUIRED_COMMAND_CONSTRAINTS.values.sort,
+    assert_equal Database::ConsistencyChecks::IdempotencyEvidenceGuards::REQUIRED_COMMAND_CONSTRAINTS.values.sort,
       idempotency_guard_check.details.fetch(:present_command_constraints)
 
     assert processed_event_guard_check.details.fetch(:mutation_trigger_present)
@@ -102,13 +102,13 @@ class DatabaseConsistencyVerifierTest < ActiveSupport::TestCase
     assert state_guard_check.details.fetch(:unique_split_destination_index_present)
     assert_equal 0, state_guard_check.details.fetch(:duplicate_split_destination_rows)
     assert_empty state_guard_check.details.fetch(:missing_triggers)
-    assert_equal FinancialContracts::FINANCIAL_STATE_EVIDENCE_TRIGGERS.sort,
+    assert_equal Database::ConsistencyChecks::FinancialStateEvidenceGuards::EXPECTED_TRIGGERS.sort,
       state_guard_check.details.fetch(:present_triggers)
 
     assert journal_guard_check.details.fetch(:evidence_functions_present)
     assert_empty journal_guard_check.details.fetch(:missing_triggers)
     assert_equal 0, journal_guard_check.details.fetch(:evidence_mismatches)
-    assert_equal FinancialContracts::FINANCIAL_JOURNAL_EVIDENCE_TRIGGERS.sort,
+    assert_equal Database::ConsistencyChecks::FinancialJournalEvidenceGuards::EXPECTED_TRIGGERS.sort,
       journal_guard_check.details.fetch(:present_triggers)
 
     assert journal_taxonomy_check.details.fetch(:constraint_validated)
