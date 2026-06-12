@@ -674,3 +674,18 @@ Verification:
 
 - `grep -rn "Operational::TemporaryLock" docs app lib config test` (no exclusion) now returns only historical-record references: `learning-journal.md` (history up to `de31647`) and the remediation-journal entries that describe the deletion. No live doc/code reference remains.
 - `RAILS_ENV=test bin/ci`: exit 0 (re-confirmed after the doc edits; Brakeman 8.0.5 scans clean, 0 warnings).
+
+#### R27 make the Brakeman CI gate deterministic (--exit-on-warn, not --ensure-latest)
+
+Implemented:
+
+- Replaced `ARGV.unshift("--ensure-latest")` with `ARGV.unshift("--exit-on-warn")` in `bin/brakeman`.
+
+Decision notes:
+
+- R25 bumped Brakeman to unblock CI, but that treated the symptom. The root issue is design: `--ensure-latest` makes a green build depend on Brakeman *not* having a newer upstream release, so any publish reds the build with zero code change and blocks unrelated PRs. `.github/dependabot.yml` already schedules weekly `bundler` updates, so dependency freshness is handled out of band — `--ensure-latest` was redundant flakiness on top of it. Removing it alone would leave the security job inert (Brakeman exits 0 even with findings), so it is replaced by `--exit-on-warn`: the gate now fails on real security findings (deterministic, code-dependent) instead of on version staleness (non-deterministic, externally-dependent).
+
+Verification:
+
+- `bin/brakeman --no-pager`: exit 0, 0 errors, 0 security warnings, no `--ensure-latest`/"not the latest" output (version coupling gone).
+- `RAILS_ENV=test bin/ci`: exit 0. 221 runs / 1360 assertions, 0 failures; critical money branch 85.47%; 2 system tests, 0 failures; RuboCop 290 files no offenses; Brakeman 0 warnings; bundler-audit clean; OpenAPI and event contract parsed.
