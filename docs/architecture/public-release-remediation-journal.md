@@ -523,3 +523,20 @@ Verification:
 - `bin/rails test test/models/database_financial_invariants_test.rb`
 - Result: 26 runs, 118 assertions, 0 failures, 0 errors, 0 skips.
 - `bin/rails database:verify_consistency` all checks ok; `database:migration_safety_check` no findings; `bin/rubocop` clean.
+
+#### R18 remove the dead cache temporary lock
+
+Implemented:
+
+- Deleted `Operational::TemporaryLock` (Rails.cache-backed) and its test. It had no caller anywhere; its only non-test role was hosting two constants imported by `Operational::RedisTemporaryLock`.
+- Inlined `DEFAULT_TTL` and `FORBIDDEN_KEY_PARTS` into `RedisTemporaryLock`, which is now self-contained and still used by the `redis:verify` rake smoke task.
+
+Decision notes:
+
+- The thermo pass flagged "two near-identical lock implementations, neither used in app code." On closer reading only the cache lock was truly dead; `RedisTemporaryLock` is referenced by `lib/tasks/database_engineering.rake` (`redis:verify`). The narrower fix removes the genuinely dead class and the cross-class constant import while preserving the Redis demo. The broader question of how much `lib/database` / operational tooling a portfolio app should carry is left as a deliberate product call, not folded into a security/maintainability commit.
+
+Verification:
+
+- `bin/rails test test/services/operational_redis_temporary_lock_test.rb`
+- Result: 3 runs, 14 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rails zeitwerk:check` and `bin/rubocop`: clean.
