@@ -428,3 +428,23 @@ Decision notes:
 - This session hit an environment trap before any repo failure: the shell `PATH` still had a direct Ruby `3.4.4` install before the asdf shims. Validation was rerun with the shims explicitly prepended. That is an execution-environment concern, not a repository design flaw.
 - No code-path change followed the re-audit because the current repo state already clears the previous thermo/Rails findings and the verification suite is strong enough to justify stopping.
 - The right specialist signal here is restraint: once the repo is coherent, tested, and well-instrumented, adding more abstractions or cleanup without a fresh finding would lower quality rather than raise it.
+
+### Session 4: post-audit remediation (Codex + thermo-nuclear findings)
+
+A second adversarial audit (Codex pass plus a thermo-nuclear / Ruby-Rails code-smell pass) produced a fresh finding list. This session works it one atomic commit per fix, each followed by re-running both review lenses.
+
+#### R13 ops authorization: every ops mutation is admin-only
+
+Implemented:
+
+- Changed `Ops::CapabilityPolicy` so `reject_pix_payment` and `retry_outbox_event` require `admin`, matching the already admin-only settle/reverse/MED capabilities.
+- Rewrote the ops console request test to assert a non-admin operator is denied every ops mutation (settle, reverse, MED accept, reject Pix, retry outbox) and that the denial leaves the records untouched and enqueues no publish job.
+
+Decision notes:
+
+- Users have no `organization_id`; operators are global staff. Ops boundaries resolve records globally by `public_id`, so any operator-writable action was a blind cross-tenant write (an operator could reject a Pix payment or retry an outbox event for any tenant by guessing the id). Reads were already admin-gated in `Ops::BaseController#require_admin_global_read!`; writes now match. The `operator` role keeps `can_operate?` for sign-in but currently holds no ops-console capability — making it org-scoped or granting it a real scoped power is a deliberate later choice, not part of this security fix.
+
+Verification:
+
+- `bin/rails test test/requests/ops_console_request_test.rb test/requests/privacy_redaction_test.rb`
+- Result: 11 runs, 206 assertions, 0 failures, 0 errors, 0 skips.
