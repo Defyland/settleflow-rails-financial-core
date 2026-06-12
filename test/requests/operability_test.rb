@@ -45,4 +45,16 @@ class OperabilityTest < ActionDispatch::IntegrationTest
     get "/metrics", headers: { "Authorization" => "Bearer metrics-secret" }
     assert_response :ok
   end
+
+  test "fails closed in production when the metrics token is unset" do
+    ENV.delete("METRICS_BEARER_TOKEN")
+
+    with_rails_env("production") do
+      get "/metrics"
+      assert_response :service_unavailable
+
+      get "/metrics", headers: { "Authorization" => "Bearer " }
+      assert_response :service_unavailable
+    end
+  end
 end

@@ -88,14 +88,6 @@ class OutboxHttpPublisherTest < ActiveSupport::TestCase
 
   private
 
-  def with_rails_env(name)
-    original_env = Rails.env
-    Rails.singleton_class.define_method(:env) { ActiveSupport::StringInquirer.new(name) }
-    yield
-  ensure
-    Rails.singleton_class.define_method(:env) { original_env }
-  end
-
   def with_net_http_start(starter)
     original_start = Net::HTTP.method(:start)
     Net::HTTP.define_singleton_method(:start, &starter)

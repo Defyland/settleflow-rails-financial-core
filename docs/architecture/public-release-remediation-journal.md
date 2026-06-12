@@ -448,3 +448,22 @@ Verification:
 
 - `bin/rails test test/requests/ops_console_request_test.rb test/requests/privacy_redaction_test.rb`
 - Result: 11 runs, 206 assertions, 0 failures, 0 errors, 0 skips.
+
+#### R14 metrics endpoint fails closed in production
+
+Implemented:
+
+- Reworked `Observability::MetricsController#authenticate_metrics!` so a blank `METRICS_BEARER_TOKEN` returns `503 metrics_unavailable` in production instead of building an empty `"Bearer "` expectation and comparing against it. Development/test still serve metrics open when no token is set.
+- Replaced the double-negative `unless ... bytesize && secure_compare` guard with an explicit `return if match` followed by a single `401` render.
+- Added an operability test proving production with no token rejects both an empty `Authorization` header and a literal `Authorization: Bearer `.
+
+Decision notes:
+
+- The previous code accepted exactly `Authorization: Bearer ` when the env var was unset in production, a silent-misconfiguration auth bypass exposing the Prometheus registry. Production now fails closed and matches the boot-time hard-fail posture already used by `Outbox::Publishers::HttpPublisher#validate_endpoint!`.
+- While reviewing the change, the new test reintroduced a `with_rails_env` helper that already existed verbatim in `outbox_http_publisher_test.rb`. Hoisted it to `test/test_helpers/environment_test_helper.rb` and removed both local copies, so the env-stub has one owner.
+
+Verification:
+
+- `bin/rails test test/requests/operability_test.rb test/services/outbox_http_publisher_test.rb`
+- Result: 8 runs, 31 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop` on the six touched files: no offenses.
