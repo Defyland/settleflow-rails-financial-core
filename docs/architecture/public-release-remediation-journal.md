@@ -558,3 +558,23 @@ Verification:
 - `bin/rails test test/services/database_consistency_verifier_test.rb`
 - Result: 6 runs, 73 assertions, 0 failures, 0 errors, 0 skips.
 - `bin/rails database:verify_consistency` all checks ok; `bin/rails zeitwerk:check` and `bin/rubocop` (16 files): clean.
+
+#### R20 bound the wallet statement / balance-explanation ledger reads
+
+Implemented:
+
+- `Wallets::StatementBuilder` now loads only the most recent `limit` ledger lines (newest first) and derives each running balance backward from `LedgerAccount#balance_cents`, instead of materializing the wallet's entire history to slice one window.
+- `Wallets::BalanceExplainer#recent_lines` does the same, anchored on the ledger-derived available balance it already computes, returning the window oldest-first as before.
+- Added `wallets_statement_builder_test` proving the window is capped to `limit` and that running balances are correct for a partial window that excludes older lines (the case the existing request test never exercised).
+
+Decision notes:
+
+- `GET /v1/wallets/:id/statement` and `/balance_explanation` previously loaded every ledger line on every call to compute running balances from zero, then dropped all but the last 100/limit. On a high-volume wallet that is an unbounded request-path load. The running balance is recoverable from the current ledger total minus the deltas of the newer lines, so only the window plus two aggregate sums are needed.
+- The anchor is `LedgerAccount#balance_cents` (authoritative ledger sum), not `balance_projection.available_cents`. This preserves the original behavior of reading fresh ledger truth and avoids depending on the freshness of the caller's projection association — a regression an earlier draft introduced and the new partial-window test caught.
+- `Reconciliation::RowsBuilder#platform_cash_lines` was reviewed and left unchanged: it is already scoped to `statement_date.all_day` and iterated with `find_each`, so it is bounded by a single statement day, not the full history.
+
+Verification:
+
+- `bin/rails test test/services/wallets_statement_builder_test.rb test/requests/financial_workflow_test.rb test/requests/ops_console_request_test.rb test/services/financial_branch_coverage_test.rb`
+- Result: 27 runs, 344 assertions, 0 failures, 0 errors, 0 skips.
+- `bin/rubocop` on the touched files: no offenses.
