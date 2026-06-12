@@ -643,3 +643,18 @@ Decision notes:
 Verification:
 
 - Docs-only change. `rg "Operational::TemporaryLock"` across `app lib config docs` returns no live reference outside the historical learning journal.
+
+#### R25 bump Brakeman 8.0.4 -> 8.0.5 to unblock the CI gate
+
+Implemented:
+
+- `bundle update brakeman --conservative` (Gemfile.lock only, brakeman 8.0.4 -> 8.0.5, no transitive changes).
+
+Decision notes:
+
+- Running the full `bin/ci` end-to-end on the final branch surfaced a real CI blocker unrelated to this work: `bin/brakeman` prepends `--ensure-latest`, which makes Brakeman fail when it is not the newest release. Brakeman 8.0.5 was published while 8.0.4 was pinned, so `bin/brakeman` (and therefore `bin/ci` and the GitHub Actions security job) aborted with exit 5 before scanning. The scan result itself was already clean — `bundle exec brakeman` reported 27 controllers, 30 models, 0 errors, 0 security warnings. Bumping the gem is exactly what `--ensure-latest` asks for and is the correct fix; silencing the flag would be wrong.
+
+Verification:
+
+- `bundle exec brakeman`: 0 errors, 0 security warnings (before the bump, proving the scan was clean).
+- `RAILS_ENV=test bin/ci`: **exit 0**. 220 runs / 1357 assertions, 0 failures; line coverage 92.12%; critical money branch 85.47%; 2 system tests, 0 failures; RuboCop 290 files no offenses; Brakeman 0 warnings; bundler-audit clean; `openapi.yaml` and `outbox_event.v1.json` parsed.
