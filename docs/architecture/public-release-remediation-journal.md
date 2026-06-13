@@ -709,3 +709,17 @@ Verification:
 - `ruby -ryaml -e "YAML.load_file('.github/workflows/ci.yml')"`: parsed OK.
 - `bin/critical_money_branch_coverage`: 85.47% (200/234), above the 85% gate.
 - Remote validation: the PR's Actions run executes the new step (see PR/run links in the session summary).
+
+#### R29 sync the README with admin-only ops
+
+Implemented:
+
+- Updated the two README lines that still claimed working `viewer`/`operator` capabilities ("Role-based operator capabilities for read-only, operator, and admin workflows" and "Operator roles gate Pix settlement/reversal and outbox retries") to state that all `/ops` actions are admin-only.
+
+Decision notes:
+
+- R23 synced `security.md` and ADR 0005 to admin-only but missed the README — the same kind of incomplete doc sweep as the `redis-usage.md` residual. A wide `grep -nE "operator|viewer|[Rr]ole" README.md` separated the two real capability claims (fixed) from the generic uses of "operator" as a noun for the ops backoffice / human staff (kept, still accurate). Leaving the public README contradicting the security decision risked someone re-opening capability for `operator`.
+
+Verification:
+
+- `grep -nE "Role-based operator capabilities|Operator roles gate" README.md`: no matches (stale claims gone).
