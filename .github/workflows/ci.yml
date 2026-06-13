@@ -35,6 +35,8 @@ jobs:
         run: bin/rails db:test:prepare
       - name: Run Minitest with coverage
         run: COVERAGE=1 bin/rails test
+      - name: Enforce critical money branch coverage
+        run: bin/critical_money_branch_coverage
       - name: Run system tests
         run: bin/rails test:system
       - name: Upload coverage artifact

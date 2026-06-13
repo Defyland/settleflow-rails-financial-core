@@ -689,3 +689,23 @@ Verification:
 
 - `bin/brakeman --no-pager`: exit 0, 0 errors, 0 security warnings, no `--ensure-latest`/"not the latest" output (version coupling gone).
 - `RAILS_ENV=test bin/ci`: exit 0. 221 runs / 1360 assertions, 0 failures; critical money branch 85.47%; 2 system tests, 0 failures; RuboCop 290 files no offenses; Brakeman 0 warnings; bundler-audit clean; OpenAPI and event contract parsed.
+
+### Session 6: close the local/remote CI parity gap
+
+After merging PR #3, a follow-up audit closed two residuals: the remote CI did not enforce the critical-money coverage gate, and the README still described the pre-admin-only operator model.
+
+#### R28 run the critical-money coverage gate in remote CI
+
+Implemented:
+
+- Added an `Enforce critical money branch coverage` step (`bin/critical_money_branch_coverage`) to the `test` job in `.github/workflows/ci.yml`, immediately after `COVERAGE=1 bin/rails test` and before the system-test step.
+
+Decision notes:
+
+- Throughout this work I repeatedly caveated that the remote `ci.yml` was a subset of local `bin/ci` because it ran `COVERAGE=1 bin/rails test` but not `bin/critical_money_branch_coverage`. That meant a PR could drop money-path branch coverage below the 85% threshold and still go green on GitHub Actions. The gate already exists and aborts below 85%; it just was not wired into the workflow. The step is placed before the system tests because those run without `COVERAGE=1` and must not overwrite the resultset the gate reads. The caveat is now closed rather than merely disclosed.
+
+Verification:
+
+- `ruby -ryaml -e "YAML.load_file('.github/workflows/ci.yml')"`: parsed OK.
+- `bin/critical_money_branch_coverage`: 85.47% (200/234), above the 85% gate.
+- Remote validation: the PR's Actions run executes the new step (see PR/run links in the session summary).
