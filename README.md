@@ -25,7 +25,7 @@ Many fintech demos store mutable balances directly on an account row. That hides
 - Balance projections derived from wallet ledger accounts.
 - Funding, internal transfer, split, Pix approval/review/rejection, Pix settlement, Pix reversal, payout D+N, refund, governed MED dispute, and reconciliation flows.
 - Authenticated `/ops` backoffice for dashboard KPIs, paginated wallet statements, Pix manual review, maker-checker settlement/reversal/MED approval, ledger drill-downs, reconciliation, outbox retry, and audit inspection.
-- Role-based operator capabilities for read-only, operator, and admin workflows.
+- Role-gated `/ops` console: all ops actions (reads and mutations) currently require the `admin` role. `viewer` and `operator` exist as global staff roles but hold no ops-console capability until an organization-scoped model is added.
 - Transactional outbox with pluggable log/HTTP publishers, claim leases, delivery metadata, payload hashes, retry backoff, next-attempt visibility, and dead-letter evidence.
 - Hash-chained audit logs, request IDs, correlation IDs, Prometheus metrics, readiness checks, and OpenTelemetry wiring.
 - Minitest coverage across models, services, requests, authorization, failure scenarios, jobs, ledger invariants, Rails auth, and the Hotwire operator surface.
@@ -112,7 +112,7 @@ k6 scenarios are in [benchmarks/k6-financial-workflow.js](benchmarks/k6-financia
 - Idempotency prevents duplicate financial commands.
 - Inputs are validated at service/model/database layers.
 - Secrets are supplied through environment variables.
-- Operator roles gate Pix settlement/reversal and outbox retries.
+- All `/ops` mutations (Pix settlement/reversal, MED approval, outbox retry) require the `admin` role; ops reads are admin-gated too.
 - Audit logs record API actions, operator decisions, denied capabilities, status, request ID, correlation ID, IP, and filtered parameters.
 
 See [docs/architecture/security.md](docs/architecture/security.md) and [docs/security/threat-model.md](docs/security/threat-model.md).
