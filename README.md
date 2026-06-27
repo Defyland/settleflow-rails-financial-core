@@ -162,6 +162,12 @@ ruby -rjson -e 'Dir["docs/events/*.v1.json"].sort.each { |path| JSON.parse(File.
 
 `bin/ci` runs the full local gate, including tests, security checks, OpenAPI parsing, and financial event contract validation.
 
+Focused reviewer proof for the highest-risk boundaries:
+
+```bash
+bin/rails test test/requests/v1_authorization_matrix_test.rb test/requests/ops_authorization_matrix_test.rb test/requests/idempotency_test.rb test/services/database_consistency_verifier_test.rb
+```
+
 ## 18. Failure scenarios
 
 Covered and documented scenarios include:
