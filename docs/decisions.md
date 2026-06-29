@@ -94,3 +94,37 @@ into the security fix.
   only if this repo is meant to *demonstrate* that range. Whether to keep, prune,
   or quarantine it is a portfolio/product decision, deliberately left out of the
   security/maintainability commits.
+
+## 2026-06-29 - Publish The Repo Under MIT
+
+Context: `settleflow-rails-financial-core` is already public and positioned as
+an expert-level financial systems study asset. The repo exposes deep technical
+material, but without an explicit license its reuse story remains incomplete.
+
+Options considered:
+
+- leave the repo unlicensed
+- use a more restrictive or reciprocal license
+- publish under MIT
+
+Choice: publish under MIT.
+
+Pros:
+
+- makes the public reuse surface explicit
+- aligns the legal boundary with the repo's didactic intent
+- removes ambiguity for downstream study and adaptation
+
+Cons:
+
+- allows broad reuse with limited reciprocity
+- does not force derivatives to stay public
+
+Consequences:
+
+- the repo now publishes both technical and legal surface area clearly
+- future portfolio audits can treat license presence as part of public readiness
+
+Verification evidence:
+
+- `PATH=/Users/allanflavio/.asdf/shims:$PATH /Users/allanflavio/Documents/projects/PERSONAL/backend-challenges/eval-harness/bin/eval-harness . --output /tmp/settleflow-ai-ready.md`

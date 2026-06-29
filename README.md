@@ -212,3 +212,7 @@ Operational steps are in [docs/runbooks/incident-response.md](docs/runbooks/inci
 - Add multi-currency ledger support.
 - Add RabbitMQ/Redpanda adapters when measured throughput or integration fanout exceeds the built-in log/HTTP outbox publishers.
 - Add selected browser tests for pagination and multi-role review queues as the Ops surface grows.
+
+## 20. License
+
+MIT. See [LICENSE.txt](./LICENSE.txt).
