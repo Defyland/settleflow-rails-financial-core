@@ -6,6 +6,26 @@ implementation decisions are recorded here, newest first. Change-by-change
 verification detail lives in
 [docs/architecture/public-release-remediation-journal.md](architecture/public-release-remediation-journal.md).
 
+## 2026-06-29 — Railway single-service demo deployment
+
+### Railway is added as the public demo surface, not as the production topology
+
+**Context.** SettleFlow already had Docker, Kamal, `/up`, `/ready`, and a
+container entrypoint that runs `db:prepare`, but it lacked Railway config-as-code.
+The repo was therefore technically deployable but still missed the lightweight
+public-service surface that the portfolio evaluator expects for runnable Rails
+apps.
+
+**Decision.** Add `railway.json` and `RAILWAY_DEPLOY.md`, and document Railway in
+the README as a single-service deployment that runs with
+`SOLID_QUEUE_IN_PUMA=true`.
+
+**Rationale.** The goal is to make the repo publicly runnable without pretending
+the demo topology is the full production topology. For a portfolio deployment,
+the single-service shape is enough to prove the API, ops console, readiness
+checks, and job-backed flows work. The heavier multi-process split remains
+captured by Kamal and the broader architecture docs.
+
 ## 2026-06-12 — Post-audit remediation (Codex + thermo-nuclear round)
 
 ### Model-level immutability guards are kept where they are query-free

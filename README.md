@@ -148,6 +148,17 @@ Optional PostgreSQL, ClickHouse, and Redis via Docker:
 docker compose up db clickhouse redis
 ```
 
+## 16.1 Railway deployment
+
+SettleFlow includes `railway.json` for a Dockerfile-based Railway deployment.
+
+- Build uses the existing `Dockerfile`.
+- `/up` is the activation health check.
+- `bin/docker-entrypoint` runs `db:prepare` before the Rails server boots.
+- `SOLID_QUEUE_IN_PUMA=true` keeps the demo topology single-service, so queue jobs run inside the web process when you do not want a separate worker service yet.
+
+Deployment guide: [RAILWAY_DEPLOY.md](RAILWAY_DEPLOY.md)
+
 ## 17. How to run tests
 
 ```bash
