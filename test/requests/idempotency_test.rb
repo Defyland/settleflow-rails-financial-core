@@ -79,6 +79,30 @@ class IdempotencyTest < ActionDispatch::IntegrationTest
     assert_nil response.headers["Idempotency-Replayed"]
   end
 
+  test "replays when semantically identical query parameters arrive in a different order" do
+    wallet = create_wallet(organization: @organization, external_id: "idem-query-order-wallet")
+    fund_wallet(organization: @organization, wallet:, external_id: "idem-query-order-funding", amount_cents: 10_000)
+    payout = Payouts::Create.call(
+      organization: @organization,
+      wallet:,
+      external_id: "idem-query-order-payout",
+      amount_cents: 1_000,
+      destination_reference: "query-order-destination",
+      settlement_delay_days: 0,
+      idempotency_key: "idem-query-order-payout"
+    )
+    headers = auth_headers(@api_key, "Idempotency-Key" => "idem-query-order-settle")
+
+    post_json "/v1/payouts/#{payout.public_id}/settle?debug=1&force=true", {}, headers: headers
+    assert_response :ok
+
+    post_json "/v1/payouts/#{payout.public_id}/settle?force=true&debug=1", {}, headers: headers
+
+    assert_response :ok
+    assert_equal "true", response.headers["Idempotency-Replayed"]
+    assert_equal "settled", json_body.dig("data", "status")
+  end
+
   test "rolls back command effects when idempotency response persistence fails" do
     original_update = IdempotencyKey.instance_method(:update!)
     IdempotencyKey.define_method(:update!) do |*args, **kwargs, &block|

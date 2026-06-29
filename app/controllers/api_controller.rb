@@ -25,7 +25,7 @@ class ApiController < ActionController::API
       organization: current_organization,
       key: idempotency_key,
       request_method: request.request_method,
-      request_path: request.fullpath,
+      request_path: canonical_idempotency_request_path,
       request_hash: request_hash
     ) do
       body = yield
@@ -41,6 +41,30 @@ class ApiController < ActionController::API
 
   def request_hash
     OpenSSL::Digest::SHA256.hexdigest(request.raw_post.to_s)
+  end
+
+  def canonical_idempotency_request_path
+    normalized_query = canonical_query_string(request.query_string)
+    return request.path if normalized_query.blank?
+
+    "#{request.path}?#{normalized_query}"
+  end
+
+  def canonical_query_string(raw_query)
+    return if raw_query.blank?
+
+    Rack::Utils.build_nested_query(sort_query_value(Rack::Utils.parse_nested_query(raw_query)))
+  end
+
+  def sort_query_value(value)
+    case value
+    when Hash
+      value.sort.to_h { |key, nested_value| [ key, sort_query_value(nested_value) ] }
+    when Array
+      value.map { |item| sort_query_value(item) }
+    else
+      value
+    end
   end
 
   def find_by_public_id!(scope, public_id)
