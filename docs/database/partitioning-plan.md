@@ -2,6 +2,12 @@
 
 The current schema keeps ordinary tables for developer ergonomics. Production-scale deployments should partition high-volume append-only tables after data volume justifies the operational cost.
 
+`ledger_analytics_events` is the exception added for analytical reads: it is a
+derived PostgreSQL projection partitioned by `occurred_on`, not the financial
+source of truth. This gives the repository executable partitioning evidence
+while the OLTP ledger tables remain blocked on a deliberate partition-aware key
+strategy.
+
 ## Candidate tables
 
 - `journal_entries`: monthly range partition on `occurred_at`.

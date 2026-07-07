@@ -1586,3 +1586,34 @@ Use esta seção depois da primeira leitura completa. A ideia aqui não é reler
 
 - A leitura deste journal deve ser feita junto com o histórico real quando uma conclusão parecer forte demais.
   Onde o git não prova causalidade sozinho, este texto usa linguagem limitada; o objetivo é ensinar sem transformar inferência em fato.
+
+## Addendum 2026-07-07: particionamento real sem fingir que o ledger OLTP mudou
+
+Este ciclo adicionou `ledger_analytics_events`, uma projeção PostgreSQL
+particionada por `occurred_on`, alimentada a partir de `JournalEntry` e
+`LedgerLine`.
+
+- Problema que resolve:
+  o projeto já tinha documentação honesta dizendo que particionar
+  `journal_entries` e `ledger_lines` diretamente ainda era bloqueado por chaves
+  e FKs não particionadas, mas faltava uma implementação real de banco em escala
+  dentro do PostgreSQL.
+
+- Decisão:
+  criar uma projeção analítica derivada e particionada, sem mudar o contrato do
+  ledger financeiro como fonte de verdade.
+
+- Prós:
+  demonstra particionamento real, mantém o ledger imutável intacto, permite
+  query de wallet/dia e adiciona gate de completude no benchmark.
+
+- Contras:
+  cria preocupação nova de frescor/rebuild/retenção da projeção e ainda exige
+  rotina operacional para pré-criar partições em produção.
+
+- Evidência:
+  `test/services/ledger_analytics_projector_test.rb`,
+  `test/services/database_benchmark_runner_test.rb`,
+  `test/services/database_benchmark_thresholds_test.rb`,
+  `test/services/database_critical_query_explainer_test.rb` e
+  `docs/adr/0007-postgres-partitioned-ledger-analytics-projection.md`.

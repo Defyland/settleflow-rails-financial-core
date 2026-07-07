@@ -6,6 +6,40 @@ implementation decisions are recorded here, newest first. Change-by-change
 verification detail lives in
 [docs/architecture/public-release-remediation-journal.md](architecture/public-release-remediation-journal.md).
 
+## 2026-07-07 — Partitioned PostgreSQL analytics projection
+
+### Partition analytics facts, not the OLTP ledger tables
+
+**Context.** `docs/database/partitioning-plan.md` correctly says the core
+`journal_entries` and `ledger_lines` tables are not ready for blind range
+partitioning because their primary keys, unique indexes, and inbound foreign
+keys are not partition-aware. The repo still needed executable proof for
+database-at-scale design.
+
+**Decision.** Add `ledger_analytics_events` as a derived PostgreSQL table
+partitioned by `occurred_on`, populated idempotently from immutable ledger lines
+through `Analytics::LedgerAnalyticsProjector`.
+
+**Pros.**
+
+- proves real PostgreSQL partitioning without weakening the financial source of
+  truth
+- gives benchmark and `EXPLAIN` tooling a concrete analytics read path
+- keeps OLTP ledger partitioning blocked until key strategy is deliberately
+  redesigned
+
+**Cons.**
+
+- adds projection freshness and retention concerns
+- on-demand partition creation is acceptable for the demo, but production should
+  pre-create partitions operationally
+- does not replace ClickHouse for external large-scan analytics
+
+**Evidence.** `test/services/ledger_analytics_projector_test.rb`,
+`test/services/database_benchmark_runner_test.rb`,
+`test/services/database_benchmark_thresholds_test.rb`, and
+`test/services/database_critical_query_explainer_test.rb`.
+
 ## 2026-06-29 — Railway single-service demo deployment
 
 ### Railway is added as the public demo surface, not as the production topology

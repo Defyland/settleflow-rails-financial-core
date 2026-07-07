@@ -12,6 +12,7 @@ If no organization is provided, the task uses the first organization or creates 
 
 - `wallet_statement`: wallet ledger line statement with journal metadata.
 - `reconciliation_accounts`: ledger account aggregation used by reconciliation snapshots.
+- `ledger_analytics_wallet_daily`: wallet/day signed movement rollup over the partitioned PostgreSQL analytics projection.
 - `outbox_publishable`: queue claim candidates for outbox publication.
 - `audit_chain_tail`: latest audit hash-chain rows.
 

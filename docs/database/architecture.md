@@ -29,6 +29,17 @@ SettleFlow is an OLTP-first financial core. PostgreSQL is the only source of tru
 
 ## OLAP model
 
+PostgreSQL table `ledger_analytics_events` is a derived analytics projection
+from immutable `journal_entries` and `ledger_lines`. It is partitioned by
+`occurred_on`, keyed idempotently by `ledger_line_id + occurred_on`, and stores
+wallet/account/event dimensions plus `signed_amount_cents` using the ledger
+account's normal balance.
+
+This projection exists because the OLTP ledger tables are not yet safe to range
+partition directly: their current keys and inbound references are not
+partition-aware. The projection demonstrates PostgreSQL partitioning and
+wallet/day analytical reads while preserving the ledger as the source of truth.
+
 ClickHouse table `settleflow.financial_events` receives JSONEachRow rows from published outbox events:
 
 - `event_id`

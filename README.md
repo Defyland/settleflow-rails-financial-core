@@ -23,6 +23,7 @@ Many fintech demos store mutable balances directly on an account row. That hides
 - Customers and BRL wallets.
 - Double-entry journal entries and immutable ledger lines.
 - Balance projections derived from wallet ledger accounts.
+- Partitioned PostgreSQL ledger analytics projection for wallet/day analytical reads without mutating OLTP ledger tables.
 - Funding, internal transfer, split, Pix approval/review/rejection, Pix settlement, Pix reversal, payout D+N, refund, governed MED dispute, and reconciliation flows.
 - Authenticated `/ops` backoffice for dashboard KPIs, paginated wallet statements, Pix manual review, maker-checker settlement/reversal/MED approval, ledger drill-downs, reconciliation, outbox retry, and audit inspection.
 - Role-gated `/ops` console: all ops actions (reads and mutations) currently require the `admin` role. `viewer` and `operator` exist as global staff roles but hold no ops-console capability until an organization-scoped model is added.
@@ -62,6 +63,7 @@ Core entities:
 - `LedgerAccount`: asset/liability/revenue/expense/equity account with normal balance.
 - `JournalEntry` and `LedgerLine`: immutable double-entry record.
 - `BalanceProjection` and `BalanceSnapshot`: read-optimized wallet balance and daily projection-vs-ledger evidence.
+- `LedgerAnalyticsEvent`: partitioned derived analytics fact table populated from immutable ledger lines.
 - `Funding`, `Transfer`, `SplitPayment`, `Payout`, `PixPayment`, `Refund`, `MedCase`, `ReconciliationRun`: financial workflows.
 - `OutboxEvent`, `ProcessedEvent`, `IdempotencyKey`, `AuditLog`: reliability, analytics sync, and governance records.
 
@@ -125,6 +127,7 @@ ADRs are in [docs/adr](docs/adr):
 - transactional outbox with Solid Queue
 - API key authentication plus idempotent command handling
 - ledger plus outbox before full Event Sourcing
+- partitioned PostgreSQL analytics projection before OLTP ledger partitioning
 - hybrid Rails monolith with Hotwire Ops backoffice
 - operational governance, outbox retry state, and Pix reversal controls
 
