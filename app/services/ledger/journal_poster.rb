@@ -41,6 +41,8 @@ module Ledger
         BalanceProjections::WriteGate.with_context("ledger_journal_poster") do
           apply_balance_projection!(journal_entry)
         end
+
+        Analytics::LedgerAnalyticsProjector.call(journal_entry:)
         journal_entry
       end
     end

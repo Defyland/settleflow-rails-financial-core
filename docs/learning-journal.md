@@ -1617,3 +1617,24 @@ particionada por `occurred_on`, alimentada a partir de `JournalEntry` e
   `test/services/database_benchmark_thresholds_test.rb`,
   `test/services/database_critical_query_explainer_test.rb` e
   `docs/adr/0007-postgres-partitioned-ledger-analytics-projection.md`.
+
+### Addendum do addendum: projeção derivada precisa morar no boundary canônico
+
+Depois da primeira versão da feature, a projeção estava muito bem provada em
+benchmark e em teste unitário, mas ainda não no dono real da mutação
+financeira.
+
+- Gap:
+  `Ledger::JournalPoster` era o boundary canônico de toda postagem monetária, e
+  mesmo assim não chamava o projector. Isso deixava a história arquitetural
+  parcialmente verdadeira demais para o que o código realmente fazia.
+
+- Correção menor e correta:
+  ligar `Analytics::LedgerAnalyticsProjector` ao próprio `Ledger::JournalPoster`
+  e provar em teste que a projeção entra e sai junto com a transação externa.
+
+- Lição:
+  se um read model derivado faz parte da narrativa do sistema, ele não pode
+  viver só em benchmark, fixture ou rake task auxiliar. Ou ele participa do
+  boundary canônico, ou a documentação deve assumir explicitamente que a trilha
+  é apenas demonstrativa.

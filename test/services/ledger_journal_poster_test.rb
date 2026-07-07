@@ -23,6 +23,7 @@ class LedgerJournalPosterTest < ActiveSupport::TestCase
     assert journal.balanced?
     assert_equal 7_500, @source_wallet.balance_projection.reload.available_cents
     assert_equal 2_500, @destination_wallet.balance_projection.reload.available_cents
+    assert_equal 2, LedgerAnalyticsEvent.where(journal_entry_id: journal.id).count
   end
 
   test "applies net projection deltas per wallet and currency" do
@@ -123,6 +124,34 @@ class LedgerJournalPosterTest < ActiveSupport::TestCase
     assert_raises(ActiveRecord::ReadOnlyRecord) { journal.destroy! }
     assert_raises(ActiveRecord::ReadOnlyRecord) { line.update!(amount_cents: 1_000) }
     assert_raises(ActiveRecord::ReadOnlyRecord) { line.destroy! }
+  end
+
+  test "rolls back analytics projection with the outer financial transaction" do
+    transfer = journal_reference("journal-poster-rollback-reference", amount_cents: 2_500, idempotency_key: "journal-poster-rollback")
+    baseline_event_ids = LedgerAnalyticsEvent.where(organization_id: @organization.id).pluck(:ledger_line_id)
+
+    assert_raises(RuntimeError, "force rollback") do
+      ActiveRecord::Base.transaction do
+        journal = Ledger::JournalPoster.call(
+          organization: @organization,
+          event_type: "wallet.transfer.posted",
+          reference: transfer,
+          idempotency_key: "journal-poster-rollback",
+          lines: [
+            { account: @source_wallet.liability_account, direction: "debit", amount_cents: 2_500, currency: "BRL" },
+            { account: @destination_wallet.liability_account, direction: "credit", amount_cents: 2_500, currency: "BRL" }
+          ]
+        )
+        transfer.update!(journal_entry: journal)
+
+        raise "force rollback"
+      end
+    end
+
+    assert_empty JournalEntry.where(idempotency_key: "journal-poster-rollback")
+    assert_equal baseline_event_ids.sort, LedgerAnalyticsEvent.where(organization_id: @organization.id).pluck(:ledger_line_id).sort
+    assert_equal 10_000, @source_wallet.balance_projection.reload.available_cents
+    assert_equal 0, @destination_wallet.balance_projection.reload.available_cents
   end
 
   private

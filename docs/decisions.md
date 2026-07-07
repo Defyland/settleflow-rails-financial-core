@@ -18,7 +18,9 @@ database-at-scale design.
 
 **Decision.** Add `ledger_analytics_events` as a derived PostgreSQL table
 partitioned by `occurred_on`, populated idempotently from immutable ledger lines
-through `Analytics::LedgerAnalyticsProjector`.
+through `Analytics::LedgerAnalyticsProjector`, and invoke that projector from
+`Ledger::JournalPoster` so the analytics projection commits and rolls back with
+the canonical financial write boundary.
 
 **Pros.**
 
@@ -36,6 +38,7 @@ through `Analytics::LedgerAnalyticsProjector`.
 - does not replace ClickHouse for external large-scan analytics
 
 **Evidence.** `test/services/ledger_analytics_projector_test.rb`,
+`test/services/ledger_journal_poster_test.rb`,
 `test/services/database_benchmark_runner_test.rb`,
 `test/services/database_benchmark_thresholds_test.rb`, and
 `test/services/database_critical_query_explainer_test.rb`.
