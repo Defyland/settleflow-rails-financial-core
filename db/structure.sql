@@ -3495,6 +3495,37 @@ ALTER SEQUENCE public.ledger_accounts_id_seq OWNED BY public.ledger_accounts.id;
 
 
 --
+-- Name: ledger_analytics_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ledger_analytics_events (
+    organization_id bigint NOT NULL,
+    journal_entry_id bigint NOT NULL,
+    ledger_line_id bigint NOT NULL,
+    ledger_account_id bigint NOT NULL,
+    wallet_id bigint,
+    event_type character varying NOT NULL,
+    direction character varying NOT NULL,
+    account_type character varying NOT NULL,
+    normal_balance character varying NOT NULL,
+    amount_cents bigint NOT NULL,
+    signed_amount_cents bigint NOT NULL,
+    currency character varying DEFAULT 'BRL'::character varying NOT NULL,
+    occurred_at timestamp(6) without time zone NOT NULL,
+    occurred_on date NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT ledger_analytics_events_account_type_check CHECK (((account_type)::text = ANY ((ARRAY['asset'::character varying, 'liability'::character varying, 'revenue'::character varying, 'expense'::character varying, 'equity'::character varying])::text[]))),
+    CONSTRAINT ledger_analytics_events_amount_positive_check CHECK ((amount_cents > 0)),
+    CONSTRAINT ledger_analytics_events_direction_check CHECK (((direction)::text = ANY ((ARRAY['debit'::character varying, 'credit'::character varying])::text[]))),
+    CONSTRAINT ledger_analytics_events_normal_balance_check CHECK (((normal_balance)::text = ANY ((ARRAY['debit'::character varying, 'credit'::character varying])::text[]))),
+    CONSTRAINT ledger_analytics_events_occurred_on_check CHECK ((occurred_on = (occurred_at)::date))
+)
+PARTITION BY RANGE (occurred_on);
+
+
+--
 -- Name: ledger_lines; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -4543,6 +4574,14 @@ ALTER TABLE ONLY public.ledger_accounts
 
 
 --
+-- Name: ledger_analytics_events ledger_analytics_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ledger_analytics_events
+    ADD CONSTRAINT ledger_analytics_events_pkey PRIMARY KEY (ledger_line_id, occurred_on);
+
+
+--
 -- Name: ledger_lines ledger_lines_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -5147,6 +5186,27 @@ CREATE UNIQUE INDEX index_ledger_accounts_on_public_id ON public.ledger_accounts
 --
 
 CREATE INDEX index_ledger_accounts_on_wallet_id ON public.ledger_accounts USING btree (wallet_id);
+
+
+--
+-- Name: index_ledger_analytics_events_on_org_account_day; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_ledger_analytics_events_on_org_account_day ON ONLY public.ledger_analytics_events USING btree (organization_id, ledger_account_id, occurred_on);
+
+
+--
+-- Name: index_ledger_analytics_events_on_org_day_event; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_ledger_analytics_events_on_org_day_event ON ONLY public.ledger_analytics_events USING btree (organization_id, occurred_on, event_type);
+
+
+--
+-- Name: index_ledger_analytics_events_on_org_wallet_day; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_ledger_analytics_events_on_org_wallet_day ON ONLY public.ledger_analytics_events USING btree (organization_id, wallet_id, occurred_on);
 
 
 --
@@ -6621,12 +6681,53 @@ ALTER TABLE ONLY public.refunds
 
 
 --
+-- Name: ledger_analytics_events ledger_analytics_events_journal_entry_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE public.ledger_analytics_events
+    ADD CONSTRAINT ledger_analytics_events_journal_entry_id_fkey FOREIGN KEY (journal_entry_id) REFERENCES public.journal_entries(id);
+
+
+--
+-- Name: ledger_analytics_events ledger_analytics_events_ledger_account_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE public.ledger_analytics_events
+    ADD CONSTRAINT ledger_analytics_events_ledger_account_id_fkey FOREIGN KEY (ledger_account_id) REFERENCES public.ledger_accounts(id);
+
+
+--
+-- Name: ledger_analytics_events ledger_analytics_events_ledger_line_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE public.ledger_analytics_events
+    ADD CONSTRAINT ledger_analytics_events_ledger_line_id_fkey FOREIGN KEY (ledger_line_id) REFERENCES public.ledger_lines(id);
+
+
+--
+-- Name: ledger_analytics_events ledger_analytics_events_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE public.ledger_analytics_events
+    ADD CONSTRAINT ledger_analytics_events_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: ledger_analytics_events ledger_analytics_events_wallet_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE public.ledger_analytics_events
+    ADD CONSTRAINT ledger_analytics_events_wallet_id_fkey FOREIGN KEY (wallet_id) REFERENCES public.wallets(id);
+
+
+--
 -- PostgreSQL database dump complete
 --
 
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260707130000'),
 ('20260612120000'),
 ('20260602224500'),
 ('20260602223500'),

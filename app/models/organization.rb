@@ -16,6 +16,7 @@ class Organization < ApplicationRecord
   has_many :outbox_events, dependent: :restrict_with_exception
   has_many :outbox_legacy_command_identity_exceptions, dependent: :restrict_with_exception
   has_many :processed_events, dependent: :restrict_with_exception
+  has_many :ledger_analytics_events, dependent: :restrict_with_exception
   has_many :balance_snapshots, dependent: :restrict_with_exception
   has_many :operator_approvals, dependent: :restrict_with_exception
   has_many :api_credentials, dependent: :destroy
