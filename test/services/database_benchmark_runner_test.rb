@@ -12,11 +12,13 @@ class DatabaseBenchmarkRunnerTest < ActiveSupport::TestCase
     assert_operator result.seed_duration_seconds, :>=, 0
     assert_equal 5, result.counts.fetch(:wallets)
     assert result.counts.fetch(:journal_entries).positive?
+    assert_equal result.counts.fetch(:ledger_lines), result.counts.fetch(:ledger_analytics_events)
     assert result.consistency.all? { |check| check.fetch(:ok) }, result.consistency.inspect
     thresholds_by_name = result.thresholds.index_by { |check| check.fetch(:name) }
     assert thresholds_by_name.fetch(:minimum_benchmark_profile).fetch(:ok), result.thresholds.inspect
+    assert thresholds_by_name.fetch(:ledger_analytics_projection_complete).fetch(:ok), result.thresholds.inspect
     assert_includes thresholds_by_name, :wallet_statement_uses_ledger_index
-    assert_equal %i[audit_chain_tail outbox_publishable reconciliation_accounts wallet_statement].sort,
+    assert_equal %i[audit_chain_tail ledger_analytics_wallet_daily outbox_publishable reconciliation_accounts wallet_statement].sort,
       result.explains.map { |explain| explain.fetch(:name) }.sort
   end
 

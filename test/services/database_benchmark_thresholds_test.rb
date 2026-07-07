@@ -8,12 +8,13 @@ class DatabaseBenchmarkThresholdsTest < ActiveSupport::TestCase
       organizations: 1,
       wallets: 1,
       entries: 1,
-      counts: { wallets: 1, journal_entries: 2, ledger_lines: 4, outbox_events: 100 },
+      counts: { wallets: 1, journal_entries: 2, ledger_lines: 4, ledger_analytics_events: 4, outbox_events: 100 },
       consistency: [ { name: :consistency, ok: true, details: {} } ],
       explains: [
         explain(:wallet_statement, seq_scan_plan("ledger_lines")),
         explain(:outbox_publishable, index_plan("outbox_events", "idx_outbox_status_next_attempt")),
         explain(:reconciliation_accounts, seq_scan_plan("ledger_accounts")),
+        explain(:ledger_analytics_wallet_daily, index_plan("ledger_analytics_events", "index_ledger_analytics_events_on_org_wallet_day")),
         explain(:audit_chain_tail, seq_scan_plan("audit_logs"))
       ]
     )
@@ -28,12 +29,13 @@ class DatabaseBenchmarkThresholdsTest < ActiveSupport::TestCase
       organizations: 1,
       wallets: 25,
       entries: 250,
-      counts: { wallets: 25, journal_entries: 275, ledger_lines: 550, outbox_events: 100 },
+      counts: { wallets: 25, journal_entries: 275, ledger_lines: 550, ledger_analytics_events: 550, outbox_events: 100 },
       consistency: [ { name: :consistency, ok: true, details: {} } ],
       explains: [
         explain(:wallet_statement, index_plan("ledger_lines", "index_ledger_lines_on_organization_id_and_created_at")),
         explain(:outbox_publishable, index_plan("outbox_events", "idx_outbox_status_next_attempt")),
         explain(:reconciliation_accounts, seq_scan_plan("ledger_accounts")),
+        explain(:ledger_analytics_wallet_daily, index_plan("ledger_analytics_events", "index_ledger_analytics_events_on_org_wallet_day")),
         explain(:audit_chain_tail, seq_scan_plan("audit_logs"))
       ]
     )
@@ -47,6 +49,29 @@ class DatabaseBenchmarkThresholdsTest < ActiveSupport::TestCase
     assert_not check.ok
     assert_equal 100, check.details.fetch(:minimum_wallets)
     assert_equal 2_000, check.details.fetch(:minimum_entries)
+  end
+
+  test "fails when ledger analytics projection is not complete" do
+    result = Result.new(
+      organizations: 1,
+      wallets: 100,
+      entries: 2_000,
+      counts: { wallets: 100, journal_entries: 2_100, ledger_lines: 4_200, ledger_analytics_events: 4_199, outbox_events: 100 },
+      consistency: [ { name: :consistency, ok: true, details: {} } ],
+      explains: [
+        explain(:wallet_statement, index_plan("ledger_lines", "index_ledger_lines_on_organization_id_and_created_at")),
+        explain(:outbox_publishable, index_plan("outbox_events", "idx_outbox_status_next_attempt")),
+        explain(:reconciliation_accounts, seq_scan_plan("ledger_accounts")),
+        explain(:ledger_analytics_wallet_daily, index_plan("ledger_analytics_events", "index_ledger_analytics_events_on_org_wallet_day")),
+        explain(:audit_chain_tail, seq_scan_plan("audit_logs"))
+      ]
+    )
+
+    check = Database::BenchmarkThresholds.call(result:).find { |item| item.name == :ledger_analytics_projection_complete }
+
+    assert_not check.ok
+    assert_equal 4_200, check.details.fetch(:ledger_lines)
+    assert_equal 4_199, check.details.fetch(:projected_events)
   end
 
   private

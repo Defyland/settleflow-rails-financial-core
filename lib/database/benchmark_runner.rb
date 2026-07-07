@@ -17,6 +17,7 @@ module Database
 
       started_at = monotonic_time
       seeded_organizations = Database::LargeSeed.call(organizations:, wallets:, entries:)
+      project_ledger_analytics!(seeded_organizations)
       seed_duration_seconds = monotonic_time - started_at
       consistency = Database::ConsistencyVerifier.call(organizations: Organization.where(id: seeded_organizations.map(&:id)))
       explains = Database::CriticalQueryExplainer.call(organization: seeded_organizations.first)
@@ -51,9 +52,16 @@ module Database
         wallets: Wallet.where(organization_id: organization_ids).count,
         journal_entries: JournalEntry.where(organization_id: organization_ids).count,
         ledger_lines: LedgerLine.where(organization_id: organization_ids).count,
+        ledger_analytics_events: LedgerAnalyticsEvent.where(organization_id: organization_ids).count,
         outbox_events: OutboxEvent.where(organization_id: organization_ids).count,
         audit_logs: AuditLog.where(organization_id: organization_ids).count
       }
+    end
+
+    def project_ledger_analytics!(seeded_organizations)
+      JournalEntry.where(organization_id: seeded_organizations.map(&:id)).find_each do |journal_entry|
+        Analytics::LedgerAnalyticsProjector.call(journal_entry:)
+      end
     end
 
     def monotonic_time

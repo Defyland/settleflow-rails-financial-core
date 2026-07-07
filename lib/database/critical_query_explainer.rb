@@ -41,6 +41,18 @@ module Database
           .where(currency: wallet&.currency || "BRL")
           .group("ledger_accounts.id")
           .select("ledger_accounts.id, COALESCE(SUM(ledger_lines.amount_cents), 0) AS amount_total_cents"),
+        ledger_analytics_wallet_daily: LedgerAnalyticsEvent
+          .where(organization:)
+          .where.not(wallet_id: nil)
+          .where(occurred_on: 30.days.ago.to_date..Date.current)
+          .group(:wallet_id, :currency, :occurred_on)
+          .select(
+            "wallet_id",
+            "currency",
+            "occurred_on",
+            "COUNT(*) AS line_count",
+            "SUM(signed_amount_cents) AS signed_amount_cents"
+          ),
         outbox_publishable: OutboxEvent.publishable.order(:created_at).limit(100),
         audit_chain_tail: AuditLog.order(chain_sequence: :desc).limit(100)
       }

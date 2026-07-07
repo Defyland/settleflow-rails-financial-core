@@ -3,6 +3,7 @@ module Database
     Check = Data.define(:name, :ok, :details)
     REQUIRED_EXPLAIN_NAMES = %i[
       audit_chain_tail
+      ledger_analytics_wallet_daily
       outbox_publishable
       reconciliation_accounts
       wallet_statement
@@ -29,6 +30,7 @@ module Database
         consistency_check,
         benchmark_profile_check,
         count_check,
+        ledger_analytics_projection_check,
         critical_plan_check,
         wallet_statement_index_check,
         outbox_publishable_index_check,
@@ -79,6 +81,20 @@ module Database
           actual_journal_entries: counts.fetch(:journal_entries),
           expected_ledger_lines:,
           actual_ledger_lines: counts.fetch(:ledger_lines)
+        }
+      )
+    end
+
+    def ledger_analytics_projection_check
+      ledger_lines = result.counts.fetch(:ledger_lines)
+      projected_events = result.counts.fetch(:ledger_analytics_events, 0)
+
+      Check.new(
+        name: :ledger_analytics_projection_complete,
+        ok: projected_events >= ledger_lines,
+        details: {
+          ledger_lines:,
+          projected_events:
         }
       )
     end
