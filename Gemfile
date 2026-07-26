@@ -39,7 +39,7 @@ gem "opentelemetry-instrumentation-all"
 gem "opentelemetry-sdk"
 gem "prometheus-client"
 gem "rack-attack"
-gem "redis-client", "~> 0.29.0"
+gem "redis-client", "~> 0.30.1"
 
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
